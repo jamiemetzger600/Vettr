@@ -36,4 +36,17 @@ const tasks = notificationPath({
 assert(tasks.includes('tab=crm') && tasks.includes('crmSubview=tasks'), `tasks list: ${tasks}`);
 assert(!tasks.includes('crmDeal='), `tasks toast does not open a deal: ${tasks}`);
 
+const teamDeal = notificationPath({
+  alertType: 'team_activity',
+  savedDealId: 77
+});
+assert(teamDeal.includes('tab=crm'), `team tab: ${teamDeal}`);
+assert(teamDeal.includes('crmDeal=77'), `team opens deal: ${teamDeal}`);
+assert(teamDeal.includes('section=overview'), `team opens record: ${teamDeal}`);
+assert(!teamDeal.includes('crmSubview=cards'), `deal toast is not a generic cards dump: ${teamDeal}`);
+
+const teamEmpty = notificationPath({ alertType: 'team_activity' });
+assert(teamEmpty.includes('crmSubview=cards'), `fallback cards: ${teamEmpty}`);
+assert(!teamEmpty.includes('crmDeal='), `fallback has no deal: ${teamEmpty}`);
+
 console.log('notificationLinks tests passed');

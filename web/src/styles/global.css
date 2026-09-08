@@ -11463,19 +11463,17 @@ button.aggregator-welcome__buybox {
 }
 
 .crm-deed-card__metrics {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px 6px;
   width: 100%;
   border: none;
   border-top: 1px solid rgba(0, 0, 0, 0.18);
   background: transparent;
   color: #111;
   font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 7px 8px;
+  padding: 8px 8px 6px;
+  box-sizing: border-box;
   cursor: pointer;
 }
 
@@ -11483,24 +11481,49 @@ button.aggregator-welcome__buybox {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.crm-deed-card__metrics span {
-  white-space: nowrap;
+.crm-deed-card__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
 }
 
-.crm-deed-card__coc[data-tier='excellent'],
-.crm-deed-card__coc[data-tier='very-good'] {
+.crm-deed-card__metric-value {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.crm-deed-card__metric-label {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  color: #5c5346;
+}
+
+.crm-deed-card__multiple[data-tier='excellent'],
+.crm-deed-card__multiple[data-tier='very-good'] {
   color: #1a7a3a;
 }
 
-.crm-deed-card__coc[data-tier='good'] {
+.crm-deed-card__multiple[data-tier='good'] {
   color: #2f5d3a;
 }
 
-.crm-deed-card__coc[data-tier='fair'] {
+.crm-deed-card__multiple[data-tier='fair'] {
   color: #8a6a00;
 }
 
-.crm-deed-card__coc[data-tier='bad'] {
+.crm-deed-card__multiple[data-tier='bad'] {
   color: #9b1c1c;
 }
 

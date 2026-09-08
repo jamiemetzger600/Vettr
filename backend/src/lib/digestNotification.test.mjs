@@ -24,4 +24,26 @@ assert(push.url.includes('matchIds='), `url matchIds: ${push.url}`);
 assert(push.url.includes('11') && push.url.includes('22'), `both ids in url: ${push.url}`);
 assert(Array.isArray(push.dealDbIds) && push.dealDbIds.join(',') === '11,22', `dealDbIds ${push.dealDbIds}`);
 
+const moved = buildDigestNotification({
+  grouped: { groups: [], total: 0 },
+  team: {
+    headlines: ['Alesha moved Maui Dental to Requested NDA'],
+    added: [],
+    mentions: [],
+    stages: [{
+      label: 'Alesha',
+      count: 1,
+      names: ['Maui Dental'],
+      ids: [77],
+      newStages: ['Requested NDA']
+    }]
+  },
+  crmItems: []
+});
+assert(moved.alertType === 'team_activity', `moved type: ${moved.alertType}`);
+assert(Number(moved.savedDealId) === 77, `moved savedDealId: ${moved.savedDealId}`);
+assert(moved.url.includes('crmDeal=77'), `moved url: ${moved.url}`);
+assert(moved.actionTitle === 'Open deal', `moved action: ${moved.actionTitle}`);
+assert(/Maui Dental/.test(moved.title), `moved title names the deal: ${moved.title}`);
+
 console.log('digestNotification tests passed');

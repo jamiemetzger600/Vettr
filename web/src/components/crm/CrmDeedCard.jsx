@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { formatMoney, getDealProgressLabel, isPassedOnDeal } from '../../utils/normalizeDeal';
-import { cocReturnTier } from '../../utils/pipelineStages';
+import { formatMoneyShort, formatRatio, profitMultipleTier } from '../../utils/dealCardDisplay';
 import { DEED_COLORS, waitingOnLabels } from '../../utils/deedCardPrefs';
 import { crmDealAgeDate, dealAgeHeaderColor } from '../../utils/dealCardDisplay';
 
@@ -76,9 +76,16 @@ export default function CrmDeedCard({
   const status = statusUnset ? 'Status: Tap to set' : stageLabel;
   const nextLabel = nextAction?.title || 'Set next step';
   const asking = summary?.askingPrice ?? deal.askingPrice;
+  const revenue = deal.revenue;
   const ebitda = summary?.ebitda ?? deal.ebitda;
-  const coc = summary?.cocReturn;
-  const cocOk = coc != null && Number.isFinite(coc);
+  const listedMultiple = Number(deal.profitMultiple);
+  const computedMultiple = Number(asking) > 0 && Number(ebitda) > 0
+    ? Number(asking) / Number(ebitda)
+    : null;
+  const multiple = Number.isFinite(listedMultiple) && listedMultiple > 0
+    ? listedMultiple
+    : computedMultiple;
+  const multipleOk = multiple != null && Number.isFinite(multiple);
   const waitingLabels = waitingOnLabels(waiting).slice(0, 4);
   const waitingExtra = Math.max(0, waitingOnLabels(waiting).length - 4);
   const ddStatus = ddStatusForDeal(deal, overdueDealIds);
@@ -204,8 +211,8 @@ export default function CrmDeedCard({
         <button
           type="button"
           className="crm-deed-card__metrics"
-          title="Asking · EBITDA/SDE · CoC"
-          aria-label="Asking, EBITDA/SDE, and cash-on-cash"
+          title="Purchase price · Revenue · EBITDA · Multiple"
+          aria-label="Purchase price, revenue, EBITDA, and multiple"
           onClick={(e) => {
             stop(e);
             onOpenField?.('metrics');
@@ -215,13 +222,33 @@ export default function CrmDeedCard({
             blockDrag.current = true;
           }}
         >
-          <span>{asking != null ? formatMoney(asking) : '—'}</span>
-          <span>{ebitda != null ? formatMoney(ebitda) : '—'}</span>
-          <span
-            className="crm-deed-card__coc"
-            data-tier={cocOk ? cocReturnTier(coc) : 'neutral'}
-          >
-            {cocOk ? `${coc.toFixed(0)}% CoC` : '— CoC'}
+          <span className="crm-deed-card__metric">
+            <span className="crm-deed-card__metric-value" title={formatMoney(asking)}>
+              {formatMoneyShort(asking)}
+            </span>
+            <span className="crm-deed-card__metric-label">Purchase Price</span>
+          </span>
+          <span className="crm-deed-card__metric">
+            <span className="crm-deed-card__metric-value" title={formatMoney(revenue)}>
+              {formatMoneyShort(revenue)}
+            </span>
+            <span className="crm-deed-card__metric-label">Revenue</span>
+          </span>
+          <span className="crm-deed-card__metric">
+            <span className="crm-deed-card__metric-value" title={formatMoney(ebitda)}>
+              {formatMoneyShort(ebitda)}
+            </span>
+            <span className="crm-deed-card__metric-label">EBITDA</span>
+          </span>
+          <span className="crm-deed-card__metric">
+            <span
+              className="crm-deed-card__metric-value crm-deed-card__multiple"
+              data-tier={multipleOk ? profitMultipleTier(multiple) : 'neutral'}
+              title={multipleOk ? `${formatRatio(multiple)}X multiple` : 'Multiple'}
+            >
+              {multipleOk ? `${formatRatio(multiple)}X` : '—'}
+            </span>
+            <span className="crm-deed-card__metric-label">Multiple</span>
           </span>
         </button>
 

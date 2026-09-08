@@ -53,6 +53,7 @@ export default function CrmDashboard({
   initialFocusSection = null,
   initialActionFilter = null,
   tasksListSignal = 0,
+  dealOpenSignal = 0,
   onBackToInbox = null,
   onCrmViewChange = null,
   onLiveDealsRefresh = null
@@ -124,21 +125,21 @@ export default function CrmDashboard({
     setWorkspaceFocusSection(null);
   }, [tasksListSignal]);
 
-  // Deep link: section → full record; deal-only → peek
+  // Deep link: section → full record; deal-only → peek. dealOpenSignal re-opens after a toast click.
   useEffect(() => {
     if (!initialDealId) return;
     if (initialFocusSection) {
-      console.log('[CrmDashboard] deep link → record', initialDealId, initialFocusSection);
+      console.log('[CrmDashboard] deep link → record', initialDealId, initialFocusSection, dealOpenSignal || '');
       setRecordDealId(initialDealId);
       setWorkspaceFocusSection(initialFocusSection);
       setPeekDealId(null);
     } else {
-      console.log('[CrmDashboard] deep link → peek', initialDealId);
+      console.log('[CrmDashboard] deep link → peek', initialDealId, dealOpenSignal || '');
       setPeekDealId(initialDealId);
       setRecordDealId(null);
       setWorkspaceFocusSection(null);
     }
-  }, [initialDealId, initialFocusSection]);
+  }, [initialDealId, initialFocusSection, dealOpenSignal]);
 
   useEffect(() => {
     if (initialFocusSection && recordDealId) {

@@ -37,10 +37,12 @@ export function notificationPath({
     return `/dashboard?${q.toString()}`;
   }
   if (type === 'team_activity') {
-    const q = new URLSearchParams({ tab: 'crm', crmSubview: 'cards' });
+    const q = new URLSearchParams({ tab: 'crm' });
     if (savedDealId) {
       q.set('crmDeal', String(savedDealId));
       q.set('section', 'overview');
+    } else {
+      q.set('crmSubview', 'cards');
     }
     return `/dashboard?${q.toString()}`;
   }
@@ -85,13 +87,15 @@ export function crmQueuePath(crmFilter) {
   return `/dashboard?${q.toString()}`;
 }
 
-export function notificationOpenLabel(alertType) {
+export function notificationOpenLabel(alertType, { savedDealId } = {}) {
   const type = String(alertType || '');
   if (type === 'task_completed' || type === 'task_assigned' || type === 'task_due') {
     return 'Open Tasks';
   }
   if (type === 'deal_match') return 'Open matches';
-  if (type === 'team_activity' || type === 'crm_followup') return 'Open CRM';
+  if (type === 'team_activity' || type === 'crm_followup') {
+    return savedDealId ? 'Open deal' : 'Open CRM';
+  }
   if (type === 'test' || type === 'settings') return 'Open Settings';
   return 'Open Talk';
 }

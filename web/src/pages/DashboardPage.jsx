@@ -28,7 +28,7 @@ import {
   isValidCrmSubview,
   isValidCrmFilter
 } from '../utils/dashboardLocation';
-import { notificationPath, parseMatchDealIds } from '../utils/notificationLinks';
+import { notificationPath, parseMatchDealIds, savedDealIdFromAlert } from '../utils/notificationLinks';
 import { pollWhenVisible } from '../utils/pollWhenVisible';
 
 function isBuyBoxEmpty(buyBox) {
@@ -129,6 +129,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   /** One-shot Aggregator layout hint (e.g. return from CRM → Inbox on mobile). */
   const [aggregatorViewHint, setAggregatorViewHint] = useState(null);
   const [tasksListSignal, setTasksListSignal] = useState(0);
+  const [crmDealOpenSignal, setCrmDealOpenSignal] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
   const [totalDeals, setTotalDeals] = useState(0);
   const [newTodayCount, setNewTodayCount] = useState(0);
@@ -674,6 +675,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             initialFocusSection={crmInitialFocusSection}
             initialActionFilter={crmInitialFilter}
             tasksListSignal={tasksListSignal}
+            dealOpenSignal={crmDealOpenSignal}
             onBackToInbox={backToInbox}
             onCrmViewChange={handleCrmViewChange}
             onLiveDealsRefresh={loadScopedSavedDeals}
@@ -693,9 +695,10 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
           onOpenAlert={(alert) => {
             const meta = alert?.metadata && typeof alert.metadata === 'object' ? alert.metadata : {};
             const dealDbIds = parseMatchDealIds(meta.dealDbIds || meta.deal_db_ids);
+            const savedDealId = savedDealIdFromAlert(alert);
             const path = notificationPath({
               alertType: alert?.alert_type,
-              savedDealId: alert?.saved_deal_id,
+              savedDealId,
               dealDbId: meta.dealDbId || meta.deal_db_id,
               dealDbIds,
               newToday: meta.newToday || meta.new_today
@@ -703,7 +706,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             const next = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
             const tab = next.get('tab') === 'crm' ? 'crm' : 'aggregator';
             console.log('[Dashboard] open alert', alert?.alert_type, path, {
-              matchCount: dealDbIds.length
+              matchCount: dealDbIds.length,
+              savedDealId
             });
             skipPersistFromUrlRef.current = true;
             setSearchParams(next, { replace: false });
@@ -720,10 +724,14 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
                 setTasksListSignal(Date.now());
                 console.log('[Dashboard] open alert → tasks list');
               } else {
-                const n = Number(next.get('crmDeal'));
+                const n = Number(next.get('crmDeal') || savedDealId);
                 if (Number.isFinite(n) && n > 0) {
                   setCrmInitialDealId(n);
                   setCrmInitialFocusSection(next.get('section') || 'overview');
+                  setCrmDealOpenSignal(Date.now());
+                  console.log('[Dashboard] open alert → deal', n);
+                } else {
+                  console.warn('[Dashboard] open alert had no deal id', alert?.alert_type);
                 }
               }
             }

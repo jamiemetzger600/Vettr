@@ -1,4 +1,5 @@
 import { notificationOpenLabel, notificationPath } from './notificationLinks.js';
+import { primaryTeamSavedDealId } from './teamActivity.js';
 
 function actorLabel(email) {
   if (!email) return 'A teammate';
@@ -47,6 +48,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
   const matches = Number(grouped?.total) || 0;
   const mention = team?.mentions?.[0];
   const added = team?.added?.[0];
+  const stages = team?.stages?.[0];
   const overdue = crmItems.filter((i) => i.kind === 'overdue');
   const dueToday = crmItems.filter((i) => i.kind === 'due_today');
   const listedDeals = firstMatchingDeals(grouped);
@@ -124,12 +126,27 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
       alertType: 'team_activity',
       savedDealId: added.ids?.[0] || null
     };
+  } else if (stages?.count === 1 && (stages.names?.[0] || stages.ids?.[0])) {
+    const stage = stages.newStages?.[0];
+    primary = {
+      title: `${stages.label} moved ${stages.names?.[0] || 'a deal'}${stage ? ` to ${stage}` : ' into the pipeline'}`,
+      body: stage ? `Now: ${stage}` : 'Moved in your pipeline',
+      alertType: 'team_activity',
+      savedDealId: stages.ids?.[0] || null
+    };
+  } else if (stages?.count > 1) {
+    primary = {
+      title: `${stages.label} moved ${stages.count} deals in the pipeline`,
+      body: (stages.names || []).slice(0, 3).join(' · '),
+      alertType: 'team_activity',
+      savedDealId: stages.ids?.[0] || null
+    };
   } else if (team?.headlines?.[0]) {
     primary = {
       title: team.headlines[0],
       body: team.headlines.slice(1).join(' · '),
       alertType: 'team_activity',
-      savedDealId: team.mentions?.[0]?.saved_deal_id || team.added?.[0]?.ids?.[0] || null
+      savedDealId: primaryTeamSavedDealId(team)
     };
   } else if (crmItems[0]) {
     const item = crmItems[0];
@@ -173,7 +190,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     body,
     url: notificationPath(pathOpts),
     tag: primary.alertType === 'deal_match' ? 'deal-match' : String(primary.alertType || 'vettr'),
-    actionTitle: notificationOpenLabel(primary.alertType),
+    actionTitle: notificationOpenLabel(primary.alertType, { savedDealId: primary.savedDealId }),
     alertType: primary.alertType,
     savedDealId: primary.savedDealId || null,
     dealDbId: primary.dealDbId || null,

@@ -37,10 +37,12 @@ export function notificationPath({
     return `/dashboard?${q.toString()}`;
   }
   if (type === 'team_activity') {
-    const q = new URLSearchParams({ tab: 'crm', crmSubview: 'cards' });
+    const q = new URLSearchParams({ tab: 'crm' });
     if (savedDealId) {
       q.set('crmDeal', String(savedDealId));
       q.set('section', 'overview');
+    } else {
+      q.set('crmSubview', 'cards');
     }
     return `/dashboard?${q.toString()}`;
   }
@@ -85,13 +87,33 @@ export function crmQueuePath(crmFilter) {
   return `/dashboard?${q.toString()}`;
 }
 
-export function notificationOpenLabel(alertType) {
+export function notificationOpenLabel(alertType, { savedDealId } = {}) {
   const type = String(alertType || '');
   if (type === 'task_completed' || type === 'task_assigned' || type === 'task_due') {
     return 'Open Tasks';
   }
   if (type === 'deal_match') return 'Open matches';
-  if (type === 'team_activity' || type === 'crm_followup') return 'Open CRM';
+  if (type === 'team_activity' || type === 'crm_followup') {
+    return savedDealId ? 'Open deal' : 'Open CRM';
+  }
   if (type === 'test' || type === 'settings') return 'Open Settings';
   return 'Open Talk';
+}
+
+/** Resolve the CRM deal a toast should open, including digest metadata fallbacks. */
+export function savedDealIdFromAlert(alert) {
+  const direct = Number(alert?.saved_deal_id);
+  if (Number.isFinite(direct) && direct > 0) return Math.trunc(direct);
+  const meta = alert?.metadata && typeof alert.metadata === 'object' ? alert.metadata : {};
+  const candidates = [
+    meta.savedDealId,
+    meta.saved_deal_id,
+    Array.isArray(meta.added) ? meta.added[0]?.ids?.[0] : null,
+    Array.isArray(meta.stages) ? meta.stages[0]?.ids?.[0] : null
+  ];
+  for (const item of candidates) {
+    const n = Number(item);
+    if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+  }
+  return null;
 }

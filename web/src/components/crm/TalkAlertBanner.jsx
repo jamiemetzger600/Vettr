@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { crmAPI } from '../../utils/api';
-import { notificationOpenLabel, notificationPath } from '../../utils/notificationLinks';
+import { notificationOpenLabel, notificationPath, savedDealIdFromAlert } from '../../utils/notificationLinks';
 import { showLocalNotification } from '../../utils/webNotifications';
 import { pollWhenVisible } from '../../utils/pollWhenVisible';
 
@@ -33,9 +33,10 @@ export default function TalkAlertBanner({
           seenIdsRef.current.add(alert.id);
           if (document.hidden && Notification.permission === 'granted') {
             const meta = alert.metadata && typeof alert.metadata === 'object' ? alert.metadata : {};
+            const savedDealId = savedDealIdFromAlert(alert);
             const url = notificationPath({
               alertType: alert.alert_type,
-              savedDealId: alert.saved_deal_id,
+              savedDealId,
               dealDbId: meta.dealDbId || meta.deal_db_id,
               dealDbIds: meta.dealDbIds || meta.deal_db_ids,
               newToday: meta.newToday || meta.new_today
@@ -44,7 +45,7 @@ export default function TalkAlertBanner({
               body: `${alert.deal_name || 'Deal'}: ${(alert.body || '').slice(0, 120)}`,
               tag: `vettr-alert-${alert.id}`,
               url,
-              actionTitle: notificationOpenLabel(alert.alert_type)
+              actionTitle: notificationOpenLabel(alert.alert_type, { savedDealId })
             }).catch((err) => {
               console.warn('[TalkAlertBanner] browser notification failed', err);
             });
@@ -87,7 +88,7 @@ export default function TalkAlertBanner({
   const extra = visible.length - 1;
 
   const openTop = async () => {
-    console.log('[TalkAlertBanner] open alert', top.id, 'deal', top.saved_deal_id);
+    console.log('[TalkAlertBanner] open alert', top.id, 'deal', savedDealIdFromAlert(top));
     try {
       await crmAPI.markAlertRead(top.id);
     } catch (err) {
@@ -116,7 +117,7 @@ export default function TalkAlertBanner({
           {top.alert_type === 'deal_match'
             ? 'Buy box matches'
             : top.alert_type === 'team_activity'
-              ? 'Team CRM'
+              ? (top.deal_name || 'Team CRM')
               : (top.alert_type === 'task_due'
                 || top.alert_type === 'task_assigned'
                 || top.alert_type === 'task_completed')
@@ -130,7 +131,7 @@ export default function TalkAlertBanner({
       </div>
       <div className="talk-alert-banner__actions">
         <button type="button" className="btn-primary btn-secondary--sm" onClick={openTop}>
-          {notificationOpenLabel(top.alert_type)}
+          {notificationOpenLabel(top.alert_type, { savedDealId: savedDealIdFromAlert(top) })}
         </button>
         <button type="button" className="btn-secondary btn-secondary--sm" onClick={dismissTop}>
           Dismiss

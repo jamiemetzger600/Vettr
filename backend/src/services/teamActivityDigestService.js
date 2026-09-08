@@ -1,5 +1,6 @@
 import pool from '../db/pool.js';
 import { getUnreadMentions } from './dealThreadService.js';
+import { addedActivityHeadline, stageActivityHeadline } from '../lib/teamActivity.js';
 
 export function actorLabel(email) {
   if (!email) return 'A teammate';
@@ -42,18 +43,31 @@ export async function getTeamActivitySince(userId, sinceDate) {
   });
 
   const stages = await pool.query(
-    `SELECT a.user_id AS actor_id,
-            u.email AS actor_email,
-            COUNT(*)::int AS n
-     FROM activities a
-     JOIN saved_deals sd ON sd.id = a.saved_deal_id
-     JOIN users u ON u.id = a.user_id
-     JOIN team_members me ON me.team_id = sd.team_id AND me.user_id = $1 AND me.status = 'active'
-     WHERE sd.team_id IS NOT NULL
-       AND a.user_id <> $1
-       AND a.activity_type = 'stage_change'
-       AND a.occurred_at >= $2
-     GROUP BY a.user_id, u.email
+    `SELECT actor_id,
+            actor_email,
+            COUNT(*)::int AS n,
+            ARRAY_AGG(deal_name ORDER BY occurred_at DESC) FILTER (WHERE deal_name IS NOT NULL) AS names,
+            ARRAY_AGG(saved_deal_id ORDER BY occurred_at DESC) AS ids,
+            ARRAY_AGG(new_stage ORDER BY occurred_at DESC) FILTER (WHERE new_stage IS NOT NULL) AS new_stages
+     FROM (
+       SELECT DISTINCT ON (a.user_id, a.saved_deal_id)
+              a.user_id AS actor_id,
+              u.email AS actor_email,
+              sd.name AS deal_name,
+              a.saved_deal_id,
+              a.occurred_at,
+              NULLIF(TRIM(a.metadata->>'newStage'), '') AS new_stage
+       FROM activities a
+       JOIN saved_deals sd ON sd.id = a.saved_deal_id
+       JOIN users u ON u.id = a.user_id
+       JOIN team_members me ON me.team_id = sd.team_id AND me.user_id = $1 AND me.status = 'active'
+       WHERE sd.team_id IS NOT NULL
+         AND a.user_id <> $1
+         AND a.activity_type = 'stage_change'
+         AND a.occurred_at >= $2
+       ORDER BY a.user_id, a.saved_deal_id, a.occurred_at DESC
+     ) latest
+     GROUP BY actor_id, actor_email
      ORDER BY n DESC`,
     [userId, since.toISOString()]
   ).catch((err) => {
@@ -76,19 +90,18 @@ export async function getTeamActivitySince(userId, sinceDate) {
     actorId: r.actor_id,
     actorEmail: r.actor_email,
     label: actorLabel(r.actor_email),
-    count: r.n
+    count: r.n,
+    names: Array.isArray(r.names) ? r.names.filter(Boolean).slice(0, 8) : [],
+    ids: Array.isArray(r.ids) ? r.ids.map((id) => Number(id)).filter((id) => id > 0).slice(0, 8) : [],
+    newStages: Array.isArray(r.new_stages) ? r.new_stages.filter(Boolean).slice(0, 8) : []
   }));
 
   const headlines = [];
   for (const row of addedRows) {
-    headlines.push(
-      `${row.label} added ${row.count} new deal${row.count === 1 ? '' : 's'}`
-    );
+    headlines.push(addedActivityHeadline(row));
   }
   for (const row of stageRows) {
-    headlines.push(
-      `${row.label} moved ${row.count} deal${row.count === 1 ? '' : 's'} in the pipeline`
-    );
+    headlines.push(stageActivityHeadline(row));
   }
   if (mentions.length) {
     headlines.push(

@@ -10,6 +10,7 @@ import {
   formatMoney
 } from './dealMatchDigestService.js';
 import { getTeamActivitySince, teamActivityPushText } from './teamActivityDigestService.js';
+import { primaryTeamSavedDealId } from '../lib/teamActivity.js';
 import { getTodayTaskSummary } from './crmTaskService.js';
 import { getDdOverdueForToday, getRecentPortalComments } from './ddChecklistService.js';
 import { findDormantDeals } from './crmPresenceService.js';
@@ -92,9 +93,14 @@ function buildDigestHtml({ grouped, team, crmLines }) {
       const sample = r.names?.length ? ` (${r.names.slice(0, 3).map(escapeHtml).join(', ')})` : '';
       return `<li>${escapeHtml(r.label)} added ${r.count} new deal${r.count === 1 ? '' : 's'}${sample}</li>`;
     }).join('');
-    const stageItems = (team.stages || []).map((r) =>
-      `<li>${escapeHtml(r.label)} moved ${r.count} deal${r.count === 1 ? '' : 's'} in the pipeline</li>`
-    ).join('');
+    const stageItems = (team.stages || []).map((r) => {
+      const sample = r.names?.length ? ` (${r.names.slice(0, 3).map(escapeHtml).join(', ')})` : '';
+      const dest = r.newStages?.[0] ? ` to ${escapeHtml(r.newStages[0])}` : ' in the pipeline';
+      if (r.count === 1 && r.names?.[0]) {
+        return `<li>${escapeHtml(r.label)} moved ${escapeHtml(r.names[0])}${dest}</li>`;
+      }
+      return `<li>${escapeHtml(r.label)} moved ${r.count} deal${r.count === 1 ? '' : 's'}${dest}${sample}</li>`;
+    }).join('');
     sections.push(`
       <h2 style="font-size:18px;margin:24px 0 8px;">Team activity</h2>
       <ul style="padding-left:18px;line-height:1.6;">${addedItems}${stageItems}${mentionItems}</ul>
@@ -346,14 +352,19 @@ export async function sendUserDigest(userRow, {
       }).catch((err) => console.warn('[digest] deal_match alert failed', err.message));
     }
     if (team.total) {
-      const teamDealId = team.mentions?.[0]?.saved_deal_id || team.added?.[0]?.ids?.[0] || null;
+      const teamDealId = primaryTeamSavedDealId(team);
       await createUserAlert({
         userId,
         alertType: 'team_activity',
         title: team.headlines[0] || 'Team activity',
         body: team.headlines.slice(1).join(' · ') || teamActivityPushText(team),
-        savedDealId: team.added?.[0]?.count === 1 ? teamDealId : (team.mentions?.length === 1 ? teamDealId : null),
-        metadata: { headlines: team.headlines, added: team.added, stages: team.stages }
+        savedDealId: teamDealId,
+        metadata: {
+          headlines: team.headlines,
+          added: team.added,
+          stages: team.stages,
+          savedDealId: teamDealId
+        }
       }).catch((err) => console.warn('[digest] team_activity alert failed', err.message));
     }
     if (crmItems.length && !grouped.total && !team.total) {
