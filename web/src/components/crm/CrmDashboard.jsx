@@ -51,6 +51,8 @@ export default function CrmDashboard({
   initialDealId = null,
   initialCrmView = null,
   initialFocusSection = null,
+  initialActionFilter = null,
+  tasksListSignal = 0,
   onBackToInbox = null,
   onCrmViewChange = null,
   onLiveDealsRefresh = null
@@ -65,7 +67,7 @@ export default function CrmDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stagePrompt, setStagePrompt] = useState(null);
-  const [actionFilter, setActionFilter] = useState(null);
+  const [actionFilter, setActionFilter] = useState(initialActionFilter || null);
   const [activeView, setActiveView] = useState(null);
   const [tagFilter, setTagFilter] = useState('');
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -104,6 +106,23 @@ export default function CrmDashboard({
   useEffect(() => {
     onCrmViewChange?.(crmView);
   }, [crmView, onCrmViewChange]);
+
+  useEffect(() => {
+    if (initialActionFilter) {
+      console.log('[CrmDashboard] deep link → action filter', initialActionFilter);
+      setActionFilter(initialActionFilter);
+      setCrmView('home');
+    }
+  }, [initialActionFilter]);
+
+  useEffect(() => {
+    if (!tasksListSignal) return;
+    console.log('[CrmDashboard] alert → tasks list', tasksListSignal);
+    setCrmView('tasks');
+    setRecordDealId(null);
+    setPeekDealId(null);
+    setWorkspaceFocusSection(null);
+  }, [tasksListSignal]);
 
   // Deep link: section → full record; deal-only → peek
   useEffect(() => {

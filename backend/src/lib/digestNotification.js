@@ -9,12 +9,29 @@ function actorLabel(email) {
 function firstMatchingDeals(grouped, limit = 3) {
   const deals = [];
   for (const group of grouped?.groups || []) {
-    for (const deal of group.deals || []) {
+    for (const deal of [...(group.deals || []), ...(group.nearDeals || [])]) {
       deals.push(deal);
       if (deals.length >= limit) return deals;
     }
   }
   return deals;
+}
+
+function matchingDealIds(grouped, limit = 400) {
+  const ids = [];
+  const seen = new Set();
+  for (const group of grouped?.groups || []) {
+    const fromIds = Array.isArray(group.dealIds) ? group.dealIds : [];
+    const fromDeals = [...(group.deals || []), ...(group.nearDeals || [])].map((d) => d?.id);
+    for (const id of [...fromIds, ...fromDeals]) {
+      const n = Number(id);
+      if (!Number.isFinite(n) || n <= 0 || seen.has(n)) continue;
+      seen.add(n);
+      ids.push(n);
+      if (ids.length >= limit) return ids;
+    }
+  }
+  return ids;
 }
 
 function stripAppName(title) {
@@ -34,6 +51,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
   const dueToday = crmItems.filter((i) => i.kind === 'due_today');
   const listedDeals = firstMatchingDeals(grouped);
   const firstDeal = listedDeals[0];
+  const dealDbIds = matchingDealIds(grouped);
 
   let primary = null;
 
@@ -81,6 +99,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
       body: [firstDeal.location, grouped.groups?.[0]?.name].filter(Boolean).join(' · '),
       alertType: 'deal_match',
       dealDbId: firstDeal.id,
+      dealDbIds,
       newToday: true
     };
   } else if (matches > 1) {
@@ -88,6 +107,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
       title: `${matches} new deals match your buy box`,
       body: listedDeals.map((d) => d.name).filter(Boolean).join(' · '),
       alertType: 'deal_match',
+      dealDbIds,
       newToday: true
     };
   } else if (added?.count === 1 && (added.names?.[0] || added.ids?.[0])) {
@@ -144,6 +164,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     alertType: primary.alertType,
     savedDealId: primary.savedDealId || null,
     dealDbId: primary.dealDbId || null,
+    dealDbIds: primary.dealDbIds || [],
     newToday: Boolean(primary.newToday)
   };
 
@@ -156,6 +177,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     alertType: primary.alertType,
     savedDealId: primary.savedDealId || null,
     dealDbId: primary.dealDbId || null,
+    dealDbIds: primary.dealDbIds || [],
     newToday: Boolean(primary.newToday)
   };
 }

@@ -10,9 +10,23 @@ const VALID_CRM_VIEWS = new Set([
   'calendar',
   'analytics'
 ]);
+const VALID_CRM_FILTERS = new Set([
+  'nudges',
+  'mentions',
+  'approvals',
+  'overdue',
+  'dueToday',
+  'ddOverdue',
+  'stale',
+  'dormant'
+]);
 
 export function isValidCrmSubview(view) {
   return VALID_CRM_VIEWS.has(view);
+}
+
+export function isValidCrmFilter(filter) {
+  return VALID_CRM_FILTERS.has(filter);
 }
 
 export function readStoredDashboardLocation() {
@@ -50,6 +64,15 @@ export function patchDashboardSearchParams(searchParams, { tab, crmSubview = nul
     next.set('crmSubview', crmSubview);
   } else {
     next.delete('crmSubview');
+  }
+  if (tab === 'crm') {
+    next.delete('matchIds');
+    next.delete('newToday');
+    next.delete('dealDbId');
+    if (crmSubview === 'tasks') {
+      next.delete('crmDeal');
+      next.delete('section');
+    }
   }
   if (tab === 'aggregator') {
     next.delete('crmDeal');

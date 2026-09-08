@@ -36,8 +36,9 @@ export default function TalkAlertBanner({
             const url = notificationPath({
               alertType: alert.alert_type,
               savedDealId: alert.saved_deal_id,
-              dealDbId: meta.dealDbId,
-              newToday: meta.newToday
+              dealDbId: meta.dealDbId || meta.deal_db_id,
+              dealDbIds: meta.dealDbIds || meta.deal_db_ids,
+              newToday: meta.newToday || meta.new_today
             });
             showLocalNotification(alert.title || 'New update', {
               body: `${alert.deal_name || 'Deal'}: ${(alert.body || '').slice(0, 120)}`,
@@ -116,7 +117,11 @@ export default function TalkAlertBanner({
             ? 'Buy box matches'
             : top.alert_type === 'team_activity'
               ? 'Team CRM'
-              : (top.deal_name || 'Deal')}
+              : (top.alert_type === 'task_due'
+                || top.alert_type === 'task_assigned'
+                || top.alert_type === 'task_completed')
+                ? 'Tasks'
+                : (top.deal_name || 'Deal')}
           {extra > 0 ? ` · +${extra} more` : ''}
         </span>
         {top.body ? (

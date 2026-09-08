@@ -3,16 +3,16 @@ export const PIPELINE_STAGES = [
   'Requested NDA',
   'Signed NDA',
   'Review CIM',
-  'Passed On Deal',
-  'Send IOI',
-  'Review Financials',
-  'Preliminary Valuation',
-  'Review Tax Returns',
   'Seller Call',
+  'Review Financials',
+  'Review Tax Returns',
+  'Preliminary Valuation',
+  'Send IOI',
   'Bank Pre-Approval',
   'LOI Sent',
   'LOI Signed',
   'Starting Due Diligence',
+  'Passed On Deal',
   'Custom Status'
 ];
 
@@ -28,22 +28,21 @@ export const KANBAN_COLUMNS = [
   {
     id: 'screening',
     label: 'Screening',
-    stages: ['Requested NDA', 'Signed NDA', 'Review CIM'],
+    stages: ['Requested NDA', 'Signed NDA', 'Review CIM', 'Seller Call'],
     defaultStage: 'Requested NDA'
   },
   {
     id: 'under_review',
     label: 'Under Review',
     stages: [
-      'Send IOI',
       'Review Financials',
-      'Preliminary Valuation',
       'Review Tax Returns',
-      'Seller Call',
+      'Preliminary Valuation',
+      'Send IOI',
       'Bank Pre-Approval',
       'Custom Status'
     ],
-    defaultStage: 'Send IOI'
+    defaultStage: 'Review Financials'
   },
   {
     id: 'loi',

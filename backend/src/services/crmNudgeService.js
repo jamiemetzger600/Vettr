@@ -125,7 +125,7 @@ export async function listComputedNudges(userId, { limit = 25 } = {}) {
        AND (
          sd.progress_stage IS NULL
          OR TRIM(sd.progress_stage) = ''
-         OR sd.progress_stage IN ('Requested NDA', 'Signed NDA', 'Review CIM')
+         OR sd.progress_stage IN ('Requested NDA', 'Signed NDA', 'Review CIM', 'Seller Call')
        )
        AND (sd.progress_stage IS NULL OR sd.progress_stage NOT ILIKE '%passed%')
        AND NOT EXISTS (

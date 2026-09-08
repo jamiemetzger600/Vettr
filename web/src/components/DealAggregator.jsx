@@ -511,6 +511,7 @@ export default function DealAggregator({
   poolNewDealsFilter = null,
   onClearPoolNewDealsFilter,
   filterNewToday = false,
+  filterMatchDealIds = [],
   onClearNewToday = null,
   isGuest = false,
   entitlements = null,
@@ -670,8 +671,20 @@ export default function DealAggregator({
       ((poolNewDealsFilter.dbIds && poolNewDealsFilter.dbIds.length > 0) ||
         poolNewDealsFilter.lastScrapeAt)
   );
+  const matchFilterIds = useMemo(
+    () => (Array.isArray(filterMatchDealIds) ? filterMatchDealIds.map(String).filter(Boolean) : []),
+    [filterMatchDealIds]
+  );
+  const matchFilterMode = matchFilterIds.length > 0;
+  const matchFilterFinger = matchFilterIds.join(',');
 
   const initialOpenAppliedRef = useRef(false);
+  const lastOpenDealDbIdRef = useRef(initialOpenDealDbId);
+  useEffect(() => {
+    if (String(lastOpenDealDbIdRef.current ?? '') === String(initialOpenDealDbId ?? '')) return;
+    initialOpenAppliedRef.current = false;
+    lastOpenDealDbIdRef.current = initialOpenDealDbId;
+  }, [initialOpenDealDbId]);
   useEffect(() => {
     if (initialOpenAppliedRef.current || initialOpenDealDbId == null) return;
     const match = deals.find((d) => String(d.dbId) === String(initialOpenDealDbId));
@@ -879,7 +892,7 @@ export default function DealAggregator({
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchKeywordsFingerprint, sortConfig, showHiddenDeals, viewMode, excludeKeywordsFingerprint, hideSavedDealsInFeed, poolNewFinger, deckScope, mobileDailyFilter, filterNewToday]);
+  }, [searchKeywordsFingerprint, sortConfig, showHiddenDeals, viewMode, excludeKeywordsFingerprint, hideSavedDealsInFeed, poolNewFinger, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger]);
 
   // Reset prefetch flag when filters change
   useEffect(() => {
@@ -968,7 +981,9 @@ export default function DealAggregator({
     let restrictToDbIds = null;
     let firstSeenAfter = null;
     let firstSeenBefore = null;
-    if (poolNewMode && poolNewDealsFilter) {
+    if (matchFilterMode) {
+      restrictToDbIds = matchFilterIds;
+    } else if (poolNewMode && poolNewDealsFilter) {
       if (poolNewDealsFilter.dbIds?.length > 0) {
         restrictToDbIds = poolNewDealsFilter.dbIds;
       } else if (poolNewDealsFilter.lastScrapeAt) {
@@ -985,23 +1000,25 @@ export default function DealAggregator({
     const params = buildMarketDealsParams({
       page: pageOverride ?? currentPage,
       perPage: PER_PAGE,
-      search: feedSearchString,
-      buyBox: poolNewMode ? null : (showHiddenDeals ? null : buyBox),
+      search: matchFilterMode ? '' : feedSearchString,
+      buyBox: (poolNewMode || matchFilterMode) ? null : (showHiddenDeals ? null : buyBox),
       flexibilityPct: flexPct,
       sortSpec,
       sort: primarySortCol,
       order: primary.direction,
-      hiddenDealDbIds: showHiddenDeals ? [] : hiddenDbIds,
+      hiddenDealDbIds: (showHiddenDeals || matchFilterMode) ? [] : hiddenDbIds,
       showHidden: showHiddenDeals,
-      excludeKeywords: excludeKw,
-      sources: sourceFilter,
+      excludeKeywords: matchFilterMode ? [] : excludeKw,
+      sources: matchFilterMode ? null : sourceFilter,
       restrictToDbIds,
       firstSeenAfter,
       firstSeenBefore,
-      updatedAfter: mobileDailyFilter && !filterNewToday ? startOfLocalDayISO() : null,
+      updatedAfter: matchFilterMode ? null : (mobileDailyFilter && !filterNewToday ? startOfLocalDayISO() : null),
     });
 
-    if (filterNewToday) {
+    if (matchFilterMode) {
+      console.log('[DealAggregator] match alert filter', { count: matchFilterIds.length });
+    } else if (filterNewToday) {
       console.log('[DealAggregator] newToday filter', { firstSeenAfter });
     }
 
@@ -1065,14 +1082,14 @@ export default function DealAggregator({
         setIsFetching(false);
       }
     }
-  }, [settings, feedSearchString, sortConfig, hiddenDealIds, showHiddenDeals, currentPage, manualRefreshToken, onMatchCountUpdate, onDealsStatsUpdate, feedSource, poolNewFinger, poolNewMode, poolNewDealsFilter, excludeKeywords, mobileDailyFilter, deckScope, filterNewToday]);
+  }, [settings, feedSearchString, sortConfig, hiddenDealIds, showHiddenDeals, currentPage, manualRefreshToken, onMatchCountUpdate, onDealsStatsUpdate, feedSource, poolNewFinger, poolNewMode, poolNewDealsFilter, excludeKeywords, mobileDailyFilter, deckScope, filterNewToday, matchFilterMode, matchFilterIds, matchFilterFinger]);
 
   // Fetch on mount, filter/sort/page/search change, and manual refresh.
   // Do not refetch on each Hide — client-side filter advances the list without a jump.
   useEffect(() => {
     if (settings) fetchServerDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run when inputs to fetchServerDeals change; avoid tying to unstable parent callbacks
-  }, [feedSearchString, sortConfig, currentPage, showHiddenDeals, buyBoxFeedKey, manualRefreshToken, poolNewFinger, excludeKeywordsFingerprint, deckScope, mobileDailyFilter, filterNewToday]);
+  }, [feedSearchString, sortConfig, currentPage, showHiddenDeals, buyBoxFeedKey, manualRefreshToken, poolNewFinger, excludeKeywordsFingerprint, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger]);
 
   // Manual refresh for the installed PWA (no browser reload / pull-to-refresh in
   // standalone mode). Clear the ETag cache so we always request a fresh 200.
@@ -2091,7 +2108,20 @@ export default function DealAggregator({
           ) : null}
         </div>
       )}
-      {filterNewToday && !poolNewMode && (
+      {matchFilterMode && (
+        <div className="pool-new-deals-banner" role="region" aria-label="Buy box alert matches">
+          <p>
+            Showing the buy-box matches from this alert
+            {totalFromAPI > 0 ? ` (${totalFromAPI.toLocaleString()} listing${totalFromAPI !== 1 ? 's' : ''})` : ''}.
+          </p>
+          {typeof onClearNewToday === 'function' ? (
+            <button type="button" className="pool-new-deals-banner__clear" onClick={onClearNewToday}>
+              Back to Buy Box feed
+            </button>
+          ) : null}
+        </div>
+      )}
+      {filterNewToday && !poolNewMode && !matchFilterMode && (
         <div className="pool-new-deals-banner" role="region" aria-label="New matches today">
           <p>
             Showing new buy-box matches from today

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { userAPI, dealsAPI, paymentsAPI, crmAPI } from '../utils/api';
@@ -25,9 +25,10 @@ import {
   persistDashboardLocation,
   patchDashboardSearchParams,
   readStoredDashboardLocation,
-  isValidCrmSubview
+  isValidCrmSubview,
+  isValidCrmFilter
 } from '../utils/dashboardLocation';
-import { notificationPath } from '../utils/notificationLinks';
+import { notificationPath, parseMatchDealIds } from '../utils/notificationLinks';
 import { pollWhenVisible } from '../utils/pollWhenVisible';
 
 function isBuyBoxEmpty(buyBox) {
@@ -67,12 +68,16 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   const { activeTeamId } = useTeam();
   const { isGuest, entitlements, requireSignup } = useGuestAccess(user);
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const initialDealDbId = searchParams.get('dealDbId') || null;
   const checkoutSessionId = searchParams.get('session_id');
   const crmDealParam = searchParams.get('crmDeal');
   const sectionParam = searchParams.get('section');
   const newTodayParam = searchParams.get('newToday') === '1';
+  const matchIdsParam = searchParams.get('matchIds') || '';
+  const filterMatchDealIds = useMemo(
+    () => parseMatchDealIds(matchIdsParam),
+    [matchIdsParam]
+  );
 
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'aggregator';
@@ -113,10 +118,17 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
     if (params.get('tab') === 'saved-deals') return 'list';
+    if (isValidCrmFilter(params.get('crmFilter'))) return 'home';
     return null;
+  });
+  const [crmInitialFilter] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    const filter = new URLSearchParams(window.location.search).get('crmFilter');
+    return isValidCrmFilter(filter) ? filter : null;
   });
   /** One-shot Aggregator layout hint (e.g. return from CRM → Inbox on mobile). */
   const [aggregatorViewHint, setAggregatorViewHint] = useState(null);
+  const [tasksListSignal, setTasksListSignal] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
   const [totalDeals, setTotalDeals] = useState(0);
   const [newTodayCount, setNewTodayCount] = useState(0);
@@ -265,6 +277,11 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     if ((tabParam === 'crm' || searchParams.get('crmDeal')) && isValidCrmSubview(sub)) {
       setCrmSubview(sub);
       setCrmInitialViewOverride(sub);
+    }
+    if (sub === 'tasks') {
+      setCrmInitialDealId(null);
+      setCrmInitialFocusSection(null);
+      return;
     }
     const n = Number(crmDealParam);
     if (!Number.isFinite(n) || n <= 0) {
@@ -615,10 +632,13 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             poolNewDealsFilter={poolNewDealsFilter}
             onClearPoolNewDealsFilter={() => setPoolNewDealsFilter(null)}
             filterNewToday={newTodayParam}
+            filterMatchDealIds={filterMatchDealIds}
             onClearNewToday={() => {
               const next = new URLSearchParams(searchParams);
               next.delete('newToday');
-              console.log('[Dashboard] clear newToday filter');
+              next.delete('matchIds');
+              next.delete('dealDbId');
+              console.log('[Dashboard] clear match / newToday filter');
               setSearchParams(next, { replace: true });
             }}
             isGuest={isGuest}
@@ -652,6 +672,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             initialDealId={crmInitialDealId}
             initialCrmView={crmInitialViewOverride || crmSubview}
             initialFocusSection={crmInitialFocusSection}
+            initialActionFilter={crmInitialFilter}
+            tasksListSignal={tasksListSignal}
             onBackToInbox={backToInbox}
             onCrmViewChange={handleCrmViewChange}
             onLiveDealsRefresh={loadScopedSavedDeals}
@@ -670,14 +692,46 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
           }}
           onOpenAlert={(alert) => {
             const meta = alert?.metadata && typeof alert.metadata === 'object' ? alert.metadata : {};
+            const dealDbIds = parseMatchDealIds(meta.dealDbIds || meta.deal_db_ids);
             const path = notificationPath({
               alertType: alert?.alert_type,
               savedDealId: alert?.saved_deal_id,
-              dealDbId: meta.dealDbId,
-              newToday: meta.newToday
+              dealDbId: meta.dealDbId || meta.deal_db_id,
+              dealDbIds,
+              newToday: meta.newToday || meta.new_today
             });
-            console.log('[Dashboard] open alert', alert?.alert_type, path);
-            navigate(path);
+            const next = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+            const tab = next.get('tab') === 'crm' ? 'crm' : 'aggregator';
+            console.log('[Dashboard] open alert', alert?.alert_type, path, {
+              matchCount: dealDbIds.length
+            });
+            skipPersistFromUrlRef.current = true;
+            setSearchParams(next, { replace: false });
+            setActiveTab(tab);
+            if (tab === 'crm') {
+              const sub = next.get('crmSubview');
+              if (isValidCrmSubview(sub)) {
+                setCrmSubview(sub);
+                setCrmInitialViewOverride(sub);
+              }
+              if (sub === 'tasks') {
+                setCrmInitialDealId(null);
+                setCrmInitialFocusSection(null);
+                setTasksListSignal(Date.now());
+                console.log('[Dashboard] open alert → tasks list');
+              } else {
+                const n = Number(next.get('crmDeal'));
+                if (Number.isFinite(n) && n > 0) {
+                  setCrmInitialDealId(n);
+                  setCrmInitialFocusSection(next.get('section') || 'overview');
+                }
+              }
+            }
+            try {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch {
+              /* ignore */
+            }
           }}
         />
       )}
