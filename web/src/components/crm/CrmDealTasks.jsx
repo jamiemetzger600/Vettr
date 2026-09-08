@@ -10,6 +10,7 @@ import { TIME_SECTIONS, groupTasksByTime } from '../../utils/taskTime';
 export default function CrmDealTasks({
   dealId,
   dealName,
+  progressStage = '',
   contacts = [],
   userEmail = '',
   onCreated,
@@ -114,7 +115,11 @@ export default function CrmDealTasks({
                 {list.map((task) => (
                   <CrmTaskRow
                     key={task.id}
-                    task={{ ...task, deal_name: dealName }}
+                    task={{
+                      ...task,
+                      deal_name: dealName,
+                      progress_stage: task.progress_stage || progressStage
+                    }}
                     showDeal={false}
                     members={members}
                     onToggleComplete={handleToggleComplete}

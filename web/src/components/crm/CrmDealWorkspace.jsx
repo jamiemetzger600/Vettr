@@ -504,6 +504,7 @@ export default function CrmDealWorkspace({
         <CrmDealTasks
           dealId={dealId}
           dealName={deal?.name}
+          progressStage={progressStage}
           contacts={detail?.contacts || []}
           userEmail={user?.email || ''}
           onCreated={handleRefresh}
