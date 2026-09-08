@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchMarketDealsSources } from '../utils/normalizeMarketDeal';
+import {
+  buildMarketDealsParams,
+  fetchMarketDeals,
+  fetchMarketDealsSources,
+} from '../utils/normalizeMarketDeal';
+import {
+  joinSearchKeywords,
+  normalizeBuyBoxesState,
+  parseSearchKeywords,
+} from '../utils/buyBoxes';
 
 const ACK_STORAGE_KEY = 'vettr_scrape_toast_acked';
 const MAX_ACK_ENTRIES = 80;
@@ -52,12 +61,82 @@ function formatScrapeTime(iso) {
   return `on ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${t}`;
 }
 
+/** Same md:<pk> / numeric mapping DealAggregator uses for exclude_ids. */
+function hiddenDealIdToDbId(hiddenId) {
+  if (hiddenId == null) return null;
+  if (typeof hiddenId === 'number' && Number.isFinite(hiddenId) && hiddenId > 0) return hiddenId;
+  const s = String(hiddenId);
+  if (s.startsWith('md:')) {
+    const n = Number(s.slice(3));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Buy-box-filtered count for the latest scrape — same filters the Aggregator applies
+ * when the user clicks through (buy box + excludes + search + source + new ids/window).
+ */
+async function countBuyBoxMatchesForScrape({
+  settings,
+  feedSource,
+  newRowIds,
+  lastScrapeAt,
+  signal,
+}) {
+  if (!settings) return 0;
+
+  const { buyBoxes, activeBuyBoxIndex, activeCriteria } = normalizeBuyBoxesState(settings);
+  const slot = buyBoxes[activeBuyBoxIndex] || {};
+  const excludeKeywords = Array.isArray(slot.excludeKeywords) ? slot.excludeKeywords : [];
+  const flexPct = Math.min(100, Math.max(0, Number(activeCriteria.includeNearMatchesPercent) || 0));
+  const hiddenDbIds = [
+    ...new Set((settings.hiddenDealIds || []).map(hiddenDealIdToDbId).filter(Boolean)),
+  ];
+  const sourceFilter = feedSource === 'airtable' ? ['airtable_bizbuysell'] : null;
+  const search = joinSearchKeywords(parseSearchKeywords(slot.feedSearch));
+
+  let restrictToDbIds = null;
+  let firstSeenAfter = null;
+  let firstSeenBefore = null;
+  if (newRowIds.length > 0) {
+    restrictToDbIds = newRowIds;
+  } else if (lastScrapeAt) {
+    const end = new Date(lastScrapeAt);
+    if (!Number.isNaN(end.getTime())) {
+      firstSeenBefore = end.toISOString();
+      firstSeenAfter = new Date(end.getTime() - 12 * 60 * 60 * 1000).toISOString();
+    }
+  } else {
+    return 0;
+  }
+
+  const params = buildMarketDealsParams({
+    page: 1,
+    perPage: 1,
+    search,
+    buyBox: activeCriteria,
+    flexibilityPct: flexPct,
+    hiddenDealDbIds: hiddenDbIds,
+    excludeKeywords,
+    sources: sourceFilter,
+    restrictToDbIds,
+    firstSeenAfter,
+    firstSeenBefore,
+  });
+
+  const result = await fetchMarketDeals(params, signal);
+  if (!result || result.notModified) return 0;
+  return Number(result.pagination?.total) || 0;
+}
+
 /**
  * On dashboard load (after login or refresh with a valid session), checks scrape metadata once.
- * Shows a toast if the latest run added rows to the pool and the user has not dismissed that run yet.
+ * Shows a toast when the latest run produced buy-box matches the user has not dismissed yet.
  */
 export default function ScrapeActivityToast({
   feedSource = 'airtable',
+  settings = null,
   onViewNewDeals,
   enabled = true,
   isGuest = false,
@@ -68,7 +147,6 @@ export default function ScrapeActivityToast({
   const [toast, setToast] = useState(null);
   const toastRef = useRef(null);
   toastRef.current = toast;
-
 
   useEffect(() => {
     if (!suppressGuestHint) return;
@@ -93,11 +171,11 @@ export default function ScrapeActivityToast({
     return () => { cancelled = true; };
   }, [isGuest, sourceKey, suppressGuestHint, onRequireSignup]);
 
-  const evaluate = useCallback(async () => {
-    if (!enabled || !sourceKey) return;
+  const evaluate = useCallback(async (signal) => {
+    if (!enabled || !sourceKey || !settings) return;
     try {
-      const data = await fetchMarketDealsSources();
-      if (!data?.sources?.length) return;
+      const data = await fetchMarketDealsSources(signal);
+      if (signal?.aborted || !data?.sources?.length) return;
       const row = data.sources.find((s) => s.source_key === sourceKey);
       if (!row?.last_scrape_at) return;
       const lastScrapeAt = row.last_scrape_at;
@@ -116,7 +194,26 @@ export default function ScrapeActivityToast({
         ? meta.new_row_ids.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0)
         : [];
 
-      const label = `${inserted} deal${inserted === 1 ? '' : 's'} added ${formatScrapeTime(lastScrapeAt)}`;
+      const matchCount = await countBuyBoxMatchesForScrape({
+        settings,
+        feedSource,
+        newRowIds,
+        lastScrapeAt,
+        signal,
+      });
+      if (signal?.aborted) return;
+
+      console.log('[ScrapeActivityToast] scrape match count', {
+        inserted,
+        newRowIds: newRowIds.length,
+        matchCount,
+        lastScrapeAt,
+      });
+
+      // Signal over noise: only toast when the user would actually see matches.
+      if (matchCount <= 0) return;
+
+      const label = `${matchCount.toLocaleString()} new match${matchCount === 1 ? '' : 'es'} ${formatScrapeTime(lastScrapeAt)}`.trim();
 
       setToast((prev) => {
         if (prev?.ackId === ackId) return prev;
@@ -124,20 +221,24 @@ export default function ScrapeActivityToast({
           ackId,
           sourceKey,
           inserted,
+          matchCount,
           lastScrapeAt,
           newRowIds,
           label,
         };
       });
     } catch (e) {
+      if (e?.name === 'AbortError' || signal?.aborted) return;
       console.warn('[ScrapeActivityToast] sources check failed:', e?.message || e);
     }
-  }, [enabled, sourceKey]);
+  }, [enabled, sourceKey, settings, feedSource]);
 
   useEffect(() => {
-    if (!enabled || !sourceKey) return;
-    evaluate();
-  }, [evaluate, enabled, sourceKey]);
+    if (!enabled || !sourceKey || !settings) return undefined;
+    const ac = new AbortController();
+    evaluate(ac.signal);
+    return () => ac.abort();
+  }, [evaluate, enabled, sourceKey, settings]);
 
   const dismiss = useCallback(() => {
     const t = toastRef.current;
@@ -158,12 +259,13 @@ export default function ScrapeActivityToast({
     onViewNewDeals?.({
       newRowDbIds: t.newRowIds.length > 0 ? t.newRowIds : null,
       lastScrapeAt: t.lastScrapeAt,
+      matchCount: t.matchCount,
       inserted: t.inserted,
     });
   }, [onViewNewDeals, onRequireSignup]);
 
   useEffect(() => {
-    if (!toast) return undefined;
+    if (!toast || toast.isGuestHint) return undefined;
     const timer = setTimeout(dismiss, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [toast, dismiss]);
@@ -173,7 +275,9 @@ export default function ScrapeActivityToast({
   return (
     <div className="scrape-activity-toast" role="status" aria-live="polite">
       <button type="button" className="scrape-activity-toast__main" onClick={handleMainClick}>
-        <span className="scrape-activity-toast__title">{toast.isGuestHint ? 'Stay in the loop' : 'New listings in the pool'}</span>
+        <span className="scrape-activity-toast__title">
+          {toast.isGuestHint ? 'Stay in the loop' : 'New matches for your buy box'}
+        </span>
         <span className="scrape-activity-toast__msg">{toast.label}</span>
         <span className="scrape-activity-toast__hint">{toast.isGuestHint ? 'Sign up for alerts' : 'Click to view'}</span>
       </button>

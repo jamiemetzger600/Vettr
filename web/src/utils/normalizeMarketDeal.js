@@ -136,7 +136,7 @@ export function buildMarketDealsParams({
   showHidden = false,
   /** Limit to market_deals.source values, e.g. ['airtable_bizbuysell'] */
   sources = null,
-  /** When set, API filters to these market_deals.id values (use with buyBox: null for full list). */
+  /** When set, API filters to these market_deals.id values (combine with buyBox for match subset). */
   restrictToDbIds = null,
   firstSeenAfter = null,
   firstSeenBefore = null,

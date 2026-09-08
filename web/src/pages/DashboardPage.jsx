@@ -546,11 +546,17 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
       />
       <ScrapeActivityToast
         feedSource={feedSource}
-        enabled={Boolean(user)}
+        settings={settings}
+        enabled={Boolean(user) && !isGuest}
         isGuest={isGuest}
         suppressGuestHint={guestTourBlocking || showFirstVisitSheet}
         onRequireSignup={requireSignup}
-        onViewNewDeals={({ newRowDbIds, lastScrapeAt }) => {
+        onViewNewDeals={({ newRowDbIds, lastScrapeAt, matchCount }) => {
+          console.log('[Dashboard] view new scrape matches', {
+            ids: newRowDbIds?.length || 0,
+            matchCount,
+            lastScrapeAt,
+          });
           setPoolNewDealsFilter({
             dbIds: newRowDbIds?.length > 0 ? newRowDbIds : null,
             lastScrapeAt,

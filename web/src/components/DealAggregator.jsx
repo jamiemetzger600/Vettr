@@ -980,11 +980,13 @@ export default function DealAggregator({
       firstSeenAfter = startOfLocalDayISO();
     }
 
+    // Keep buy box on for pool-new / new-today views so Matches, nav badge, toast,
+    // and feed all share the same filtered total (ids/window only narrow the set).
     const params = buildMarketDealsParams({
       page: pageOverride ?? currentPage,
       perPage: PER_PAGE,
       search: feedSearchString,
-      buyBox: poolNewMode ? null : (showHiddenDeals ? null : buyBox),
+      buyBox: showHiddenDeals ? null : buyBox,
       flexibilityPct: flexPct,
       sortSpec,
       sort: primarySortCol,
@@ -2066,10 +2068,10 @@ export default function DealAggregator({
         </div>
       )}
       {poolNewMode && (
-        <div className="pool-new-deals-banner" role="region" aria-label="New pool listings filter">
+        <div className="pool-new-deals-banner" role="region" aria-label="New buy-box matches from latest scrape">
           <p>
-            Showing deals added to the pool in the latest scrape
-            {totalFromAPI > 0 ? ` (${totalFromAPI.toLocaleString()} listing${totalFromAPI !== 1 ? 's' : ''})` : ''}.
+            Showing new buy-box matches from the latest scrape
+            {totalFromAPI > 0 ? ` (${totalFromAPI.toLocaleString()})` : ''}.
           </p>
           {typeof onClearPoolNewDealsFilter === 'function' ? (
             <button type="button" className="pool-new-deals-banner__clear" onClick={onClearPoolNewDealsFilter}>
