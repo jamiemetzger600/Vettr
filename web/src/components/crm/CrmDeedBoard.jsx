@@ -123,7 +123,13 @@ export default function CrmDeedBoard({
       }
       return true;
     });
-    return partitionDeedDeals(matched, prefs);
+    const partitioned = partitionDeedDeals(matched, prefs);
+    console.log('[CrmDeedBoard] saved deals newest-first', {
+      newest: partitioned.rest[0]?.name || null,
+      savedAt: partitioned.rest[0]?.savedAt || null,
+      count: partitioned.rest.length
+    });
+    return partitioned;
   }, [normalized, prefs, query, stageFilter, waitingFilter, nextActionByDealId, showArchived]);
 
   const allIds = useMemo(() => normalized.map((d) => d.id), [normalized]);
@@ -511,14 +517,17 @@ export default function CrmDeedBoard({
     if (pin) nextPins[fromKey] = true;
     else delete nextPins[fromKey];
 
-    const currentOrder = ensureOrder(
-      prefs.order.length ? prefs.order : allIds,
-      allIds
-    );
-    const nextOrder = placeDealInOrder(currentOrder, fromKey, {
-      beforeId: target.edge === 'before' ? target.anchorId : null,
-      afterId: target.edge === 'after' ? target.anchorId : null
-    });
+    let nextOrder = prefs.order;
+    if (pin) {
+      const currentOrder = ensureOrder(
+        prefs.order.length ? prefs.order : allIds,
+        allIds
+      );
+      nextOrder = placeDealInOrder(currentOrder, fromKey, {
+        beforeId: target.edge === 'before' ? target.anchorId : null,
+        afterId: target.edge === 'after' ? target.anchorId : null
+      });
+    }
     persist({ ...prefs, order: nextOrder, pins: nextPins });
     console.log('[CrmDeedBoard] drop', fromKey, { pin, edge: target.edge, anchor: target.anchorId });
   }, [allIds, ensureOrder, persist, prefs, writeEnabled]);
@@ -545,6 +554,13 @@ export default function CrmDeedBoard({
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     if (!dragDealIdRef.current || String(dragDealIdRef.current) === String(dealId)) return;
+    if (zone === 'rest') {
+      setDropAt((prev) => {
+        if (prev?.zone === 'rest' && prev.edge === 'end' && !prev.anchorId) return prev;
+        return { zone: 'rest', anchorId: null, edge: 'end' };
+      });
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const edge = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
     setDropAt((prev) => {
@@ -603,7 +619,7 @@ export default function CrmDeedBoard({
 
   const renderGrid = (deals, zone) => {
     const nodes = [];
-    const pinLabel = zone === 'pinned' ? 'Pin here' : 'Move here';
+    const pinLabel = zone === 'pinned' ? 'Pin here' : 'Unpin here';
     for (const deal of deals) {
       const isAnchor = dropAt?.zone === zone && String(dropAt.anchorId) === String(deal.id);
       const showBefore = Boolean(dragDealId) && isAnchor && dropAt.edge === 'before';
@@ -631,13 +647,14 @@ export default function CrmDeedBoard({
         {isTeamMode ? (
           <>
             <strong>Team board.</strong> Pins, order, color, and waiting-on are shared with{' '}
-            {activeTeam?.name || 'the team'}. Drop a card into <strong>Pinned</strong> or reorder
-            pins — teammates see the same layout.
+            {activeTeam?.name || 'the team'}. Saved deals are newest first. Drop a card into{' '}
+            <strong>Pinned</strong> to keep it up front — teammates see the same pins.
           </>
         ) : (
           <>
-            <strong>Personal board.</strong> Drag a card into <strong>Pinned</strong> to pin it.
-            Drop it on Saved deals to unpin. Passed-on deals are archived.
+            <strong>Personal board.</strong> Saved deals are newest first. Drag a card into{' '}
+            <strong>Pinned</strong> to keep it up front. Drop it on Saved deals to unpin.
+            Passed-on deals are archived.
           </>
         )}
         {writeEnabled ? '' : ' Viewer role — cards are read-only.'}
@@ -766,6 +783,12 @@ export default function CrmDeedBoard({
                   ? (pinnedDeals.length > 0 ? 'Other archived' : 'Archived')
                   : 'Saved deals'}{' '}
                 <span>{restDeals.length}</span>
+                {!showArchived ? (
+                  <>
+                    {' '}
+                    <span className="crm-deed-board__section-hint">Newest first</span>
+                  </>
+                ) : null}
               </h2>
               <div className="crm-deed-board__grid">
                 {renderGrid(restDeals, 'rest')}

@@ -38,6 +38,36 @@ export function savedDealIdForTeamAlert(alert, team) {
   return primaryTeamSavedDealId(team);
 }
 
+export function namedActivityBits(row, limit = 4) {
+  const names = Array.isArray(row?.names) ? row.names.filter(Boolean) : [];
+  const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+  return names.slice(0, limit).map((name, i) => {
+    const stage = stages[i];
+    return stage ? `${name} → ${stage}` : name;
+  });
+}
+
+export function teamActivityDetailLine(team, { title } = {}) {
+  const bits = [
+    ...namedActivityBits(team?.stages?.[0]),
+    ...(Array.isArray(team?.added?.[0]?.names) ? team.added[0].names.filter(Boolean).slice(0, 4) : [])
+  ];
+  const seen = new Set();
+  const unique = [];
+  for (const bit of bits) {
+    const key = String(bit).trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(bit);
+  }
+  const extraHeadlines = (team?.headlines || []).slice(1);
+  const text = [...unique, ...extraHeadlines].filter(Boolean).join(' · ');
+  const folded = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const foldedTitle = String(title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!folded || folded === foldedTitle) return '';
+  return text.slice(0, 220);
+}
+
 export function addedActivityHeadline(row) {
   const label = row?.label || 'A teammate';
   const count = Number(row?.count) || 0;

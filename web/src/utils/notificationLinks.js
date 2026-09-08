@@ -100,6 +100,53 @@ export function notificationOpenLabel(alertType, { savedDealId } = {}) {
   return 'Open Talk';
 }
 
+/** Extra toast line: deal names / stages, never a repeat of the title. */
+export function alertBannerPreview(alert) {
+  const title = String(alert?.title || '').trim();
+  const dealName = String(alert?.deal_name || '').trim();
+  const meta = alert?.metadata && typeof alert.metadata === 'object' ? alert.metadata : {};
+
+  const namedMoves = (row) => {
+    const names = Array.isArray(row?.names) ? row.names.filter(Boolean) : [];
+    const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+    return names.slice(0, 4).map((name, i) => {
+      const stage = stages[i];
+      return stage ? `${name} → ${stage}` : name;
+    });
+  };
+
+  const fold = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const seen = new Set();
+  const bits = [];
+  for (const bit of [
+    ...namedMoves(Array.isArray(meta.stages) ? meta.stages[0] : null),
+    ...(Array.isArray(meta.added?.[0]?.names) ? meta.added[0].names.filter(Boolean).slice(0, 4) : [])
+  ]) {
+    const key = fold(bit);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    bits.push(bit);
+  }
+
+  let preview = bits.join(' · ');
+  if (!preview) {
+    let body = String(alert?.body || '').trim();
+    if (body && fold(body) !== fold(title)) {
+      if (fold(body).startsWith(fold(title))) {
+        body = body.slice(title.length).replace(/^\s*[·\-|:–—]\s*/, '').trim();
+      }
+      preview = body;
+    }
+  }
+
+  if (preview && fold(preview) === fold(title)) preview = '';
+  if (preview && fold(preview) === fold(dealName)) {
+    const stage = Array.isArray(meta.stages) ? meta.stages[0]?.newStages?.[0] : '';
+    preview = stage ? `Now: ${stage}` : '';
+  }
+  return preview.slice(0, 220);
+}
+
 /** Resolve the CRM deal a toast should open, including digest metadata fallbacks. */
 export function savedDealIdFromAlert(alert) {
   const direct = Number(alert?.saved_deal_id);

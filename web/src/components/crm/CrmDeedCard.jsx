@@ -100,6 +100,7 @@ export default function CrmDeedCard({
         pinned ? 'crm-deed-card--pinned' : '',
         unseen ? 'crm-deed-card--unseen' : ''
       ].filter(Boolean).join(' ')}
+      data-saved-at={deal.savedAt || ''}
       draggable={writeEnabled}
       onDragStart={writeEnabled ? (e) => {
         if (blockDrag.current) {

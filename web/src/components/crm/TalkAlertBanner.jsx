@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { crmAPI } from '../../utils/api';
-import { notificationOpenLabel, notificationPath, savedDealIdFromAlert } from '../../utils/notificationLinks';
+import { notificationOpenLabel, notificationPath, savedDealIdFromAlert, alertBannerPreview } from '../../utils/notificationLinks';
 import { showLocalNotification } from '../../utils/webNotifications';
 import { pollWhenVisible } from '../../utils/pollWhenVisible';
 
@@ -41,8 +41,9 @@ export default function TalkAlertBanner({
               dealDbIds: meta.dealDbIds || meta.deal_db_ids,
               newToday: meta.newToday || meta.new_today
             });
+            const preview = alertBannerPreview(alert);
             showLocalNotification(alert.title || 'New update', {
-              body: `${alert.deal_name || 'Deal'}: ${(alert.body || '').slice(0, 120)}`,
+              body: preview || alert.deal_name || 'Open in Vettr',
               tag: `vettr-alert-${alert.id}`,
               url,
               actionTitle: notificationOpenLabel(alert.alert_type, { savedDealId })
@@ -86,9 +87,10 @@ export default function TalkAlertBanner({
 
   const top = visible[0];
   const extra = visible.length - 1;
+  const preview = alertBannerPreview(top);
 
   const openTop = async () => {
-    console.log('[TalkAlertBanner] open alert', top.id, 'deal', savedDealIdFromAlert(top));
+    console.log('[TalkAlertBanner] open alert', top.id, 'deal', savedDealIdFromAlert(top), 'preview', preview || null);
     try {
       await crmAPI.markAlertRead(top.id);
     } catch (err) {
@@ -125,8 +127,8 @@ export default function TalkAlertBanner({
                 : (top.deal_name || 'Deal')}
           {extra > 0 ? ` · +${extra} more` : ''}
         </span>
-        {top.body ? (
-          <span className="talk-alert-banner__preview">{top.body}</span>
+        {preview ? (
+          <span className="talk-alert-banner__preview">{preview}</span>
         ) : null}
       </div>
       <div className="talk-alert-banner__actions">

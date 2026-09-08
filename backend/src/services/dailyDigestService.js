@@ -9,8 +9,8 @@ import {
   summarizeMatchGroups,
   formatMoney
 } from './dealMatchDigestService.js';
-import { getTeamActivitySince, teamActivityPushText } from './teamActivityDigestService.js';
-import { primaryTeamSavedDealId } from '../lib/teamActivity.js';
+import { getTeamActivitySince } from './teamActivityDigestService.js';
+import { primaryTeamSavedDealId, teamActivityDetailLine } from '../lib/teamActivity.js';
 import { getTodayTaskSummary } from './crmTaskService.js';
 import { getDdOverdueForToday, getRecentPortalComments } from './ddChecklistService.js';
 import { findDormantDeals } from './crmPresenceService.js';
@@ -357,7 +357,7 @@ export async function sendUserDigest(userRow, {
         userId,
         alertType: 'team_activity',
         title: team.headlines[0] || 'Team activity',
-        body: team.headlines.slice(1).join(' · ') || teamActivityPushText(team),
+        body: teamActivityDetailLine(team, { title: team.headlines[0] }) || null,
         savedDealId: teamDealId,
         metadata: {
           headlines: team.headlines,

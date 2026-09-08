@@ -2,7 +2,8 @@ import {
   addedActivityHeadline,
   primaryTeamSavedDealId,
   savedDealIdForTeamAlert,
-  stageActivityHeadline
+  stageActivityHeadline,
+  teamActivityDetailLine
 } from './teamActivity.js';
 
 function assert(cond, msg) {
@@ -46,6 +47,26 @@ assert(
   addedActivityHeadline({ label: 'Alesha', count: 1, names: ['Maui Dental'] })
     === 'Alesha added Maui Dental',
   'named add headline'
+);
+
+assert(
+  teamActivityDetailLine({
+    headlines: ['alesha moved 3 deals in the pipeline'],
+    stages: [{
+      count: 3,
+      names: ['Flooring Co', 'HVAC Shop', 'Dental'],
+      newStages: ['Requested NDA', 'Review CIM', 'LOI Sent']
+    }]
+  }, { title: 'alesha moved 3 deals in the pipeline' })
+    === 'Flooring Co → Requested NDA · HVAC Shop → Review CIM · Dental → LOI Sent',
+  'detail line lists deals and stages'
+);
+
+assert(
+  teamActivityDetailLine({
+    headlines: ['alesha moved 3 deals in the pipeline']
+  }, { title: 'alesha moved 3 deals in the pipeline' }) === '',
+  'no redundant detail when names are missing'
 );
 
 console.log('teamActivity tests passed');

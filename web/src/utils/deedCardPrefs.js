@@ -125,6 +125,17 @@ export function waitingOnLabels(waiting) {
   return [...defaults, ...custom];
 }
 
+export function savedAtMs(deal) {
+  const t = new Date(deal?.savedAt || deal?.saved_at || 0).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+export function compareDealsBySavedAtDesc(a, b) {
+  const diff = savedAtMs(b) - savedAtMs(a);
+  if (diff) return diff;
+  return String(a.name || '').localeCompare(String(b.name || ''));
+}
+
 export function sortDealsForDeedBoard(deals, prefs) {
   const orderIndex = new Map((prefs.order || []).map((id, i) => [String(id), i]));
   const pinned = [];
@@ -133,14 +144,14 @@ export function sortDealsForDeedBoard(deals, prefs) {
     if (prefs.pins?.[dealKey(deal.id)]) pinned.push(deal);
     else rest.push(deal);
   }
-  const byOrder = (a, b) => {
+  const byPinOrder = (a, b) => {
     const ia = orderIndex.has(dealKey(a.id)) ? orderIndex.get(dealKey(a.id)) : Number.MAX_SAFE_INTEGER;
     const ib = orderIndex.has(dealKey(b.id)) ? orderIndex.get(dealKey(b.id)) : Number.MAX_SAFE_INTEGER;
     if (ia !== ib) return ia - ib;
-    return String(a.name || '').localeCompare(String(b.name || ''));
+    return compareDealsBySavedAtDesc(a, b);
   };
-  pinned.sort(byOrder);
-  rest.sort(byOrder);
+  pinned.sort(byPinOrder);
+  rest.sort(compareDealsBySavedAtDesc);
   return [...pinned, ...rest];
 }
 

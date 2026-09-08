@@ -11228,6 +11228,13 @@ button.aggregator-welcome__buybox {
   letter-spacing: 0;
 }
 
+.crm-deed-board__section-title .crm-deed-board__section-hint {
+  margin-left: 8px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
 .crm-deed-board__section {
   border-radius: 12px;
   padding: 8px 10px 4px;
