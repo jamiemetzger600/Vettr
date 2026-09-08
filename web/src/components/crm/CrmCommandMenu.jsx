@@ -5,11 +5,11 @@ import { crmAPI } from '../../utils/api';
 const ACTIONS = [
   { id: 'action-add-deal', type: 'action', label: 'Add deal', action: 'addDeal' },
   { id: 'action-import', type: 'action', label: 'Import CSV', action: 'importCsv' },
+  { id: 'action-cards', type: 'action', label: 'Go to Cards', action: 'view', view: 'cards' },
   { id: 'action-tasks', type: 'action', label: 'Go to Tasks', action: 'view', view: 'tasks' },
+  { id: 'action-deals', type: 'action', label: 'Go to Pipeline', action: 'view', view: 'home' },
   { id: 'action-calendar', type: 'action', label: 'Go to Calendar', action: 'view', view: 'calendar' },
-  { id: 'action-contacts', type: 'action', label: 'Go to Contacts', action: 'view', view: 'contacts' },
-  { id: 'action-deals', type: 'action', label: 'Go to Deals', action: 'view', view: 'home' },
-  { id: 'action-cards', type: 'action', label: 'Go to Cards', action: 'view', view: 'cards' }
+  { id: 'action-contacts', type: 'action', label: 'Go to Contacts', action: 'view', view: 'contacts' }
 ];
 
 /**

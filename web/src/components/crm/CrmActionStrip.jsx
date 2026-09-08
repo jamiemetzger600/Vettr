@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { crmAPI, teamsAPI } from '../../utils/api';
-import { formatDate } from '../../utils/normalizeDeal';
+import { formatRelativeDue } from '../../utils/taskTime';
+import CrmTaskRow from './CrmTaskRow';
 
 /** Build dealId → next action from overdue/due-today tasks (overdue wins), then computed nudges. */
 export function buildNextActionByDealId(today) {
@@ -11,12 +12,12 @@ export function buildNextActionByDealId(today) {
   for (const t of dueToday) {
     const id = Number(t.saved_deal_id);
     if (!Number.isFinite(id) || map.has(id)) continue;
-    map.set(id, { title: t.title, dueLabel: t.due_at ? formatDate(t.due_at) : 'Due today', urgent: false });
+    map.set(id, { title: t.title, dueLabel: formatRelativeDue(t.due_at).label, urgent: false });
   }
   for (const t of overdue) {
     const id = Number(t.saved_deal_id);
     if (!Number.isFinite(id)) continue;
-    map.set(id, { title: t.title, dueLabel: t.due_at ? formatDate(t.due_at) : 'Overdue', urgent: true });
+    map.set(id, { title: t.title, dueLabel: formatRelativeDue(t.due_at).label, urgent: true });
   }
   for (const n of nudges) {
     const id = Number(n.saved_deal_id);
@@ -110,12 +111,13 @@ export default function CrmActionStrip({
     }
   };
 
-  const handleCompleteTask = async (taskId) => {
+  const handleToggleComplete = async (taskId, status) => {
     try {
-      await crmAPI.updateTask(taskId, { status: 'done' });
+      console.log('[CrmActionStrip] toggle task', taskId, status);
+      await crmAPI.updateTask(taskId, { status });
       onRefresh?.();
     } catch (err) {
-      alert('Failed to complete task: ' + err.message);
+      throw err;
     }
   };
 
@@ -157,7 +159,8 @@ export default function CrmActionStrip({
           dealId: t.saved_deal_id,
           title: t.title,
           sub: t.deal_name,
-          taskId: t.id
+          taskId: t.id,
+          task: t
         }));
       case 'dueToday':
         return (today.tasks?.dueToday || []).map((t) => ({
@@ -165,7 +168,8 @@ export default function CrmActionStrip({
           dealId: t.saved_deal_id,
           title: t.title,
           sub: t.deal_name,
-          taskId: t.id
+          taskId: t.id,
+          task: t
         }));
       case 'ddOverdue':
         return (today.ddOverdue || []).map((d) => ({
@@ -238,71 +242,72 @@ export default function CrmActionStrip({
       {activeFilter && detailItems.length > 0 ? (
         <ul className="crm-action-strip__detail">
           {detailItems.slice(0, 8).map((item) => (
-            <li key={item.key} className="crm-action-strip__row">
-              <div className="crm-action-strip__row-body">
-                <button
-                  type="button"
-                  className="crm-action-strip__deal"
-                  onClick={() =>
-                    onSelectDeal?.(item.dealId, {
-                      focusSection: item.focusSection || null
-                    })
-                  }
-                >
-                  {item.sub || 'Deal'}
-                </button>
-                <span className="crm-action-strip__title">{item.title}</span>
-              </div>
-              <div className="crm-action-strip__row-actions">
-                {item.approvalId ? (
-                  <>
+            item.task && !item.nudgeKey ? (
+              <CrmTaskRow
+                key={item.key}
+                task={item.task}
+                expandable={false}
+                onToggleComplete={handleToggleComplete}
+                onSelectDeal={(id) => onSelectDeal?.(id)}
+              />
+            ) : (
+              <li key={item.key} className="crm-action-strip__row">
+                <div className="crm-action-strip__row-body">
+                  <button
+                    type="button"
+                    className="crm-action-strip__deal"
+                    onClick={() =>
+                      onSelectDeal?.(item.dealId, {
+                        focusSection: item.focusSection || null
+                      })
+                    }
+                  >
+                    {item.sub || 'Deal'}
+                  </button>
+                  <span className="crm-action-strip__title">{item.title}</span>
+                </div>
+                <div className="crm-action-strip__row-actions">
+                  {item.approvalId ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-primary btn-secondary--sm"
+                        onClick={() => handleApproval(item.approvalId, 'approve')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-secondary--sm"
+                        onClick={() => handleApproval(item.approvalId, 'reject')}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  ) : null}
+                  {item.nudgeKey ? (
                     <button
                       type="button"
                       className="btn-primary btn-secondary--sm"
-                      onClick={() => handleApproval(item.approvalId, 'approve')}
+                      onClick={() => handleCompleteNudge(item.dealId, item)}
                     >
-                      Approve
+                      {item.ctaLabel || 'Did it'}
                     </button>
-                    <button
-                      type="button"
-                      className="btn-secondary btn-secondary--sm"
-                      onClick={() => handleApproval(item.approvalId, 'reject')}
-                    >
-                      Reject
-                    </button>
-                  </>
-                ) : null}
-                {item.nudgeKey ? (
-                  <button
-                    type="button"
-                    className="btn-primary btn-secondary--sm"
-                    onClick={() => handleCompleteNudge(item.dealId, item)}
-                  >
-                    {item.ctaLabel || 'Did it'}
-                  </button>
-                ) : null}
-                {item.taskId && !item.nudgeKey ? (
+                  ) : null}
                   <button
                     type="button"
                     className="btn-secondary btn-secondary--sm"
-                    onClick={() => handleCompleteTask(item.taskId)}
+                    onClick={() =>
+                      onSelectDeal?.(item.dealId, {
+                        focusSection: item.focusSection || 'crm-followup'
+                      })
+                    }
                   >
-                    Done
+                    {item.actionLabel || 'Open'}
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="btn-secondary btn-secondary--sm"
-                  onClick={() =>
-                    onSelectDeal?.(item.dealId, {
-                      focusSection: item.focusSection || null
-                    })
-                  }
-                >
-                  {item.actionLabel || 'Open'}
-                </button>
-              </div>
-            </li>
+                </div>
+              </li>
+            )
           ))}
         </ul>
       ) : null}

@@ -11024,6 +11024,245 @@ button.aggregator-welcome__buybox {
   border-bottom: 1px solid var(--border);
 }
 
+.crm-task-list__search {
+  width: 160px;
+  min-width: 120px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.crm-task-list__search:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.crm-task-list__summary {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.crm-task-section {
+  margin-bottom: 14px;
+}
+
+.crm-task-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.crm-task-section__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.crm-task-section__head--warn,
+.crm-task-section__head--warn .crm-task-section__title {
+  color: var(--error);
+}
+
+.crm-task-section__count {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.crm-task-section__title-static {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.crm-task-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crm-task-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.crm-task-row--open {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+}
+
+.crm-task-row--done {
+  opacity: 0.62;
+}
+
+.crm-task-row--done .crm-task-row__title {
+  text-decoration: line-through;
+}
+
+.crm-task-row--done-text {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+.crm-task-row__line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.crm-task-row__check {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--success);
+  cursor: pointer;
+}
+
+.crm-task-row__main {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.crm-task-row__title-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.crm-task-row__title {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.crm-task-row__due {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.crm-task-row__due--warn {
+  color: var(--error);
+}
+
+.crm-task-row__due--today {
+  color: var(--text-primary);
+}
+
+.crm-task-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.crm-task-row__deal {
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.crm-task-row__deal:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.crm-task-row__assignee,
+.crm-task-row__subs {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.crm-task-sublist {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.crm-task-sublist__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.crm-deal-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-task-row {
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .crm-task-list__search {
+    width: 100%;
+  }
+
+  .crm-task-row__title-line {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+}
+
+
 .crm-contacts__toolbar {
   display: flex;
   gap: 8px;

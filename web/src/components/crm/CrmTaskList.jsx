@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { crmAPI, teamsAPI } from '../../utils/api';
-import { formatDate } from '../../utils/normalizeDeal';
 import { useTeam } from '../../context/TeamContext';
 import { useAuth } from '../../context/AuthContext';
 import CrmQuickAdd from './CrmQuickAdd';
+import CrmTaskRow from './CrmTaskRow';
+import {
+  TIME_SECTIONS,
+  groupTasksByDeal,
+  groupTasksByTime,
+  matchesTaskQuery
+} from '../../utils/taskTime';
 
 const FILTERS = [
   { id: 'open', label: 'Open' },
@@ -13,23 +19,9 @@ const FILTERS = [
 
 const SCOPE = [
   { id: 'all', label: 'All tasks' },
-  { id: 'me', label: 'My tasks' },
-  { id: 'team', label: 'Team tasks' }
+  { id: 'me', label: 'Mine' },
+  { id: 'team', label: 'Team' }
 ];
-
-function sourceLabel(source) {
-  const labels = {
-    follow_up_chip: 'Quick follow-up',
-    follow_up_custom: 'Custom reminder',
-    manual: 'Manual',
-    stage_suggestion: 'Stage suggestion',
-    intake_nudge: 'Next step',
-    stage_nudge: 'Next step',
-    talk_assign: 'Talk assign',
-    quick_add: 'Quick add'
-  };
-  return labels[source] || source || '—';
-}
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -49,144 +41,17 @@ function canWriteDeal(deal, teams) {
   return membership.role === 'admin' || membership.role === 'member';
 }
 
-function TaskRow({
-  task,
-  onComplete,
-  onSelectDeal,
-  showStatus,
-  onExpand,
-  expanded,
-  onAddSubtask,
-  onComment,
-  members
-}) {
-  const isDone = task.status === 'done';
-  const dueLabel = task.due_at ? formatDate(task.due_at) : 'No due date';
-  const [subTitle, setSubTitle] = useState('');
-  const [comment, setComment] = useState('');
-  const [comments, setComments] = useState([]);
-
-  useEffect(() => {
-    if (!expanded) return;
-    crmAPI.getTaskComments(task.id)
-      .then((d) => setComments(d.comments || []))
-      .catch(() => setComments([]));
-  }, [expanded, task.id]);
-
+function SectionHead({ label, count, warn, collapsed, onToggle }) {
   return (
-    <li className={`crm-today-task${isDone ? ' crm-today-task--done' : ''}`}>
-      <div className="crm-today-task__body">
-        <button
-          type="button"
-          className="crm-today-task__deal"
-          onClick={() => onSelectDeal?.(task.saved_deal_id)}
-        >
-          {task.deal_name || 'Deal'}
-        </button>
-        <span className="crm-today-task__title">
-          {task.priority != null && Number(task.priority) <= 2 ? (
-            <span className={`crm-priority crm-priority--${task.priority}`}>P{task.priority}</span>
-          ) : null}
-          {task.title}
-        </span>
-        <span className="crm-today-task__due">{dueLabel}</span>
-        {task.assignee_email ? (
-          <span className="crm-muted">{String(task.assignee_email).split('@')[0]}</span>
-        ) : null}
-        {task.recurrence ? <span className="crm-tag">{task.recurrence}</span> : null}
-        {task.subtask_count > 0 ? (
-          <span className="crm-muted">{task.subtask_done_count}/{task.subtask_count} sub</span>
-        ) : null}
-        <span className="crm-today-task__source">{sourceLabel(task.source)}</span>
-        {showStatus ? (
-          <span className={`crm-task-status crm-task-status--${task.status}`}>
-            {isDone ? 'Done' : 'Open'}
-          </span>
-        ) : null}
-      </div>
-      <div className="crm-task-row-actions">
-        <button type="button" className="btn-secondary btn-secondary--sm" onClick={() => onExpand(task.id)}>
-          {expanded ? 'Hide' : 'Details'}
-        </button>
-        {!isDone ? (
-          <button
-            type="button"
-            className="btn-secondary btn-secondary--sm"
-            onClick={() => onComplete(task.id)}
-          >
-            Done
-          </button>
-        ) : null}
-      </div>
-      {expanded ? (
-        <div className="crm-task-expand">
-          <form
-            className="crm-task-expand__row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!subTitle.trim()) return;
-              onAddSubtask(task, subTitle.trim());
-              setSubTitle('');
-            }}
-          >
-            <input
-              className="modal-input"
-              placeholder="Add subtask…"
-              value={subTitle}
-              onChange={(e) => setSubTitle(e.target.value)}
-            />
-            <button type="submit" className="btn-secondary btn-secondary--sm">Add subtask</button>
-          </form>
-          {members?.length ? (
-            <label className="crm-task-expand__row">
-              <span className="crm-muted">Reassign</span>
-              <select
-                className="modal-input"
-                defaultValue={task.assignee_user_id || ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  crmAPI.updateTask(task.id, { assigneeUserId: v ? Number(v) : null })
-                    .catch((err) => alert(err.message));
-                }}
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.userId || m.id} value={m.userId || m.id}>
-                    {m.email || m.name || m.userId || m.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <ul className="crm-task-comments">
-            {comments.map((c) => (
-              <li key={c.id}>
-                <strong>{(c.author_email || '').split('@')[0]}</strong>: {c.body}
-              </li>
-            ))}
-          </ul>
-          <form
-            className="crm-task-expand__row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!comment.trim()) return;
-              onComment(task.id, comment.trim()).then(() => {
-                setComment('');
-                return crmAPI.getTaskComments(task.id).then((d) => setComments(d.comments || []));
-              });
-            }}
-          >
-            <input
-              className="modal-input"
-              placeholder="Comment…"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
-            <button type="submit" className="btn-secondary btn-secondary--sm">Comment</button>
-          </form>
-        </div>
-      ) : null}
-    </li>
+    <button
+      type="button"
+      className={`crm-task-section__head${warn ? ' crm-task-section__head--warn' : ''}`}
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+    >
+      <span className="crm-task-section__title">{label}</span>
+      <span className="crm-task-section__count">{count}</span>
+    </button>
   );
 }
 
@@ -195,6 +60,8 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
   const { user } = useAuth();
   const [filter, setFilter] = useState('open');
   const [scope, setScope] = useState('all');
+  const [groupMode, setGroupMode] = useState('time');
+  const [query, setQuery] = useState('');
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -208,6 +75,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
   const [assigneeUserId, setAssigneeUserId] = useState('');
   const [formError, setFormError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [collapsed, setCollapsed] = useState(() => new Set(['nodate']));
 
   const writableDeals = useMemo(
     () => (deals || []).filter((d) => canWriteDeal(d, teams)),
@@ -271,14 +139,27 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
     }
   }, [writableDeals, dealId]);
 
-  const handleComplete = async (taskId) => {
-    try {
-      await crmAPI.updateTask(taskId, { status: 'done' });
-      await load();
-      onRefresh?.();
-    } catch (err) {
-      alert('Failed to complete task: ' + err.message);
-    }
+  const visibleTasks = useMemo(
+    () => tasks.filter((t) => matchesTaskQuery(t, query)),
+    [tasks, query]
+  );
+
+  const timeGroups = useMemo(() => groupTasksByTime(visibleTasks), [visibleTasks]);
+  const dealGroups = useMemo(() => groupTasksByDeal(visibleTasks), [visibleTasks]);
+
+  const handleToggleComplete = async (taskId, status) => {
+    await crmAPI.updateTask(taskId, { status });
+    await load();
+    onRefresh?.();
+  };
+
+  const toggleCollapsed = (id) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const resetForm = () => {
@@ -332,25 +213,23 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
     }
   };
 
-  const handleAddSubtask = async (parent, subTitle) => {
-    try {
-      await crmAPI.createTask(parent.saved_deal_id, {
-        title: subTitle,
-        parentTaskId: parent.id,
-        source: 'manual',
-        assigneeUserId: parent.assignee_user_id || undefined,
-        notifyRecipients: [{ type: 'self' }]
-      });
-      await load();
-      onRefresh?.();
-    } catch (err) {
-      alert(err.message || 'Failed to add subtask');
-    }
-  };
-
-  const handleComment = async (taskId, body) => {
-    await crmAPI.addTaskComment(taskId, body);
-  };
+  const renderRows = (list, { showDeal = true } = {}) => (
+    <ul className="crm-task-list__items">
+      {list.map((task) => (
+        <CrmTaskRow
+          key={task.id}
+          task={task}
+          showDeal={showDeal}
+          members={members}
+          onToggleComplete={handleToggleComplete}
+          onSelectDeal={onSelectDeal}
+          onChanged={load}
+          expanded={expandedId === task.id}
+          onExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
+        />
+      ))}
+    </ul>
+  );
 
   return (
     <div className="crm-task-list">
@@ -381,8 +260,37 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
             </button>
           ))}
         </div>
+        <div className="crm-task-list__filters">
+          <button
+            type="button"
+            className={`crm-chip${groupMode === 'time' ? ' crm-chip--active' : ''}`}
+            onClick={() => {
+              console.log('[CrmTaskList] group mode time');
+              setGroupMode('time');
+            }}
+          >
+            Time
+          </button>
+          <button
+            type="button"
+            className={`crm-chip${groupMode === 'deal' ? ' crm-chip--active' : ''}`}
+            onClick={() => {
+              console.log('[CrmTaskList] group mode deal');
+              setGroupMode('deal');
+            }}
+          >
+            By deal
+          </button>
+        </div>
         <div className="crm-task-list__toolbar-right">
-          <span className="crm-muted">{tasks.length} task{tasks.length === 1 ? '' : 's'}</span>
+          <input
+            type="search"
+            className="crm-task-list__search"
+            placeholder="Filter tasks…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Filter tasks"
+          />
           {canCreate ? (
             <button
               type="button"
@@ -397,6 +305,10 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
           ) : null}
         </div>
       </div>
+
+      {!loading && !error && filter === 'open' && query ? (
+        <p className="crm-task-list__summary">{visibleTasks.length} match</p>
+      ) : null}
 
       {showCreate && canCreate ? (
         <form className="crm-task-create" onSubmit={handleCreate}>
@@ -481,29 +393,54 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
         </div>
       ) : null}
 
-      {!loading && !error && tasks.length === 0 ? (
+      {!loading && !error && visibleTasks.length === 0 ? (
         <div className="crm-today-empty">
-          <p>No tasks — use Quick add or New task.</p>
+          <p>
+            {query
+              ? 'No tasks match that filter.'
+              : filter === 'done'
+                ? 'No completed tasks yet.'
+                : 'No open tasks — add one above, or open a deal and set the next step.'}
+          </p>
         </div>
       ) : null}
 
-      {!loading && !error && tasks.length > 0 ? (
-        <ul className="crm-today-task-list crm-task-list__items">
-          {tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              showStatus={filter === 'all'}
-              onComplete={handleComplete}
-              onSelectDeal={onSelectDeal}
-              expanded={expandedId === task.id}
-              onExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
-              onAddSubtask={handleAddSubtask}
-              onComment={handleComment}
-              members={members}
-            />
-          ))}
-        </ul>
+      {!loading && !error && visibleTasks.length > 0 && groupMode === 'time' ? (
+        TIME_SECTIONS.map((section) => {
+          const list = timeGroups[section.id] || [];
+          if (!list.length) return null;
+          const isCollapsed = collapsed.has(section.id);
+          return (
+            <section key={section.id} className="crm-task-section">
+              <SectionHead
+                label={section.label}
+                count={list.length}
+                warn={section.warn}
+                collapsed={isCollapsed}
+                onToggle={() => toggleCollapsed(section.id)}
+              />
+              {isCollapsed ? null : renderRows(list)}
+            </section>
+          );
+        })
+      ) : null}
+
+      {!loading && !error && visibleTasks.length > 0 && groupMode === 'deal' ? (
+        dealGroups.map((group) => {
+          const key = String(group.dealId ?? group.dealName);
+          const isCollapsed = collapsed.has(`deal-${key}`);
+          return (
+            <section key={key} className="crm-task-section">
+              <SectionHead
+                label={group.dealName}
+                count={group.tasks.length}
+                collapsed={isCollapsed}
+                onToggle={() => toggleCollapsed(`deal-${key}`)}
+              />
+              {isCollapsed ? null : renderRows(group.tasks, { showDeal: false })}
+            </section>
+          );
+        })
       ) : null}
     </div>
   );

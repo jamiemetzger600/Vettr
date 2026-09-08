@@ -11,7 +11,7 @@ import {
   buildSavedDealListingPayload,
   mergeListingEditsIntoDeal
 } from '../../utils/savedDealListingEdits';
-import QuickFollowUp from './QuickFollowUp';
+import CrmDealTasks from './CrmDealTasks';
 import DdChecklist from './dd/DdChecklist';
 import UnderwritingCrmLaunch from './underwriting/UnderwritingCrmLaunch';
 import DealThread from './DealThread';
@@ -501,13 +501,14 @@ export default function CrmDealWorkspace({
       label: 'Follow up',
       icon: 'followup',
       render: () => (
-        <QuickFollowUp
+        <CrmDealTasks
           dealId={dealId}
           dealName={deal?.name}
           contacts={detail?.contacts || []}
           userEmail={user?.email || ''}
           onCreated={handleRefresh}
           disabled={!writeEnabled}
+          onSelectDeal={null}
         />
       )
     },
