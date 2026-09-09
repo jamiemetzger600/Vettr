@@ -6,9 +6,9 @@ import { buildDigestNotification } from '../lib/digestNotification.js';
 import {
   loadNewMarketDeals,
   matchUserBuyBoxes,
-  summarizeMatchGroups,
-  formatMoney
+  summarizeMatchGroups
 } from './dealMatchDigestService.js';
+import { listingMetricCells, listingMetricsTableHtml } from '../lib/listingMetrics.js';
 import { getTeamActivitySince } from './teamActivityDigestService.js';
 import { primaryTeamSavedDealId, teamActivityDetailLine } from '../lib/teamActivity.js';
 import { getTodayTaskSummary } from './crmTaskService.js';
@@ -54,13 +54,30 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-function dealLine(deal) {
-  const bits = [
-    formatMoney(deal.askingPrice),
-    deal.location,
-    formatMoney(deal.ebitda) ? `${formatMoney(deal.ebitda)} profit` : ''
-  ].filter(Boolean);
-  return bits.join(' · ');
+function truncateText(value, max) {
+  const t = String(value || '').trim();
+  if (!t) return '';
+  if (t.length <= max) return t;
+  return `${t.slice(0, max).trim()}…`;
+}
+
+function dealHref(deal) {
+  if (deal?.id) {
+    const q = new URLSearchParams({ tab: 'aggregator', dealDbId: String(deal.id), newToday: '1' });
+    return `${WEB_APP_URL}/dashboard?${q.toString()}`;
+  }
+  return deal.url || `${WEB_APP_URL}/dashboard`;
+}
+
+function dealCardHtml(deal) {
+  const vettrHref = dealHref(deal);
+  const industry = truncateText(deal.industry, 48);
+  const meta = [deal.location, industry].filter(Boolean).join(' · ');
+  return `<a href="${escapeHtml(vettrHref)}" style="display:block;border:1px solid #e5e5e5;border-radius:8px;padding:12px 14px;margin:8px 0;color:#111;text-decoration:none;">
+    <div style="font-weight:600;">${escapeHtml(deal.name)}</div>
+    ${listingMetricsTableHtml(deal, escapeHtml)}
+    ${meta ? `<div style="color:#777;font-size:12px;margin-top:8px;">${escapeHtml(meta)}</div>` : ''}
+  </a>`;
 }
 
 function buildDigestHtml({ grouped, team, crmLines }) {
@@ -69,13 +86,13 @@ function buildDigestHtml({ grouped, team, crmLines }) {
   if (grouped?.total) {
     const boxesHtml = grouped.groups.map((g) => {
       const extra = g.overflow ? `<p style="color:#666;font-size:13px;">+${g.overflow} more in this buy box</p>` : '';
-      const cards = g.deals.map((d) => {
-        const href = d.url || `${WEB_APP_URL}/dashboard`;
-        return `<div style="border:1px solid #e5e5e5;border-radius:8px;padding:12px 14px;margin:8px 0;">
-          <a href="${escapeHtml(href)}" style="color:#111;font-weight:600;text-decoration:none;">${escapeHtml(d.name)}</a>
-          <div style="color:#555;font-size:13px;margin-top:4px;">${escapeHtml(dealLine(d))}</div>
-        </div>`;
-      }).join('');
+      if (g.deals?.[0]) {
+        console.log('[digest] listing metrics sample', {
+          name: g.deals[0].name,
+          cells: listingMetricCells(g.deals[0])
+        });
+      }
+      const cards = (g.deals || []).map(dealCardHtml).join('');
       return `<h3 style="margin:20px 0 8px;font-size:16px;">${escapeHtml(g.name)} (${g.deals.length + (g.overflow || 0)})</h3>${cards}${extra}`;
     }).join('');
     sections.push(`
