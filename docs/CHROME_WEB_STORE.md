@@ -1,4 +1,4 @@
-# Chrome Web Store — Vettr Extension (v4.4.x)
+# Chrome Web Store — Vettr Extension (v5.0.29+)
 
 ## Before upload
 
@@ -7,17 +7,22 @@
    chmod +x build-store-package.sh
    ./build-store-package.sh
    ```
-   Output: `Vettr-Extension-v4.4.0-store.zip`
+   Output: `Vettr-Extension-v5.0.29-store.zip` (version from `version.js`)
 
 2. **Host privacy policy** (required)  
-   Publish [`privacy-policy.html`](privacy-policy.html) at a public URL, e.g.  
+   Live URL after Pages deploy:  
    `https://vettr.pages.dev/privacy-policy.html`  
    Enter that URL in the Developer Dashboard → Privacy practices.
 
-3. **Production API / web** (already in extension)  
+3. **Production API / web** (baked into extension via `utils/vettr-config.js`)  
    - Web: `https://vettr.pages.dev`  
    - API: `https://vettr-api.metzgerbuildsthings.workers.dev/api`  
-   Set `VITE_EXTENSION_ID` on Cloudflare Pages after you have the **published** extension ID (or unpacked ID for dev).
+   Keep the iMac awake (tunnel + API) while Google reviews and while users sync.
+
+4. **Extension ID (store):** `jbklcimaiblacheagjgioaodaehcdhki`  
+   Cloudflare Pages production env (set):
+   - `VITE_EXTENSION_ID=jbklcimaiblacheagjgioaodaehcdhki`
+   - `VITE_CHROME_STORE_URL=https://chromewebstore.google.com/detail/jbklcimaiblacheagjgioaodaehcdhki`
 
 ## Listing copy (suggested)
 
@@ -28,6 +33,12 @@
 | **Description** | Vettr helps business buyers find and evaluate acquisition opportunities. Aggregate deals from spreadsheets and sources you configure, filter with your buy box, run SBA-style scenario analysis on listing pages, and save deals to My Deals. Sign in once to sync saved deals with your Vettr account on the web. |
 | **Category** | Productivity |
 | **Language** | English |
+
+## Screenshots to capture (1280×800 or 640×400)
+
+1. Extension dashboard with **Sign in to sync My Deals** account bar visible.
+2. Overlay calculator on a listing page with Save deal.
+3. My Deals on https://vettr.pages.dev for the same signed-in user (bidirectional sync).
 
 ## Permission justifications (for review form)
 
@@ -48,13 +59,16 @@
 
 ## Test instructions for reviewers
 
-1. Load unpacked extension or install from package.
+1. Install from package (or load unpacked).
 2. Click extension icon → dashboard opens.
-3. Open **My Deals** → sign in with a test Vettr account (email/password).
+3. Sign in with a test Vettr account (email/password) in the account bar.
 4. Visit a business listing site → open calculator overlay → save a deal.
 5. Confirm deal appears under My Deals on https://vettr.pages.dev when signed in as the same user.
+6. Edit notes on the web → within about one minute they appear in the extension (or sooner if `VITE_EXTENSION_ID` is set).
 
 ## After publish
 
-1. Copy the **extension ID** from `chrome://extensions` (published) or the Chrome Web Store developer dashboard.
-2. Set `VITE_EXTENSION_ID=<id>` on Cloudflare Pages and redeploy the web app so website login auto-links the extension.
+1. Extension ID: `jbklcimaiblacheagjgioaodaehcdhki` (already set on Cloudflare Pages).
+2. `VITE_EXTENSION_ID` and `VITE_CHROME_STORE_URL` are on Pages production — redeploy after changing them.
+3. Confirm Settings → Chrome extension shows **Install from Chrome Web Store**.
+4. Local unpacked testing still uses the unpacked ID in `web/.env` (different from the store ID).

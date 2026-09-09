@@ -133,7 +133,8 @@ export function emptyBuyBoxCriteria() {
     targetCOC: null,
     targetPayback: null,
     minBuyerSalary: null,
-    includeNearMatchesPercent: 0
+    includeNearMatchesPercent: 0,
+    includeAbsenteeRemoteNearMatches: false
   };
 }
 
@@ -165,7 +166,8 @@ export function isBuyBoxCriteriaEmpty(criteria) {
     !has(criteria.targetCOC) &&
     !has(criteria.targetPayback) &&
     !has(criteria.minBuyerSalary) &&
-    !(Number(criteria.includeNearMatchesPercent) > 0)
+    !(Number(criteria.includeNearMatchesPercent) > 0) &&
+    criteria.includeAbsenteeRemoteNearMatches !== true
   );
 }
 

@@ -519,6 +519,7 @@ export default function DealAggregator({
   requireSignup = null,
   initialOpenDealDbId = null,
   tourPrepareStepId = null,
+  isFeedVisible = true,
   onMobileDeckChange = null,
 }) {
   const navigate = useNavigate();
@@ -686,6 +687,7 @@ export default function DealAggregator({
     lastOpenDealDbIdRef.current = initialOpenDealDbId;
   }, [initialOpenDealDbId]);
   useEffect(() => {
+    if (!isFeedVisible) return;
     if (initialOpenAppliedRef.current || initialOpenDealDbId == null) return;
     const match = deals.find((d) => String(d.dbId) === String(initialOpenDealDbId));
     if (match) {
@@ -708,7 +710,7 @@ export default function DealAggregator({
       }
     })();
     return () => { cancelled = true; };
-  }, [initialOpenDealDbId, deals, loading]);
+  }, [initialOpenDealDbId, deals, loading, isFeedVisible]);
 
   const savedDealIdSet = useMemo(
     () => new Set((savedDealIds || []).filter(Boolean).map((id) => String(id))),
@@ -778,10 +780,9 @@ export default function DealAggregator({
   const mobileDailyFilter = showMobileToolbar && deckScope === 'daily';
 
   useEffect(() => {
-    if (typeof onMobileDeckChange === 'function') {
-      onMobileDeckChange(showMobileDeck);
-    }
-  }, [showMobileDeck, onMobileDeckChange]);
+    if (typeof onMobileDeckChange !== 'function') return;
+    onMobileDeckChange(Boolean(isFeedVisible && showMobileDeck));
+  }, [showMobileDeck, onMobileDeckChange, isFeedVisible]);
 
   // Do not reset mobileFeedMode when width crosses 767px — landscape phones
   // look like "desktop" and that was sending Cards back to Focus on rotate.

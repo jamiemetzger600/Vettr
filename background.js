@@ -5,15 +5,54 @@ console.log('🔧 Background service worker starting...');
 const SESSION_EXPIRED = 'SESSION_EXPIRED';
 let fullSyncInFlight = null;
 
+async function resolveAndStoreDefaultTeamId(apiBase, token) {
+  try {
+    const res = await fetch(apiBase.replace(/\/+$/, '') + '/teams', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    const teams = data.teams || [];
+    if (!teams.length) {
+      await chrome.storage.local.remove(['vettrTeamId']);
+      return null;
+    }
+    // Prefer sole team; otherwise keep existing stored id if still valid
+    const stored = await chrome.storage.local.get(['vettrTeamId']);
+    let teamId = null;
+    if (teams.length === 1) {
+      teamId = Number(teams[0].id);
+    } else if (stored.vettrTeamId && teams.some((t) => Number(t.id) === Number(stored.vettrTeamId))) {
+      teamId = Number(stored.vettrTeamId);
+    } else {
+      teamId = Number(teams[0].id);
+    }
+    if (teamId) {
+      await chrome.storage.local.set({ vettrTeamId: teamId });
+      console.log('☁️ Vettr default team for extension saves:', teamId);
+    }
+    return teamId;
+  } catch (err) {
+    console.warn('☁️ resolve team failed:', err.message);
+    return null;
+  }
+}
+
 async function getVettrAuthConfig() {
-  const stored = await chrome.storage.local.get(['vettrApiBaseUrl', 'vettrAuthToken', 'vettrWebAppUrl']);
+  const stored = await chrome.storage.local.get([
+    'vettrApiBaseUrl',
+    'vettrAuthToken',
+    'vettrWebAppUrl',
+    'vettrTeamId'
+  ]);
   const apiBase = VettrCloudSync.normalizeApiBaseUrl(
     stored.vettrApiBaseUrl || (typeof VettrConfig !== 'undefined' ? VettrConfig.getDefaultApiBaseUrl() : '')
   );
   return {
     vettrApiBaseUrl: apiBase,
     vettrAuthToken: stored.vettrAuthToken || '',
-    vettrWebAppUrl: stored.vettrWebAppUrl || (typeof VettrConfig !== 'undefined' ? VettrConfig.getDefaultWebAppUrl() : 'http://localhost:5173')
+    vettrWebAppUrl: stored.vettrWebAppUrl || (typeof VettrConfig !== 'undefined' ? VettrConfig.getDefaultWebAppUrl() : 'http://localhost:5173'),
+    vettrTeamId: stored.vettrTeamId ? Number(stored.vettrTeamId) : null
   };
 }
 
@@ -56,7 +95,12 @@ function normalizeSaveResponse(data) {
 }
 
 async function postVettrSaveDeal(body) {
-  const data = await vettrApiFetch('/deals', { method: 'POST', body: JSON.stringify(body) });
+  const cfg = await getVettrAuthConfig();
+  const payload = Object.assign({}, body);
+  if (cfg.vettrTeamId && !payload.teamId) {
+    payload.teamId = cfg.vettrTeamId;
+  }
+  const data = await vettrApiFetch('/deals', { method: 'POST', body: JSON.stringify(payload) });
   return normalizeSaveResponse(data);
 }
 
@@ -71,7 +115,8 @@ async function deleteVettrDeal(vettrId) {
 }
 
 async function pullVettrDeals() {
-  const data = await vettrApiFetch('/deals');
+  // Include personal + team deals so sync matches CRM visibility
+  const data = await vettrApiFetch('/deals?scope=all');
   return data.deals || [];
 }
 
@@ -194,6 +239,7 @@ async function handleVettrLogin(email, password, apiBaseUrl, webAppUrl) {
     vettrUserEmail: data.user?.email || email,
     vettrWebAppUrl: webAppUrl || (typeof VettrConfig !== 'undefined' ? VettrConfig.getDefaultWebAppUrl() : 'http://localhost:5173')
   });
+  await resolveAndStoreDefaultTeamId(apiBase, data.token);
   ensureVettrSyncAlarm();
   scheduleFullSyncAfterLink();
   return { ok: true, email: data.user?.email || email };
@@ -417,20 +463,30 @@ chrome.notifications.onClicked.addListener((notificationId) => {
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'VETTR_SET_SESSION' && message.token && message.apiBaseUrl) {
     const base = VettrCloudSync.normalizeApiBaseUrl(message.apiBaseUrl);
-    chrome.storage.local.set(
-      {
-        vettrAuthToken: message.token,
-        vettrApiBaseUrl: base || message.apiBaseUrl.trim(),
-        vettrUserEmail: message.email || undefined,
-        vettrWebAppUrl: message.webAppUrl || (typeof VettrConfig !== 'undefined' ? VettrConfig.getDefaultWebAppUrl() : 'http://localhost:5173')
-      },
-      () => {
-        console.log('☁️ Vettr session received from web app (My Deals sync enabled)');
+    const patch = {
+      vettrAuthToken: message.token,
+      vettrApiBaseUrl: base || message.apiBaseUrl.trim(),
+      vettrUserEmail: message.email || undefined,
+      vettrWebAppUrl: message.webAppUrl || (typeof VettrConfig !== 'undefined' ? VettrConfig.getDefaultWebAppUrl() : 'http://localhost:5173')
+    };
+    if (message.teamId != null && Number(message.teamId) > 0) {
+      patch.vettrTeamId = Number(message.teamId);
+    }
+    chrome.storage.local.set(patch, () => {
+      console.log('☁️ Vettr session received from web app (My Deals sync enabled)', {
+        teamId: patch.vettrTeamId || null
+      });
+      const finish = () => {
         scheduleFullSyncAfterLink();
         ensureVettrSyncAlarm();
         sendResponse({ ok: true });
+      };
+      if (patch.vettrTeamId) {
+        finish();
+      } else {
+        resolveAndStoreDefaultTeamId(patch.vettrApiBaseUrl, message.token).finally(finish);
       }
-    );
+    });
     return true;
   }
 
@@ -442,7 +498,7 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
 
   if (message?.type === 'VETTR_CLEAR_SESSION') {
-    chrome.storage.local.remove(['vettrAuthToken', 'vettrUserEmail'], () => {
+    chrome.storage.local.remove(['vettrAuthToken', 'vettrUserEmail', 'vettrTeamId'], () => {
       console.log('☁️ Vettr session cleared (logout on web)');
       sendResponse({ ok: true });
     });
@@ -534,7 +590,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.type === 'VETTR_SIGN_OUT') {
-    chrome.storage.local.remove(['vettrAuthToken', 'vettrUserEmail'], () => {
+    chrome.storage.local.remove(['vettrAuthToken', 'vettrUserEmail', 'vettrTeamId'], () => {
       sendResponse({ ok: true });
     });
     return true;

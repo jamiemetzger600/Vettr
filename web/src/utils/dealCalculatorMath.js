@@ -3,6 +3,7 @@
  */
 
 export const SELLER_NOTE_TERM_YEARS = 5;
+export const DEFAULT_SELLER_STANDBY_YEARS = 2;
 
 export function parseMoney(value) {
   if (value == null || value === '') return 0;
@@ -24,6 +25,26 @@ export function resolveSellerNoteTermYears(scenario) {
   const fromScenario = parseFloat(scenario?.sellerTermYears ?? scenario?.sellerTerm);
   if (fromScenario > 0) return fromScenario;
   return SELLER_NOTE_TERM_YEARS;
+}
+
+/** Years of $0 seller-note payments. 0 with standby=yes means full-term standby (legacy). */
+export function resolveSellerStandbyYears(scenario, termYears = SELLER_NOTE_TERM_YEARS) {
+  if (scenario?.sellerStandby !== 'yes') return 0;
+  const n = parseFloat(scenario?.sellerStandbyYears);
+  if (!(n > 0)) return 0;
+  const term = termYears > 0 ? termYears : SELLER_NOTE_TERM_YEARS;
+  return Math.min(n, term);
+}
+
+export function calcSellerAnnualDebtService(noteAmt, sellerRate, paymentType, years) {
+  if (!(noteAmt > 0)) return 0;
+  if (paymentType === 'interest-only') return noteAmt * sellerRate;
+  const sy = years > 0 ? years : SELLER_NOTE_TERM_YEARS;
+  if (sellerRate === 0) return noteAmt / sy;
+  const r = sellerRate / 12;
+  const n = sy * 12;
+  const monthly = noteAmt * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  return monthly * 12;
 }
 
 export function calcSellerDebtServicePer1(sellerRateDecimal, paymentType, sellerYears = SELLER_NOTE_TERM_YEARS) {
@@ -90,6 +111,7 @@ export function buildFinancingCoefficients(scenario) {
   const sellerRate = (parseFloat(scenario.sellerRate) || 0) / 100;
   const sellerPaymentType = scenario.sellerPaymentType === 'interest-only' ? 'interest-only' : 'amortizing';
   const sellerTermYears = resolveSellerNoteTermYears(scenario);
+  const sellerStandbyYears = resolveSellerStandbyYears(scenario, sellerTermYears);
   const bankRate = (parseFloat(scenario.sbaRate) || 0) / 100;
   const bankYears = parseFloat(scenario.sbaTerm) || 10;
 
@@ -108,6 +130,7 @@ export function buildFinancingCoefficients(scenario) {
     sellerPercent,
     sellerEnabled,
     sellerStandby,
+    sellerStandbyYears,
     sellerPaymentType,
     sellerRate,
     sellerTermYears,
@@ -130,7 +153,7 @@ export function analyzeDealScenario(scenario, qualityPrefs = {}) {
   const salary = parseMoney(scenario.salary);
 
   const fin = buildFinancingCoefficients(scenario);
-  const { sbaPercent, equityPercent, sellerPercent, sellerEnabled, sellerStandby, sellerPaymentType, sellerRate, bankRate, bankYears, sbaDSPer1, sellerDSPer1 } = fin;
+  const { sbaPercent, equityPercent, sellerPercent, sellerEnabled, sellerStandby, sellerStandbyYears, sellerPaymentType, sellerRate, bankRate, bankYears } = fin;
 
   const totalPercent = sbaPercent + equityPercent + sellerPercent;
   const pctOk = Math.abs(totalPercent - 100) <= 0.01;
@@ -154,25 +177,28 @@ export function analyzeDealScenario(scenario, qualityPrefs = {}) {
   }
 
   let sellerAnnualDS = 0;
-  if (sellerNoteAmt > 0 && sellerStandby === 'no') {
-    if (sellerPaymentType === 'interest-only') {
-      sellerAnnualDS = sellerNoteAmt * sellerRate;
-    } else {
-      const sy = fin.sellerTermYears || SELLER_NOTE_TERM_YEARS;
-      const r = sellerRate / 12;
-      const n = sy * 12;
-      if (sellerRate === 0) {
-        sellerAnnualDS = sellerNoteAmt / sy;
-      } else {
-        const monthly = sellerNoteAmt * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-        sellerAnnualDS = monthly * 12;
-      }
-    }
+  if (sellerNoteAmt > 0 && sellerStandby !== 'yes') {
+    sellerAnnualDS = calcSellerAnnualDebtService(
+      sellerNoteAmt,
+      sellerRate,
+      sellerPaymentType,
+      fin.sellerTermYears || SELLER_NOTE_TERM_YEARS
+    );
+  }
+
+  const remainAfterStandby = (fin.sellerTermYears || SELLER_NOTE_TERM_YEARS) - (sellerStandbyYears || 0);
+  let sellerAnnualDSAfterStandby = sellerAnnualDS;
+  if (sellerNoteAmt > 0 && sellerStandby === 'yes') {
+    sellerAnnualDSAfterStandby = remainAfterStandby > 0 && sellerStandbyYears > 0
+      ? calcSellerAnnualDebtService(sellerNoteAmt, sellerRate, sellerPaymentType, remainAfterStandby)
+      : 0;
   }
 
   const totalDebtService = sbaAnnualDS + sellerAnnualDS;
+  const totalDebtServiceAfterStandby = sbaAnnualDS + sellerAnnualDSAfterStandby;
   const availableCashFlow = ebitda - totalDebtService;
   const freeCashFlow = availableCashFlow - salary;
+  const freeCashFlowAfterStandby = ebitda - totalDebtServiceAfterStandby - salary;
   const totalTakeHome = salary + freeCashFlow;
   const actualDSCR = totalDebtService > 0 ? ebitda / totalDebtService : 0;
   const coc = equityAmount > 0 ? (totalTakeHome / equityAmount) * 100 : 0;
@@ -195,6 +221,17 @@ export function analyzeDealScenario(scenario, qualityPrefs = {}) {
   );
   const qualityPresentation = getQualityPresentation(qualityScore);
 
+  if (sellerStandby === 'yes') {
+    console.log('[dealCalculator] seller standby FCF', {
+      standbyYears: sellerStandbyYears,
+      remainAfterStandby,
+      sellerAnnualDS,
+      sellerAnnualDSAfterStandby,
+      freeCashFlow,
+      freeCashFlowAfterStandby
+    });
+  }
+
   return {
     ebitda,
     askingPrice,
@@ -209,8 +246,12 @@ export function analyzeDealScenario(scenario, qualityPrefs = {}) {
     equityAmount,
     sellerNoteAmt,
     totalDebtService,
+    totalDebtServiceAfterStandby,
     availableCashFlow,
     freeCashFlow,
+    freeCashFlowAfterStandby,
+    sellerStandbyYears,
+    remainAfterStandby,
     totalTakeHome,
     actualDSCR,
     coc,
@@ -246,6 +287,7 @@ export function calculateTargetOfferAnalytical({
   sellerEnabled,
   sellerPaymentType,
   sellerStandby,
+  sellerStandbyYears = 0,
   sellerRate
 }) {
   if (E <= 0) return { error: 'Enter EBITDA first' };
@@ -326,6 +368,7 @@ export function calculateTargetOfferAnalytical({
       sellerPaymentType,
       sellerRate,
       sellerStandby,
+      sellerStandbyYears,
       targetDSCR,
       targetSalary: S,
       sbaLoan: targetOfferPrice * (sbaPercent / 100),
@@ -378,6 +421,7 @@ export function createDefaultScenarios(deal, calculatorDefaults = {}) {
     sellerRate: String(calculatorDefaults.sellerRate ?? '6'),
     sellerTermYears: String(calculatorDefaults.sellerTermYears ?? SELLER_NOTE_TERM_YEARS),
     sellerStandby: calculatorDefaults.sellerStandby === 'yes' ? 'yes' : 'no',
+    sellerStandbyYears: String(calculatorDefaults.sellerStandbyYears ?? DEFAULT_SELLER_STANDBY_YEARS),
     sellerPaymentType: calculatorDefaults.sellerPaymentType === 'interest-only' ? 'interest-only' : 'amortizing',
     usePurchaseOverride: false,
     purchasePrice: '',

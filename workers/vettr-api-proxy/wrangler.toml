@@ -5,4 +5,4 @@ workers_dev = true
 account_id = "b5fb063c1e439dd0d0ce3ffb317ec52c"
 
 [vars]
-TUNNEL_ORIGIN = "https://criteria-misc-distances-depot.trycloudflare.com"
+TUNNEL_ORIGIN = "https://wto-regulatory-former-medal.trycloudflare.com"

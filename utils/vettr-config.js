@@ -6,8 +6,8 @@
   'use strict';
 
   var PROD_WEB_APP_URL = 'https://vettr.pages.dev';
-  // Local Mac API via Cloudflare Tunnel (keep in sync with live Pages VITE_API_URL / Worker proxy)
-  var PROD_API_BASE_URL = 'https://flowers-frankfurt-den-roger.trycloudflare.com/api';
+  // Stable Worker proxy (Pages VITE_API_URL). Never bake a trycloudflare.com URL here.
+  var PROD_API_BASE_URL = 'https://vettr-api.metzgerbuildsthings.workers.dev/api';
   var DEV_WEB_APP_URL = 'http://localhost:5173';
   var DEV_API_BASE_URL = 'http://localhost:3001/api';
 

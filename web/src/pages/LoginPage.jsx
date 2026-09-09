@@ -17,6 +17,8 @@ export default function LoginPage() {
   const resetOk = Boolean(location.state?.resetOk);
 
   const postAuthPath = useMemo(() => {
+    // From Chrome extension: stay on a simple confirmation path (no auto-redirect away)
+    if (fromExtension) return null;
     const { returnTo, dealDbId } = parseAuthReturnParams(searchParams.toString());
     if (returnTo && returnTo.includes('?')) {
       if (!dealDbId) return returnTo;
@@ -28,10 +30,10 @@ export default function LoginPage() {
     if (dealDbId) p.set('dealDbId', dealDbId);
     const qs = p.toString();
     return `${returnTo || '/dashboard'}${qs ? `?${qs}` : ''}`;
-  }, [searchParams]);
+  }, [searchParams, fromExtension]);
 
   useEffect(() => {
-    if (user) navigate(postAuthPath, { replace: true });
+    if (user && postAuthPath) navigate(postAuthPath, { replace: true });
   }, [user, navigate, postAuthPath]);
 
   const handleSubmit = async (e) => {
@@ -41,7 +43,11 @@ export default function LoginPage() {
     try {
       await login(email, password);
       await mergeGuestSettingsIntoAccount();
-      navigate(postAuthPath);
+      if (fromExtension) {
+        // Stay on this page so the success banner is visible
+        return;
+      }
+      navigate(postAuthPath || '/dashboard');
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -58,6 +64,27 @@ export default function LoginPage() {
     );
   }
 
+  // After extension-driven login: show success only when session exists
+  if (fromExtension && user) {
+    return (
+      <div className="auth-page">
+        <div className="auth-container">
+          <div className="auth-header">
+            <h1>Vettr</h1>
+            <p>Find it. Vett it. Save it.</p>
+          </div>
+          <p className="auth-banner" role="status">
+            Signed in as {user.email}. You can close this tab and return to the Chrome extension —
+            My Deals will sync automatically.
+          </p>
+          <p className="auth-footer">
+            <Link to="/dashboard">Open Vettr dashboard</Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-container">
@@ -66,7 +93,7 @@ export default function LoginPage() {
           <p>Find it. Vett it. Save it.</p>
         </div>
         {fromExtension && (
-          <p className="auth-banner">Signed in. You can close this tab and return to the Chrome extension.</p>
+          <p className="auth-banner">Sign in with your Vettr account to sync My Deals with the Chrome extension.</p>
         )}
         <form className="auth-form" onSubmit={handleSubmit}>
           <h2>Sign In</h2>

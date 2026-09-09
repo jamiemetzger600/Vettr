@@ -422,7 +422,7 @@ export default function IOIModal({
 
           {/* Broker email */}
           <div className="ioi-section">
-            <label className="ioi-section-label" htmlFor="ioi-broker-email">Broker Email</label>
+            <label className="ioi-section-label" htmlFor="ioi-broker-email">Broker or Seller Email</label>
             <input
               id="ioi-broker-email"
               type="email"
@@ -523,7 +523,7 @@ export default function IOIModal({
             </p>
           )}
           {gmailReady && !brokerEmail.trim() && canSend && (
-            <p className="ioi-warn">Add a broker email to send from Gmail.</p>
+            <p className="ioi-warn">Add a broker or seller email to send from Gmail.</p>
           )}
           <button type="button" className="btn-secondary" onClick={handleCopy} disabled={!canSend}>
             Copy to Clipboard

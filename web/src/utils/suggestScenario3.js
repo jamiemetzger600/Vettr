@@ -29,7 +29,11 @@ export function describeFinancingPatch(patch) {
   const parts = [`${patch.sbaPercent}% SBA`, `${patch.equityPercent}% equity`];
   if (patch.sellerEnabled) {
     let seller = `${patch.sellerPercent}% seller note`;
-    if (patch.sellerStandby === 'yes') seller += ', standby';
+    if (patch.sellerStandby === 'yes') {
+      seller += patch.sellerStandbyYears
+        ? `, ${patch.sellerStandbyYears}yr standby`
+        : ', standby';
+    }
     if (patch.sellerPaymentType === 'interest-only') seller += ', interest-only';
     parts.push(seller);
   } else {
@@ -45,7 +49,7 @@ function buildCreativeFinancingCandidates() {
   const sellerPcts = [5, 10, 15, 25, 30];
   const sellerVariants = [
     { sellerStandby: 'no', sellerPaymentType: 'amortizing' },
-    { sellerStandby: 'yes', sellerPaymentType: 'amortizing' },
+    { sellerStandby: 'yes', sellerPaymentType: 'amortizing', sellerStandbyYears: '2' },
     { sellerStandby: 'no', sellerPaymentType: 'interest-only' }
   ];
 

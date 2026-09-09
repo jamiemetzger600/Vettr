@@ -50,6 +50,22 @@
     return 'http://localhost:5173';
   }
 
+  function formatLastSync(ts) {
+    if (!ts) return '';
+    var d = new Date(typeof ts === 'number' ? ts : Date.parse(ts));
+    if (isNaN(d.getTime())) return '';
+    try {
+      return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return d.toISOString();
+    }
+  }
+
   function updateAccountBar(root, status, options) {
     if (!root) return;
     options = options || {};
@@ -58,6 +74,7 @@
     var emailEl = root.querySelector('[data-vettr-email]');
     var statusEl = root.querySelector('[data-vettr-status]');
     var errorEl = root.querySelector('[data-vettr-error]');
+    var lastSyncEl = root.querySelector('[data-vettr-last-sync]');
 
     if (errorEl) {
       errorEl.style.display = 'none';
@@ -72,12 +89,21 @@
         statusEl.textContent = 'Synced as ' + (status.email || 'your account');
         statusEl.style.display = linkedEl ? 'none' : 'block';
       }
+      if (lastSyncEl) {
+        var when = formatLastSync(status.lastSyncAt);
+        lastSyncEl.textContent = when ? ('Last sync: ' + when) : 'Syncing…';
+        lastSyncEl.style.display = 'block';
+      }
     } else {
       if (linkedEl) linkedEl.style.display = 'none';
       if (signinEl) signinEl.style.display = 'block';
       if (statusEl) {
         statusEl.style.display = 'block';
         statusEl.textContent = options.statusText || 'Sign in to sync My Deals with Vettr';
+      }
+      if (lastSyncEl) {
+        lastSyncEl.textContent = '';
+        lastSyncEl.style.display = 'none';
       }
     }
   }
@@ -122,15 +148,26 @@
         var prevText = loginBtn.textContent;
         loginBtn.textContent = 'Signing in…';
         signIn(email, password).then(function (res) {
-          loginBtn.disabled = false;
-          loginBtn.textContent = prevText;
           if (!res || !res.ok) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = prevText;
             showError((res && res.error) || 'Sign in failed');
             return;
           }
           if (passInput) passInput.value = '';
           if (typeof callbacks.onSignedIn === 'function') callbacks.onSignedIn(res);
-          refresh();
+          // Background already schedules sync on login; wait for it then refresh UI
+          runFullSync()
+            .then(function () {
+              return refresh();
+            })
+            .catch(function () {
+              return refresh();
+            })
+            .finally(function () {
+              loginBtn.disabled = false;
+              loginBtn.textContent = prevText;
+            });
         });
       });
     }
@@ -148,7 +185,7 @@
       openWebLink.addEventListener('click', function (e) {
         e.preventDefault();
         getLinkStatus().then(function (status) {
-          var url = getWebAppUrl(status) + '/login';
+          var url = getWebAppUrl(status) + '/login?from=extension';
           window.open(url, '_blank', 'noopener');
         });
       });
@@ -158,7 +195,7 @@
       signupLink.addEventListener('click', function (e) {
         e.preventDefault();
         getLinkStatus().then(function (status) {
-          var url = getWebAppUrl(status) + '/register';
+          var url = getWebAppUrl(status) + '/register?from=extension';
           window.open(url, '_blank', 'noopener');
         });
       });
@@ -166,7 +203,7 @@
 
     if (chrome.storage && chrome.storage.onChanged) {
       chrome.storage.onChanged.addListener(function (changes, area) {
-        if (area === 'local' && (changes.vettrAuthToken || changes.vettrUserEmail)) {
+        if (area === 'local' && (changes.vettrAuthToken || changes.vettrUserEmail || changes.vettrLastSyncAt)) {
           refresh();
         }
       });
@@ -183,6 +220,7 @@
     runFullSync: runFullSync,
     updateAccountBar: updateAccountBar,
     bindAccountForm: bindAccountForm,
-    getWebAppUrl: getWebAppUrl
+    getWebAppUrl: getWebAppUrl,
+    formatLastSync: formatLastSync
   };
 })(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : window);

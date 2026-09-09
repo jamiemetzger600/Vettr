@@ -8,6 +8,7 @@ import {
   isValidCalculatorPayload,
   parseMoney,
   SELLER_NOTE_TERM_YEARS,
+  DEFAULT_SELLER_STANDBY_YEARS,
   stringifyDealNumber,
   defaultScenarioName,
   scenarioDisplayName
@@ -292,13 +293,19 @@ export default function DealCalculator({
         'salary',
         'sellerRate',
         'sellerStandby',
+        'sellerStandbyYears',
         'sellerPaymentType',
         'sellerTermYears'
       ];
       setScenarios((current) => {
-        const next = current.map((scenario, index) =>
-          index === activeScenario ? { ...scenario, [field]: value } : scenario
-        );
+        const next = current.map((scenario, index) => {
+          if (index !== activeScenario) return scenario;
+          const extra = {};
+          if (field === 'sellerStandby' && value === 'yes' && !(parseFloat(scenario.sellerStandbyYears) > 0)) {
+            extra.sellerStandbyYears = String(DEFAULT_SELLER_STANDBY_YEARS);
+          }
+          return { ...scenario, [field]: value, ...extra };
+        });
         if (onSaveCalculatorDefaults && PERSISTED_CALC_FIELDS.includes(field)) {
           if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
           persistTimerRef.current = setTimeout(() => {
@@ -313,6 +320,7 @@ export default function DealCalculator({
               salary: updated.salary ?? calculatorDefaults.salary,
               sellerRate: updated.sellerRate ?? calculatorDefaults.sellerRate,
               sellerStandby: updated.sellerStandby ?? calculatorDefaults.sellerStandby,
+              sellerStandbyYears: updated.sellerStandbyYears ?? calculatorDefaults.sellerStandbyYears,
               sellerPaymentType: updated.sellerPaymentType ?? calculatorDefaults.sellerPaymentType,
               sellerTermYears: updated.sellerTermYears ?? calculatorDefaults.sellerTermYears
             });
@@ -352,6 +360,7 @@ export default function DealCalculator({
       sellerEnabled: fin.sellerEnabled,
       sellerPaymentType: fin.sellerPaymentType,
       sellerStandby: fin.sellerStandby,
+      sellerStandbyYears: fin.sellerStandbyYears,
       sellerRate: fin.sellerRate
     });
     setTargetOfferResult(result);
@@ -733,7 +742,7 @@ export default function DealCalculator({
               className={`calc-accordion-summary ${!currentScenario.sellerEnabled ? 'calc-accordion-summary--muted' : ''}`.trim()}
             >
               {currentScenario.sellerEnabled
-                ? `${finCoeff.sellerPercent}% • ${currentScenario.sellerRate || '6'}% • ${currentScenario.sellerTermYears || SELLER_NOTE_TERM_YEARS}yr • ${currentScenario.sellerPaymentType === 'interest-only' ? 'Interest Only' : 'Amortizing'}${finCoeff.sellerStandby === 'yes' ? ' • Standby' : ''}`
+                ? `${finCoeff.sellerPercent}% • ${currentScenario.sellerRate || '6'}% • ${currentScenario.sellerTermYears || SELLER_NOTE_TERM_YEARS}yr • ${currentScenario.sellerPaymentType === 'interest-only' ? 'Interest Only' : 'Amortizing'}${finCoeff.sellerStandby === 'yes' ? ` • Standby ${finCoeff.sellerStandbyYears || DEFAULT_SELLER_STANDBY_YEARS}yr` : ''}`
                 : 'Not enabled'}
             </span>
           </div>
@@ -772,6 +781,20 @@ export default function DealCalculator({
                     <option value="yes">Yes</option>
                   </select>
                 </div>
+                {(currentScenario.sellerStandby || 'no') === 'yes' ? (
+                  <div className="form-group">
+                    <label>Standby (Yrs)</label>
+                    <input
+                      type="number"
+                      value={currentScenario.sellerStandbyYears || DEFAULT_SELLER_STANDBY_YEARS}
+                      onChange={(e) => updateScenario('sellerStandbyYears', e.target.value)}
+                      min="1"
+                      step="1"
+                      max={currentScenario.sellerTermYears || SELLER_NOTE_TERM_YEARS}
+                      disabled={!currentScenario.sellerEnabled}
+                    />
+                  </div>
+                ) : null}
                 <div className="form-group">
                   <label>Interest Rate (%)</label>
                   <input
@@ -1003,11 +1026,17 @@ export default function DealCalculator({
           <div className="calc-result-box">
             <div className="calc-result-box-title">Total Debt Service (Annual)</div>
             <div className="calc-result-box-value">{formatMoney(analysis.totalDebtService)}</div>
+            {finCoeff.sellerStandby === 'yes' && analysis.sellerStandbyYears > 0 && analysis.remainAfterStandby > 0 ? (
+              <div className="calc-result-box-sub">After {analysis.sellerStandbyYears}yr standby: {formatMoney(analysis.totalDebtServiceAfterStandby)}</div>
+            ) : null}
           </div>
           <div className="calc-result-box">
             <div className="calc-result-box-title">Free Cash Flow (Annual)</div>
             <div className="calc-result-box-value">{formatMoney(analysis.freeCashFlow)}</div>
             <div className="calc-result-box-sub">Monthly: {formatMoney(analysis.freeCashFlow / 12)}</div>
+            {finCoeff.sellerStandby === 'yes' && analysis.sellerStandbyYears > 0 && analysis.remainAfterStandby > 0 ? (
+              <div className="calc-result-box-sub">After {analysis.sellerStandbyYears}yr standby: {formatMoney(analysis.freeCashFlowAfterStandby)}</div>
+            ) : null}
           </div>
           <div className="calc-result-box">
             <div className="calc-result-box-title">Total Owner Take-Home</div>
@@ -1155,7 +1184,7 @@ function renderFinancingBreakdown(ctx) {
   const ratePct = (ctx.sellerRate * 100).toFixed(1);
   let noteLine = '';
   if (ctx.sellerEnabled) {
-    noteLine = `Seller note (${ctx.sellerPercent}%): ${formatMoney(ctx.sellerNote)} [${ctx.sellerPaymentType}, ${ratePct}%${ctx.sellerStandby === 'yes' ? ', standby' : ''}]`;
+    noteLine = `Seller note (${ctx.sellerPercent}%): ${formatMoney(ctx.sellerNote)} [${ctx.sellerPaymentType}, ${ratePct}%${ctx.sellerStandby === 'yes' ? `, ${ctx.sellerStandbyYears || DEFAULT_SELLER_STANDBY_YEARS}yr standby` : ''}]`;
   }
   return (
     <div className="calc-financing-breakdown">

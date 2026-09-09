@@ -41,8 +41,10 @@ def req(method, path, body=None):
 proj = req("GET", f"/pages/projects/{PROJECT}")["result"]
 prod = ((proj.get("deployment_configs") or {}).get("production") or {}).get("env_vars") or {}
 current = (prod.get("VITE_API_URL") or {}).get("value")
-ext = (prod.get("VITE_EXTENSION_ID") or {}).get("value") or "fcabajkgnieehailpgdphcepimlkcnej"
+ext = (prod.get("VITE_EXTENSION_ID") or {}).get("value") or "jbklcimaiblacheagjgioaodaehcdhki"
+store = (prod.get("VITE_CHROME_STORE_URL") or {}).get("value") or f"https://chromewebstore.google.com/detail/{ext}"
 print("current VITE_API_URL:", current)
+print("current VITE_EXTENSION_ID:", ext)
 if current == API_URL:
     print("Pages VITE_API_URL already up to date; skipping redeploy")
     raise SystemExit(0)
@@ -53,11 +55,14 @@ body = {
             "env_vars": {
                 "VITE_API_URL": {"type": "plain_text", "value": API_URL},
                 "VITE_EXTENSION_ID": {"type": "plain_text", "value": ext},
+                "VITE_CHROME_STORE_URL": {"type": "plain_text", "value": store},
             }
         },
         "preview": {
             "env_vars": {
                 "VITE_API_URL": {"type": "plain_text", "value": API_URL},
+                "VITE_EXTENSION_ID": {"type": "plain_text", "value": ext},
+                "VITE_CHROME_STORE_URL": {"type": "plain_text", "value": store},
             }
         },
     }

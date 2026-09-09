@@ -8,6 +8,7 @@ import {
   matchUserBuyBoxes,
   summarizeMatchGroups
 } from './dealMatchDigestService.js';
+import { formatNearMatchReasons } from '../lib/buyBoxMatcher.js';
 import { listingMetricCells, listingMetricsTableHtml } from '../lib/listingMetrics.js';
 import { getTeamActivitySince } from './teamActivityDigestService.js';
 import { primaryTeamSavedDealId, teamActivityDetailLine } from '../lib/teamActivity.js';
@@ -15,6 +16,7 @@ import { getTodayTaskSummary } from './crmTaskService.js';
 import { getDdOverdueForToday, getRecentPortalComments } from './ddChecklistService.js';
 import { findDormantDeals } from './crmPresenceService.js';
 import { findStaleListings } from './crmStaleListing.js';
+import { buildCrmFollowUpHtml, escapeHtml } from '../lib/crmDigestHtml.js';
 
 const WEB_APP_URL = (process.env.WEB_APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
 
@@ -46,19 +48,11 @@ function sinceDate(row, { frequency, team = false } = {}) {
   return new Date(Date.now() - hoursBackForFrequency(frequency) * 60 * 60 * 1000);
 }
 
-function escapeHtml(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function truncateText(value, max) {
-  const t = String(value || '').trim();
-  if (!t) return '';
-  if (t.length <= max) return t;
-  return `${t.slice(0, max).trim()}…`;
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (s.length <= max) return s;
+  return `${s.slice(0, max).trim()}…`;
 }
 
 function dealHref(deal) {
@@ -73,27 +67,50 @@ function dealCardHtml(deal) {
   const vettrHref = dealHref(deal);
   const industry = truncateText(deal.industry, 48);
   const meta = [deal.location, industry].filter(Boolean).join(' · ');
+  const also = Array.isArray(deal.alsoMatches) && deal.alsoMatches.length
+    ? `Also matches ${deal.alsoMatches.join(', ')}`
+    : '';
+  const isNear = deal.matchKind === 'near';
+  const reasonText = formatNearMatchReasons(deal.matchReasons || []);
+  const badge = isNear
+    ? `Near match${reasonText ? ` · ${reasonText}` : ''}`
+    : (reasonText.includes('Absentee/remote') ? 'Absentee/remote' : '');
   return `<a href="${escapeHtml(vettrHref)}" style="display:block;border:1px solid #e5e5e5;border-radius:8px;padding:12px 14px;margin:8px 0;color:#111;text-decoration:none;">
     <div style="font-weight:600;">${escapeHtml(deal.name)}</div>
     ${listingMetricsTableHtml(deal, escapeHtml)}
     ${meta ? `<div style="color:#777;font-size:12px;margin-top:8px;">${escapeHtml(meta)}</div>` : ''}
+    ${badge ? `<div style="color:#666;font-size:12px;margin-top:6px;">${escapeHtml(badge)}</div>` : ''}
+    ${also ? `<div style="color:#888;font-size:12px;margin-top:2px;">${escapeHtml(also)}</div>` : ''}
   </a>`;
 }
 
-function buildDigestHtml({ grouped, team, crmLines }) {
+function buildDigestHtml({ grouped, team, crmItems }) {
   const sections = [];
 
   if (grouped?.total) {
+    const sample = grouped.groups?.[0]?.deals?.[0];
+    if (sample) {
+      console.log('[digest] listing metrics sample', {
+        name: sample.name,
+        cells: listingMetricCells(sample)
+      });
+    }
     const boxesHtml = grouped.groups.map((g) => {
+      const exactCount = g.deals.length + (g.overflow || 0);
+      const nearCount = (g.nearDeals?.length || 0) + (g.nearOverflow || 0);
       const extra = g.overflow ? `<p style="color:#666;font-size:13px;">+${g.overflow} more in this buy box</p>` : '';
-      if (g.deals?.[0]) {
-        console.log('[digest] listing metrics sample', {
-          name: g.deals[0].name,
-          cells: listingMetricCells(g.deals[0])
-        });
-      }
       const cards = (g.deals || []).map(dealCardHtml).join('');
-      return `<h3 style="margin:20px 0 8px;font-size:16px;">${escapeHtml(g.name)} (${g.deals.length + (g.overflow || 0)})</h3>${cards}${extra}`;
+      const nearExtra = g.nearOverflow
+        ? `<p style="color:#666;font-size:13px;">+${g.nearOverflow} more near matches</p>`
+        : '';
+      const nearCards = (g.nearDeals || []).map(dealCardHtml).join('');
+      const nearBlock = nearCount
+        ? `<h4 style="margin:16px 0 6px;font-size:14px;">Near matches (${nearCount})</h4>
+           <p style="color:#666;font-size:12px;margin:0 0 8px;">Outside the box by your Flexibility %, or absentee/remote (up to 20%).</p>
+           ${nearCards}${nearExtra}`
+        : '';
+      const headingCount = exactCount + nearCount;
+      return `<h3 style="margin:20px 0 8px;font-size:16px;">${escapeHtml(g.name)} (${headingCount})</h3>${cards}${extra}${nearBlock}`;
     }).join('');
     sections.push(`
       <h2 style="font-size:18px;margin:0 0 8px;">New deals matching your buy boxes</h2>
@@ -124,12 +141,8 @@ function buildDigestHtml({ grouped, team, crmLines }) {
     `);
   }
 
-  if (crmLines?.length) {
-    sections.push(`
-      <h2 style="font-size:18px;margin:24px 0 8px;">CRM follow-ups</h2>
-      <ul style="padding-left:18px;line-height:1.6;">${crmLines.join('')}</ul>
-    `);
-  }
+  const crmHtml = buildCrmFollowUpHtml(crmItems, WEB_APP_URL);
+  if (crmHtml) sections.push(crmHtml);
 
   if (!sections.length) return null;
 
@@ -154,8 +167,14 @@ function buildDigestHtml({ grouped, team, crmLines }) {
 </html>`;
 }
 
-function crmItem({ kind, title, dealName, savedDealId, html }) {
-  return { kind, title, dealName: dealName || '', savedDealId: savedDealId || null, html };
+function crmItem({ kind, title, dealName, savedDealId, extra }) {
+  return {
+    kind,
+    title,
+    dealName: dealName || '',
+    savedDealId: savedDealId || null,
+    extra: extra || ''
+  };
 }
 
 async function loadCrmItems(userId) {
@@ -183,49 +202,44 @@ async function loadCrmItems(userId) {
       title: `Approval: ${a.deal_name || 'deal'}`,
       dealName: a.deal_name,
       savedDealId: a.saved_deal_id,
-      html: `<li>Approval: ${escapeHtml(a.requester_email)} — ${escapeHtml(a.deal_name || 'deal')}${a.to_value ? ` → ${escapeHtml(a.to_value)}` : ''}</li>`
+      extra: a.requester_email || ''
     })),
     ...(tasks.overdue || []).map((t) => crmItem({
       kind: 'overdue',
       title: t.title,
       dealName: t.deal_name,
-      savedDealId: t.saved_deal_id,
-      html: `<li>Overdue: ${escapeHtml(t.title)} (${escapeHtml(t.deal_name)})</li>`
+      savedDealId: t.saved_deal_id
     })),
     ...(tasks.dueToday || []).map((t) => crmItem({
       kind: 'due_today',
       title: t.title,
       dealName: t.deal_name,
-      savedDealId: t.saved_deal_id,
-      html: `<li>Due today: ${escapeHtml(t.title)} (${escapeHtml(t.deal_name)})</li>`
+      savedDealId: t.saved_deal_id
     })),
     ...ddOverdue.map((d) => crmItem({
       kind: 'dd_overdue',
       title: `DD overdue: ${d.title}`,
       dealName: d.deal_name,
-      savedDealId: d.saved_deal_id,
-      html: `<li>DD overdue: ${escapeHtml(d.title)} (${escapeHtml(d.deal_name)})</li>`
+      savedDealId: d.saved_deal_id
     })),
     ...portalComments.map((c) => crmItem({
       kind: 'portal',
       title: `Portal comment: ${c.item_title || 'item'}`,
       dealName: c.deal_name,
-      savedDealId: c.saved_deal_id,
-      html: `<li>Portal comment: ${escapeHtml(c.item_title || 'item')} (${escapeHtml(c.deal_name)})</li>`
+      savedDealId: c.saved_deal_id
     })),
     ...staleListings.map((s) => crmItem({
       kind: 'stale',
       title: `Listing updated: ${s.name || s.deal_name || 'deal'}`,
       dealName: s.name || s.deal_name,
-      savedDealId: s.savedDealId || s.id,
-      html: `<li>Stale listing: ${escapeHtml(s.name || s.deal_name || 'deal')}</li>`
+      savedDealId: s.savedDealId || s.id
     })),
     ...dormantDeals.map((d) => crmItem({
       kind: 'dormant',
       title: `Dormant: ${d.deal_name}`,
       dealName: d.deal_name,
       savedDealId: d.saved_deal_id,
-      html: `<li>Dormant (${d.days_idle}d): ${escapeHtml(d.deal_name)}${d.progress_stage ? ` — ${escapeHtml(d.progress_stage)}` : ''}</li>`
+      extra: d.days_idle ? `${d.days_idle}d` : ''
     }))
   ];
 }
@@ -282,7 +296,6 @@ export async function sendUserDigest(userRow, {
 
   const team = includeTeam ? await getTeamActivitySince(userId, teamSince) : { headlines: [], total: 0, mentions: [], added: [], stages: [] };
   const crmItems = includeCrm ? await loadCrmItems(userId) : [];
-  const crmLines = crmItems.map((item) => item.html);
 
   const hasContent = grouped.total > 0 || team.total > 0 || crmItems.length > 0;
   if (!hasContent) {
@@ -290,7 +303,7 @@ export async function sendUserDigest(userRow, {
     return { sent: false, reason: 'empty', email: userRow.email };
   }
 
-  const html = buildDigestHtml({ grouped, team, crmLines });
+  const html = buildDigestHtml({ grouped, team, crmItems });
   const push = buildDigestNotification({ grouped, team, crmItems });
   const subjectParts = [];
   if (grouped.total) subjectParts.push(`${grouped.total} matching deal${grouped.total === 1 ? '' : 's'}`);
@@ -363,8 +376,12 @@ export async function sendUserDigest(userRow, {
         metadata: {
           total: grouped.total,
           dealDbId: push.dealDbId || null,
+          dealDbIds: push.dealDbIds || [],
           newToday: true,
-          boxes: grouped.groups.map((g) => ({ name: g.name, count: g.deals.length + (g.overflow || 0) }))
+          boxes: grouped.groups.map((g) => ({
+            name: g.name,
+            count: g.deals.length + (g.overflow || 0) + (g.nearDeals?.length || 0) + (g.nearOverflow || 0)
+          }))
         }
       }).catch((err) => console.warn('[digest] deal_match alert failed', err.message));
     }

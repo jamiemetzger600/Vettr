@@ -767,6 +767,10 @@ a {
   z-index: 1;
 }
 
+.dashboard-tab-pane[hidden] {
+  display: none !important;
+}
+
 .dashboard-tab-pane--active {
   isolation: isolate;
 }
@@ -3322,6 +3326,22 @@ button.aggregator-welcome__buybox {
 .buybox-near-matches__custom:focus {
   outline: none;
   border-color: var(--primary);
+}
+
+.buybox-near-matches__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.buybox-near-matches__check input {
+  margin-top: 2px;
+  accent-color: var(--text-secondary);
 }
 
 .modal-divider {

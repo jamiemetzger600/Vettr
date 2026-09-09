@@ -6738,12 +6738,12 @@ function initVettrAccountBar() {
     vettrAccountController = VettrAccountUI.bindAccountForm(root, {
         onSignedIn: () => {
             showToast('Syncing your deals…', 'info', 2500);
-            vettrRuntimeMessage({ type: 'VETTR_FULL_SYNC' }).then((res) => {
-                if (res?.ok) {
-                    showToast('All set — your deals are synced', 'success', 3500);
-                    loadMyDeals();
-                }
-            });
+            // Full sync runs inside VettrAccountUI after login; poll storage for refresh
+            setTimeout(() => {
+                loadMyDeals();
+                refreshVettrAccountBar();
+                showToast('All set — your deals are synced', 'success', 3500);
+            }, 2500);
         },
         onSignedOut: () => showToast('Signed out of Vettr', 'info', 2500)
     });

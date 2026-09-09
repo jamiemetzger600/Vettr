@@ -131,6 +131,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   const [tasksListSignal, setTasksListSignal] = useState(0);
   const [crmDealOpenSignal, setCrmDealOpenSignal] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
+  const [feedCountReady, setFeedCountReady] = useState(false);
   const [totalDeals, setTotalDeals] = useState(0);
   const [newTodayCount, setNewTodayCount] = useState(0);
   const [showingCount, setShowingCount] = useState(0);
@@ -419,12 +420,19 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     setTourPrepareStepId(null);
   }, []);
 
-  const handleMatchCountUpdate = (count) => setMatchCount(count);
+  const handleMatchCountUpdate = (count) => {
+    const n = Number(count);
+    const next = Number.isFinite(n) && n >= 0 ? n : 0;
+    setMatchCount(next);
+    setFeedCountReady(true);
+    console.log('[Dashboard] aggregator tab count (matches)', next);
+  };
 
   const handleDealsStatsUpdate = ({ total = 0, newToday = 0, showing = 0 }) => {
     setTotalDeals(total);
     setNewTodayCount(newToday);
     setShowingCount(showing);
+    console.log('[Dashboard] aggregator stats', { total, newToday, showing });
   };
 
   const handleFetchDeals = () => {
@@ -556,7 +564,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   }
 
   return (
-    <div className={`app-page-shell${mobileDeckActive && isMobile ? ' app-page-shell--mobile-deck' : ''}`}>
+    <div className={`app-page-shell${mobileDeckActive && isMobile && activeTab === 'aggregator' ? ' app-page-shell--mobile-deck' : ''}`}>
       {(isGuest || tourForceOpen) && (
         <GuestOnboardingTour
           autoShow={false}
@@ -591,7 +599,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
         isGuest={isGuest}
         activeTab={activeTab}
         setActiveTab={handleTabChange}
-        aggregatorCount={totalDeals}
+        aggregatorCount={feedCountReady ? matchCount : totalDeals}
         crmCount={savedDeals.length}
         crmBadgeCount={crmBadgeCount}
         compact={mobileDeckActive && isMobile && activeTab === 'aggregator'}
@@ -606,8 +614,11 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
       />
 
       <div className="dashboard-content">
-        {activeTab === 'aggregator' && (
-          <div className="dashboard-tab-pane dashboard-tab-pane--active">
+        <div
+          className={`dashboard-tab-pane${activeTab === 'aggregator' ? ' dashboard-tab-pane--active' : ''}`}
+          hidden={activeTab !== 'aggregator'}
+          aria-hidden={activeTab !== 'aggregator'}
+        >
           <DealAggregator
             tourPrepareStepId={tourPrepareStepId}
             settings={settings}
@@ -647,10 +658,10 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             persistSettings={persistSettings}
             requireSignup={requireSignup}
             initialOpenDealDbId={initialDealDbId}
+            isFeedVisible={activeTab === 'aggregator'}
             onMobileDeckChange={setMobileDeckActive}
           />
-          </div>
-        )}
+        </div>
 
         {activeTab === 'crm' && isGuest && (
           <div className="dashboard-tab-pane dashboard-tab-pane--active">

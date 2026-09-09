@@ -108,12 +108,22 @@ export async function sendGmailMessage(userId, { to, subject, text, html }) {
 
 /** Prefer the user's connected Gmail; fall back to Vettr SMTP. */
 export async function deliverUserEmail(userId, { to, subject, html, text }) {
+  let gmailErr = null;
   try {
     return await sendGmailMessage(userId, { to, subject, html, text });
   } catch (err) {
-    if (err.code !== 'google_not_connected' && err.code !== 'reconnect_google') {
-      console.warn('[email] gmail send failed, trying SMTP', err.message);
-    }
+    gmailErr = err;
+    console.warn('[email] gmail send failed, trying SMTP', {
+      userId,
+      code: err.code,
+      message: err.message
+    });
   }
-  return sendEmail({ to, subject, html });
+  const smtp = await sendEmail({ to, subject, html });
+  if (smtp?.sent) return smtp;
+  return {
+    sent: false,
+    reason: gmailErr?.code || smtp?.reason || 'not_delivered',
+    message: gmailErr?.message || smtp?.message || 'Email was not sent'
+  };
 }

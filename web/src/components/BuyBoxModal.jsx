@@ -25,7 +25,8 @@ const DEFAULT_BUYBOX = {
   targetCOC: null,
   targetPayback: null,
   minBuyerSalary: null,
-  includeNearMatchesPercent: 0
+  includeNearMatchesPercent: 0,
+  includeAbsenteeRemoteNearMatches: false
 };
 
 function statesArrayToCommaInput(arr) {
@@ -230,7 +231,8 @@ export default function BuyBoxModal({
         targetCOC: parseNumberField(form.targetCOC),
         targetPayback: parseNumberField(form.targetPayback),
         minBuyerSalary: parseNumberField(form.minBuyerSalary),
-        includeNearMatchesPercent: Number(form.includeNearMatchesPercent) || 0
+        includeNearMatchesPercent: Number(form.includeNearMatchesPercent) || 0,
+        includeAbsenteeRemoteNearMatches: Boolean(form.includeAbsenteeRemoteNearMatches)
       };
 
       const { buyBoxes, activeBuyBoxIndex } = normalizeBuyBoxesState(settings);
@@ -417,7 +419,7 @@ export default function BuyBoxModal({
         <div className="buybox-near-matches">
           <h3 className="buybox-near-matches__title">Include near matches</h3>
           <p className="buybox-near-matches__desc">
-            Show deals that are slightly over your maximums (or under your minimums) so you don’t miss listings that might negotiate. For example, with 10%, a $1M max price also shows deals up to $1.1M.
+            Show deals that are slightly over your maximums (or under your minimums) so you don’t miss listings that might negotiate. For example, with 10%, a $1M max price also shows deals up to $1.1M. Absentee/remote can be included even when Flexibility is off.
           </p>
           <label className="form-group buybox-near-matches__field">
             <span className="buybox-near-matches__label">Flexibility</span>
@@ -444,6 +446,14 @@ export default function BuyBoxModal({
                 aria-label="Custom flexibility percent"
               />
             )}
+          </label>
+          <label className="buybox-near-matches__check">
+            <input
+              type="checkbox"
+              checked={Boolean(form.includeAbsenteeRemoteNearMatches)}
+              onChange={(e) => updateField('includeAbsenteeRemoteNearMatches', e.target.checked)}
+            />
+            <span>Include absentee / remote listings as near matches (up to 20% outside your limits)</span>
           </label>
         </div>
         </div>

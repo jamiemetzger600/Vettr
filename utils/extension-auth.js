@@ -45,7 +45,7 @@
 
   function clearSession() {
     return new Promise(function (resolve) {
-      chrome.storage.local.remove(['vettrAuthToken', 'vettrUserEmail'], resolve);
+      chrome.storage.local.remove(['vettrAuthToken', 'vettrUserEmail', 'vettrTeamId'], resolve);
     });
   }
 

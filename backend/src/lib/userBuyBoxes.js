@@ -77,7 +77,8 @@ export function emptyBuyBoxCriteria() {
     targetCOC: null,
     targetPayback: null,
     minBuyerSalary: null,
-    includeNearMatchesPercent: 0
+    includeNearMatchesPercent: 0,
+    includeAbsenteeRemoteNearMatches: false
   };
 }
 

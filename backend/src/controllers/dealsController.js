@@ -119,6 +119,25 @@ export const saveDeal = async (req, res) => {
   }
 
   let teamId = teamIdRaw ? Number(teamIdRaw) : null;
+  // Extension saves often omit teamId; if the user has exactly one team, land there
+  // so deals show in the team CRM Inbox (matches typical Vettr workspace).
+  if (!teamId && (sourceType === 'chrome_extension' || source === 'chrome_extension')) {
+    const sole = await pool.query(
+      `SELECT tm.team_id
+       FROM team_members tm
+       WHERE tm.user_id = $1 AND tm.status = 'active'
+       ORDER BY tm.team_id ASC
+       LIMIT 2`,
+      [req.user.userId]
+    );
+    if (sole.rows.length === 1) {
+      teamId = Number(sole.rows[0].team_id);
+      console.log('[deals] chrome_extension save → sole team', {
+        userId: req.user.userId,
+        teamId
+      });
+    }
+  }
   if (teamId) {
     const membership = await getMembership(req.user.userId, teamId);
     if (!membership || (membership.role !== 'admin' && membership.role !== 'member')) {

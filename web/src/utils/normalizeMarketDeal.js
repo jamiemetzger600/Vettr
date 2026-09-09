@@ -285,7 +285,7 @@ export async function fetchMarketDealByDbId(dbId, signal) {
  */
 export async function fetchMarketDealsStats(signal) {
   const url = `${API_BASE_URL}/market-deals/stats`;
-  const res = await fetch(url, { signal, credentials: 'include' });
+  const res = await fetch(url, { signal, credentials: 'include', headers: buildAuthHeaders() });
   if (!res.ok) return null;
   return res.json();
 }

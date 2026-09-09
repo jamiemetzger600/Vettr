@@ -55,16 +55,115 @@ export function dealMatchesBuyBox(deal, buyBox) {
   return true;
 }
 
+/** Absentee/remote near-matches still must be within this slack of numeric limits. */
+export const ABSENTEE_REMOTE_NEAR_PERCENT = 20;
+
+export function clampNearMatchPercent(pct) {
+  const n = Number(pct);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(100, n);
+}
+
+/** True when listing is tagged absentee, remote, or relocatable (not an explicit No). */
+export function isAbsenteeRemoteDeal(deal) {
+  const raw = String(deal?.remote || deal?.remoteRelocatable || '').trim().toLowerCase();
+  if (!raw) return false;
+  if (/^(no|n|false|0)$/.test(raw)) return false;
+  if (/\bno\b/.test(raw) && !/\b(yes|true|absentee|remote|relocatable)\b/.test(raw)) return false;
+  return /yes|true|absentee|remote|relocatable|owner.?absen/.test(raw);
+}
+
+function overshootMax(dealVal, limit) {
+  if (limit == null || dealVal == null) return 0;
+  const value = Number(dealVal);
+  const cap = Number(limit);
+  if (!Number.isFinite(value) || !Number.isFinite(cap) || cap === 0 || value <= cap) return 0;
+  return ((value / cap) - 1) * 100;
+}
+
+function undershootMin(dealVal, limit) {
+  if (limit == null || dealVal == null) return 0;
+  const value = Number(dealVal);
+  const floor = Number(limit);
+  if (!Number.isFinite(value) || !Number.isFinite(floor) || floor === 0 || value >= floor) return 0;
+  return (1 - (value / floor)) * 100;
+}
+
+function thresholdOvershootReasons(deal, buyBox) {
+  const reasons = [];
+  const push = (field, pct, direction) => {
+    if (pct <= 0) return;
+    reasons.push({ type: 'threshold', field, direction, pct });
+  };
+  push('price', undershootMin(deal.askingPrice, buyBox.minPrice), 'under');
+  push('price', overshootMax(deal.askingPrice, buyBox.maxPrice), 'over');
+  push('profit', undershootMin(deal.ebitda, buyBox.minEbitda), 'under');
+  push('profit', overshootMax(deal.ebitda, buyBox.maxEbitda), 'over');
+  push('revenue', undershootMin(deal.revenue, buyBox.minRevenue), 'under');
+  push('revenue', overshootMax(deal.revenue, buyBox.maxRevenue), 'over');
+  if (buyBox.revenueMultiple != null && deal.revenue && deal.askingPrice) {
+    push('multiple', overshootMax(deal.askingPrice / deal.revenue, buyBox.revenueMultiple), 'over');
+  }
+  return reasons;
+}
+
+export function formatNearMatchReasons(reasons) {
+  const parts = [];
+  for (const reason of reasons || []) {
+    if (reason.type === 'absentee_remote') {
+      parts.push('Absentee/remote');
+      continue;
+    }
+    if (reason.type !== 'threshold') continue;
+    const rounded = Math.max(1, Math.round(reason.pct));
+    const dir = reason.direction === 'under' ? 'under min' : 'over max';
+    parts.push(`${rounded}% ${dir} ${reason.field}`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * Exact = inside the box with no slack.
+ * Near = fails exact, but (flexibility 5–20%+) OR (absentee/remote within 20%).
+ */
+export function classifyBuyBoxMatch(deal, buyBox) {
+  if (!buyBox) return { kind: 'exact', reasons: [] };
+
+  const pct = clampNearMatchPercent(buyBox.includeNearMatchesPercent);
+  const includeRemote = buyBox.includeAbsenteeRemoteNearMatches === true;
+  const strictBox = { ...buyBox, includeNearMatchesPercent: 0 };
+
+  if (dealMatchesBuyBox(deal, strictBox)) {
+    const reasons = isAbsenteeRemoteDeal(deal) ? [{ type: 'absentee_remote' }] : [];
+    return { kind: 'exact', reasons };
+  }
+
+  const numericOk = pct > 0 && dealMatchesBuyBox(deal, { ...buyBox, includeNearMatchesPercent: pct });
+  const remotePct = Math.max(pct, ABSENTEE_REMOTE_NEAR_PERCENT);
+  const remoteOk = includeRemote
+    && isAbsenteeRemoteDeal(deal)
+    && dealMatchesBuyBox(deal, { ...buyBox, includeNearMatchesPercent: remotePct });
+
+  if (!numericOk && !remoteOk) return { kind: 'none', reasons: [] };
+
+  const reasons = thresholdOvershootReasons(deal, buyBox);
+  if (isAbsenteeRemoteDeal(deal)) reasons.push({ type: 'absentee_remote' });
+  return { kind: 'near', reasons };
+}
+
 /** Map a market_deals row onto the matcher deal shape. */
 export function marketRowToMatchDeal(row) {
   const industries = row?.industries;
   let industry = '';
-  if (Array.isArray(industries)) industry = industries.filter(Boolean).join(' ');
+  if (Array.isArray(industries)) industry = industries.filter(Boolean).join(', ');
   else if (typeof industries === 'string') industry = industries;
 
   const asking = row?.asking_price != null ? Number(row.asking_price) : null;
   const revenue = row?.annual_revenue != null ? Number(row.annual_revenue) : null;
   const ebitda = row?.annual_profit != null ? Number(row.annual_profit) : null;
+  const profitMultiple = Number.isFinite(asking) && Number.isFinite(ebitda) && ebitda
+    ? asking / ebitda
+    : null;
 
   return {
     id: row?.id,
@@ -73,8 +172,10 @@ export function marketRowToMatchDeal(row) {
     askingPrice: Number.isFinite(asking) ? asking : null,
     revenue: Number.isFinite(revenue) ? revenue : null,
     ebitda: Number.isFinite(ebitda) ? ebitda : null,
+    profitMultiple: Number.isFinite(profitMultiple) ? profitMultiple : null,
     state: row?.state || '',
     industry,
+    remote: row?.remote_relocatable || '',
     location: [row?.city, row?.state].filter(Boolean).join(', '),
     firstSeenAt: row?.first_seen_at || null
   };

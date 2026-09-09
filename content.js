@@ -3497,14 +3497,24 @@ function bindVettrAccountControls() {
     linkedEl.setAttribute('data-vettr-linked', '');
     linkedEl.style.display = 'none';
     linkedEl.style.marginBottom = '12px';
-    linkedEl.innerHTML = '<span style="color:#15803d;font-size:calc(12px * var(--font-scale));">✓ Synced as <strong data-vettr-email></strong></span>';
+    linkedEl.innerHTML =
+      '<span style="color:#15803d;font-size:calc(12px * var(--font-scale));">✓ Synced as <strong data-vettr-email></strong></span>' +
+      '<p data-vettr-last-sync style="display:none;margin:6px 0 0;font-size:calc(11px * var(--font-scale));color:#64748b;"></p>';
     parent.insertBefore(linkedEl, signinBlock);
+  } else if (!linkedEl.querySelector('[data-vettr-last-sync]')) {
+    const syncLine = document.createElement('p');
+    syncLine.setAttribute('data-vettr-last-sync', '');
+    syncLine.style.display = 'none';
+    syncLine.style.margin = '6px 0 0';
+    syncLine.style.fontSize = 'calc(11px * var(--font-scale))';
+    syncLine.style.color = '#64748b';
+    linkedEl.appendChild(syncLine);
   }
 
   VettrAccountUI.bindAccountForm(parent, {
     compactLinked: true,
     onSignedIn: () => {
-      if (statusEl) statusEl.textContent = 'My Deals sync is on.';
+      if (statusEl) statusEl.textContent = 'Syncing My Deals…';
     },
     onSignedOut: () => {
       if (statusEl) statusEl.textContent = 'Sign in to sync My Deals with Vettr.';

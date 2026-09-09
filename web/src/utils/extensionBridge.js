@@ -44,7 +44,11 @@ export function pushSessionToChromeExtension(accessToken) {
         token: accessToken,
         apiBaseUrl,
         webAppUrl: typeof window !== 'undefined' ? window.location.origin : '',
-        email: typeof window !== 'undefined' ? (window.__vettrUserEmail || '') : ''
+        email: typeof window !== 'undefined' ? (window.__vettrUserEmail || '') : '',
+        teamId:
+          typeof window !== 'undefined' && window.__vettrSaveTeamId
+            ? Number(window.__vettrSaveTeamId)
+            : undefined
       },
       () => {
         void chromeApi.runtime.lastError;
