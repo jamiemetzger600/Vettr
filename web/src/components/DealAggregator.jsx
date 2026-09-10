@@ -45,6 +45,12 @@ import {
   listingAgeTitle,
   profitMultipleTier,
 } from '../utils/dealCardDisplay';
+import {
+  hiddenDealIdToDbId,
+  hiddenListingCount,
+  hiddenStorageTokensForDeal,
+  isDealHidden,
+} from '../utils/hiddenDeals';
 
 const PER_PAGE = 50;
 const MAX_SEARCH_KEYWORDS = 8;
@@ -82,7 +88,44 @@ const DEFAULT_VISIBLE_COLUMNS = Object.fromEntries(
 );
 const DEFAULT_COLUMN_ORDER = Object.keys(COLUMN_CONFIG);
 const COLUMN_ORDER_STORAGE_KEY = 'vettr_column_order';
+const DEAL_VIEW_STYLE_STORAGE_KEY = 'vettr_aggregator_view_style';
+const DEAL_VIEW_STYLES = new Set(['table', 'card', 'inbox']);
 const DEFAULT_SORT = [{ field: 'date', direction: 'desc' }];
+
+function isDealViewStyle(value) {
+  return DEAL_VIEW_STYLES.has(value);
+}
+
+function loadStoredDealViewStyle() {
+  try {
+    const saved = localStorage.getItem(DEAL_VIEW_STYLE_STORAGE_KEY);
+    return isDealViewStyle(saved) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistStoredDealViewStyle(style) {
+  if (!isDealViewStyle(style)) return;
+  try {
+    localStorage.setItem(DEAL_VIEW_STYLE_STORAGE_KEY, style);
+  } catch (err) {
+    console.warn('[DealAggregator] view style local save failed', err);
+  }
+}
+
+function resolveDealViewStyle(settingsStyle) {
+  const stored = loadStoredDealViewStyle();
+  if (stored) return stored;
+  if (isDealViewStyle(settingsStyle)) return settingsStyle;
+  return 'table';
+}
+
+function mobileModeFromViewStyle(style) {
+  if (style === 'inbox') return 'inbox';
+  if (style === 'card') return 'card';
+  return 'table';
+}
 
 /** First direction when adding a column via Shift+click (numeric/date: high/newest first). */
 function defaultDirectionForNewSortField(field) {
@@ -153,50 +196,6 @@ function getPaginationPages(currentPage, totalPages) {
   if (right < totalPages - 1) pages.push('…');
   if (totalPages > 1) pages.push(totalPages);
   return pages;
-}
-
-/** Stored in hidden_deal_ids for market rows; maps 1:1 to market_deals.id (PK). */
-function marketDealHiddenToken(dbId) {
-  const n = Number(dbId);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return `md:${n}`;
-}
-
-/**
- * Map a stored hidden id to market_deals.id for exclude_ids.
- * Supports md:<pk> and plain numeric legacy entries. Never guesses PK from composite deal.id
- * (trailing digits are often source_id, not the DB row).
- */
-function hiddenDealIdToDbId(hiddenId) {
-  if (hiddenId == null) return null;
-  if (typeof hiddenId === 'number' && Number.isFinite(hiddenId) && hiddenId > 0) return hiddenId;
-  const s = String(hiddenId);
-  if (s.startsWith('md:')) {
-    const n = Number(s.slice(3));
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-  return null;
-}
-
-function isDealHidden(deal, hiddenDealIds) {
-  if (!hiddenDealIds || hiddenDealIds.length === 0) return false;
-  if (hiddenDealIds.includes(deal.id)) return true;
-  const md = marketDealHiddenToken(deal.dbId);
-  return Boolean(md && hiddenDealIds.includes(md));
-}
-
-/** One list entry per hidden deal for new hides (prefer stable DB PK when present). */
-function hiddenStorageTokenForDeal(deal) {
-  return marketDealHiddenToken(deal.dbId) || deal.id;
-}
-
-/** Tokens to remove on unhide (covers legacy composite-only rows). */
-function hiddenStorageTokensForDeal(deal) {
-  const tokens = new Set();
-  if (deal.id != null && deal.id !== '') tokens.add(deal.id);
-  const md = marketDealHiddenToken(deal.dbId);
-  if (md) tokens.add(md);
-  return tokens;
 }
 
 /** Listing keys used to match market deals ↔ saved rows (deal_id and market_deals.id). */
@@ -498,8 +497,6 @@ export default function DealAggregator({
   onDealsStatsUpdate,
   onSaveDeal,
   onOpenVettrCrm = null,
-  preferredViewStyle = null,
-  onPreferredViewStyleConsumed = null,
   onSettingsUpdate,
   onConfigureBuyBox,
   feedSource = 'airtable',
@@ -569,7 +566,9 @@ export default function DealAggregator({
   const [dropTargetCol, setDropTargetCol] = useState(null);
   const [showColumnsPanel, setShowColumnsPanel] = useState(false);
   const [showExcludeSection, setShowExcludeSection] = useState(false);
-  const [dealViewStyle, setDealViewStyle] = useState(settings?.dealViewStyle || 'table');
+  const [dealViewStyle, setDealViewStyle] = useState(() => resolveDealViewStyle(settings?.dealViewStyle));
+  const viewStyleHydratedRef = useRef(false);
+  const hiddenHydratedRef = useRef(false);
   const [customFlexibilityInput, setCustomFlexibilityInput] = useState('');
   /** @type {[{ message: string, showCrmCta?: boolean } | null, Function]} */
   const [saveToast, setSaveToast] = useState(null);
@@ -624,7 +623,9 @@ export default function DealAggregator({
   const isMobileViewport = useIsMobile();
   const { isPortrait } = useOrientation();
   /** Mobile feed layout: swipe deck, card grid, or table. Focus is parked (SHOW_MOBILE_FOCUS). */
-  const [mobileFeedMode, setMobileFeedMode] = useState('table');
+  const [mobileFeedMode, setMobileFeedMode] = useState(() =>
+    mobileModeFromViewStyle(resolveDealViewStyle(settings?.dealViewStyle))
+  );
   const [showMobileFeedFilters, setShowMobileFeedFilters] = useState(false);
   // Default to all buy-box matches so the feed is not empty on load when nothing
   // was updated today. Users can still switch to "Today's New" in the toolbar.
@@ -803,6 +804,7 @@ export default function DealAggregator({
       return;
     }
     setMobileFeedMode(mode);
+    const nextView = mode === 'inbox' ? 'inbox' : mode === 'card' ? 'card' : 'table';
     if (mode === 'card') {
       setDealViewStyle('card');
       setCardColumnsPerRow(1);
@@ -811,8 +813,16 @@ export default function DealAggregator({
     } else if (mode === 'inbox') {
       setDealViewStyle('inbox');
     }
+    persistStoredDealViewStyle(nextView);
+    saveSettings({ dealViewStyle: nextView }).then(() => {
+      console.log('[DealAggregator] mobile dealViewStyle →', nextView);
+      if (typeof onSettingsUpdate === 'function') return onSettingsUpdate();
+      return undefined;
+    }).catch((err) => {
+      console.warn('[DealAggregator] mobile view persist failed', err?.message || err);
+    });
     setCurrentPage(1);
-  }, []);
+  }, [saveSettings, onSettingsUpdate]);
 
   const handleDeckScopeChange = useCallback((scope) => {
     setDeckScope(scope);
@@ -843,10 +853,26 @@ export default function DealAggregator({
     }
     setHiddenDealIds((prev) => {
       if (hidingIdsRef.current.size > 0) return prev;
-      return settings?.hiddenDealIds || [];
+      const incoming = Array.isArray(settings?.hiddenDealIds) ? settings.hiddenDealIds : [];
+      if (!hiddenHydratedRef.current) {
+        hiddenHydratedRef.current = true;
+        console.log('[DealAggregator] hydrate hiddenDealIds', incoming.length);
+        return incoming;
+      }
+      return prev;
     });
     setDealPanelPosition(settings?.preferences?.dealPanelPosition || 'center');
-    setDealViewStyle(settings?.dealViewStyle || 'table');
+    if (!viewStyleHydratedRef.current) {
+      viewStyleHydratedRef.current = true;
+      const nextView = resolveDealViewStyle(settings?.dealViewStyle);
+      setDealViewStyle(nextView);
+      setMobileFeedMode(mobileModeFromViewStyle(nextView));
+      persistStoredDealViewStyle(nextView);
+      console.log('[DealAggregator] hydrate dealViewStyle', nextView, {
+        account: settings?.dealViewStyle || null,
+        stored: loadStoredDealViewStyle()
+      });
+    }
     const cols = settings?.preferences?.cardColumnsPerRow;
     setCardColumnsPerRow(CARD_COLUMNS_OPTIONS.includes(cols) ? cols : DEFAULT_CARD_COLUMNS);
 
@@ -995,11 +1021,11 @@ export default function DealAggregator({
         }
       }
     } else if (filterNewToday) {
-      firstSeenAfter = startOfLocalDayISO();
+      firstSeenAfter = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     }
 
     const params = buildMarketDealsParams({
-      page: pageOverride ?? currentPage,
+      page: pageOverride ?? ((matchFilterMode || filterNewToday) ? 1 : currentPage),
       perPage: PER_PAGE,
       search: matchFilterMode ? '' : feedSearchString,
       buyBox: (poolNewMode || matchFilterMode) ? null : (showHiddenDeals ? null : buyBox),
@@ -1007,7 +1033,7 @@ export default function DealAggregator({
       sortSpec,
       sort: primarySortCol,
       order: primary.direction,
-      hiddenDealDbIds: (showHiddenDeals || matchFilterMode) ? [] : hiddenDbIds,
+      hiddenDealDbIds: showHiddenDeals ? [] : hiddenDbIds,
       showHidden: showHiddenDeals,
       excludeKeywords: matchFilterMode ? [] : excludeKw,
       sources: matchFilterMode ? null : sourceFilter,
@@ -1018,9 +1044,9 @@ export default function DealAggregator({
     });
 
     if (matchFilterMode) {
-      console.log('[DealAggregator] match alert filter', { count: matchFilterIds.length });
+      console.log('[DealAggregator] match alert filter', { count: matchFilterIds.length, keepView: true });
     } else if (filterNewToday) {
-      console.log('[DealAggregator] newToday filter', { firstSeenAfter });
+      console.log('[DealAggregator] newToday filter', { firstSeenAfter, windowHours: 24 });
     }
 
     if (
@@ -1109,24 +1135,6 @@ export default function DealAggregator({
       alert(`Failed to save filter settings: ${error.message}`);
     }
   };
-
-  /** Parent hint (e.g. CRM → Inbox) applies once then clears. */
-  useEffect(() => {
-    if (!preferredViewStyle) return;
-    if (preferredViewStyle !== 'table' && preferredViewStyle !== 'card' && preferredViewStyle !== 'inbox') {
-      onPreferredViewStyleConsumed?.();
-      return;
-    }
-    console.log('[DealAggregator] applying preferredViewStyle', preferredViewStyle);
-    setDealViewStyle(preferredViewStyle);
-    if (isMobileViewport) {
-      setMobileFeedMode(preferredViewStyle === 'inbox' ? 'inbox' : preferredViewStyle);
-    }
-    updateUserFilterSettings({ dealViewStyle: preferredViewStyle }).catch((err) => {
-      console.warn('[DealAggregator] preferredViewStyle persist failed', err?.message || err);
-    });
-    onPreferredViewStyleConsumed?.();
-  }, [preferredViewStyle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistActiveSlotFeed = async (patch) => {
     const currentSettings = settingsRef.current;
@@ -1392,14 +1400,16 @@ export default function DealAggregator({
       list = deals.filter((d) => !isDealHidden(d, hiddenDealIds));
       const leaked = deals.filter((d) => isDealHidden(d, hiddenDealIds));
       if (leaked.length > 0) {
-        console.warn('[DealAggregator] Matches filter dropped hidden deals', leaked.length);
+        console.warn('[DealAggregator] dropped hidden deals from feed', leaked.length, {
+          matchFilterMode
+        });
       }
     }
-    if (hideSavedDealsInFeed && !showHiddenDeals) {
+    if (!matchFilterMode && hideSavedDealsInFeed && !showHiddenDeals) {
       list = list.filter((d) => !isDealInSavedList(d, savedDealIdSet));
     }
     return list;
-  }, [deals, hiddenDealIds, showHiddenDeals, hideSavedDealsInFeed, savedDealIdSet]);
+  }, [deals, hiddenDealIds, showHiddenDeals, hideSavedDealsInFeed, savedDealIdSet, matchFilterMode]);
 
   /** Inbox triage: if this Matches page is empty after dismisses, advance. */
   useEffect(() => {
@@ -1811,19 +1821,20 @@ export default function DealAggregator({
     const animate = opts.animate !== false;
     const hideKey = deal?.id != null ? String(deal.id) : '';
     const tokenSet = hiddenStorageTokensForDeal(deal);
-    const primary = hiddenStorageTokenForDeal(deal);
     const currentHiddenIds = hiddenDealIdsRef.current;
-    const currentlyHidden = [...tokenSet].some((t) => currentHiddenIds.includes(t));
+    const currentlyHidden = isDealHidden(deal, currentHiddenIds)
+      || [...tokenSet].some((t) => currentHiddenIds.includes(t));
     if (!currentlyHidden && hideKey && hidingIdsRef.current.has(hideKey)) {
       console.log('[DealAggregator] hide ignored — already collapsing', hideKey);
       return;
     }
     if (!currentlyHidden && hideKey) hidingIdsRef.current.add(hideKey);
     const nextHiddenIds = currentlyHidden
-      ? currentHiddenIds.filter((id) => !tokenSet.has(id))
-      : currentHiddenIds.includes(primary)
-        ? currentHiddenIds
-        : [...currentHiddenIds, primary];
+      ? currentHiddenIds.filter((id) => !tokenSet.has(String(id)))
+      : [...new Set([
+        ...currentHiddenIds,
+        ...[...tokenSet].filter((t) => t.startsWith('md:') || t.startsWith('fp:') || t.startsWith('fs:') || t.startsWith('url:'))
+      ])];
     hiddenDealIdsRef.current = nextHiddenIds;
     const previousHiddenIds = currentHiddenIds;
     const previousSelectedDeal = selectedDeal;
@@ -1843,7 +1854,9 @@ export default function DealAggregator({
     );
     console.log('[DealAggregator] hide listing', {
       dealId: deal?.id,
+      dbId: deal?.dbId,
       currentlyHidden,
+      tokenCount: nextHiddenIds.length,
       shouldAnimate,
       view: dealViewStyle
     });
@@ -1921,6 +1934,7 @@ export default function DealAggregator({
     if (style === dealViewStyle) return;
     const previous = dealViewStyle;
     setDealViewStyle(style);
+    persistStoredDealViewStyle(style);
     if (isMobileViewport) {
       setMobileFeedMode(style === 'inbox' ? 'inbox' : style);
     }
@@ -1932,6 +1946,7 @@ export default function DealAggregator({
       console.log('[DealAggregator] dealViewStyle →', style);
     } catch (error) {
       setDealViewStyle(previous);
+      persistStoredDealViewStyle(previous);
       alert('Failed to save view preference: ' + error.message);
     }
   };
@@ -2125,7 +2140,7 @@ export default function DealAggregator({
       {filterNewToday && !poolNewMode && !matchFilterMode && (
         <div className="pool-new-deals-banner" role="region" aria-label="New matches today">
           <p>
-            Showing new buy-box matches from today
+            Showing new buy-box matches from the last 24 hours
             {totalFromAPI > 0 ? ` (${totalFromAPI.toLocaleString()})` : ''}.
           </p>
           {typeof onClearNewToday === 'function' ? (
@@ -2227,7 +2242,7 @@ export default function DealAggregator({
               ) : null}
             </div>
             <div className="aggregator-stat">Page {currentPage} of {totalPages || 1}</div>
-            <button type="button" className={`aggregator-stat aggregator-stat-btn ${viewMode === 'hidden' ? 'active' : ''}`} onClick={handleShowHidden}>Hidden: {hiddenDealIds.length.toLocaleString()}</button>
+            <button type="button" className={`aggregator-stat aggregator-stat-btn ${viewMode === 'hidden' ? 'active' : ''}`} onClick={handleShowHidden}>Hidden: {hiddenListingCount(hiddenDealIds).toLocaleString()}</button>
           </div>
         </div>
         <div className="aggregator-welcome__actions" role="toolbar" aria-label="Deal list actions">
@@ -2400,7 +2415,7 @@ export default function DealAggregator({
                   setViewMode(checked ? 'hidden' : 'matches');
                 }}
               />
-              <span>{showHiddenDeals ? 'Showing Hidden Deals' : `Show Hidden (${hiddenDealIds.length})`}</span>
+              <span>{showHiddenDeals ? 'Showing Hidden Deals' : `Show Hidden (${hiddenListingCount(hiddenDealIds)})`}</span>
             </label>
             <label className="flexibility-label" data-tour="flexibility">
               <span className="flexibility-label-text">Flexibility</span>

@@ -173,6 +173,7 @@ export function marketRowToMatchDeal(row) {
     revenue: Number.isFinite(revenue) ? revenue : null,
     ebitda: Number.isFinite(ebitda) ? ebitda : null,
     profitMultiple: Number.isFinite(profitMultiple) ? profitMultiple : null,
+    city: row?.city || '',
     state: row?.state || '',
     industry,
     remote: row?.remote_relocatable || '',

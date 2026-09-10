@@ -59,6 +59,83 @@ export async function repointSavedDealsForUrlDuplicates(client, source = null) {
   return result.rowCount ?? 0;
 }
 
+async function remountHiddenDealIds(client, remapSql, params = []) {
+  const result = await client.query(
+    `WITH remap AS (
+       ${remapSql}
+     )
+     UPDATE user_settings us
+     SET hidden_deal_ids = (
+       SELECT COALESCE(jsonb_agg(to_jsonb(x.token)), '[]'::jsonb)
+       FROM (
+         SELECT DISTINCT COALESCE('md:' || r.keep_id::text, t.token) AS token
+         FROM jsonb_array_elements_text(COALESCE(us.hidden_deal_ids, '[]'::jsonb)) AS t(token)
+         LEFT JOIN remap r
+           ON t.token = 'md:' || r.dup_id::text
+          AND r.dup_id IS NOT NULL
+          AND r.dup_id <> r.keep_id
+       ) x
+     )
+     WHERE EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements_text(COALESCE(us.hidden_deal_ids, '[]'::jsonb)) t
+       JOIN remap r ON t.token = 'md:' || r.dup_id::text AND r.dup_id <> r.keep_id
+     )`,
+    params
+  );
+  return result.rowCount ?? 0;
+}
+
+export async function remountHiddenDealIdsForSourceIdDuplicates(client, source = null) {
+  const sourceFilter = source ? 'WHERE md.source = $1' : '';
+  const params = source ? [source] : [];
+  return remountHiddenDealIds(
+    client,
+    `SELECT md.id AS dup_id,
+       MAX(md.id) OVER (PARTITION BY md.source, md.source_id) AS keep_id
+     FROM market_deals md
+     ${sourceFilter}`,
+    params
+  );
+}
+
+export async function remountHiddenDealIdsForUrlDuplicates(client, source = null) {
+  const sourceFilter = source ? 'AND md.source = $1' : '';
+  const params = source ? [source] : [];
+  return remountHiddenDealIds(
+    client,
+    `SELECT md.id AS dup_id,
+       MAX(md.id) OVER (PARTITION BY ${urlPartitionExpr('md')}) AS keep_id
+     FROM market_deals md
+     WHERE md.listing_url IS NOT NULL AND trim(md.listing_url) <> ''
+     ${sourceFilter}`,
+    params
+  );
+}
+
+export async function remountHiddenDealIdsForFingerprintDuplicates(client, source = null) {
+  const fp = listingFingerprintSql('md');
+  const sourceFilter = source ? 'AND md.source = $1' : '';
+  const params = source ? [source] : [];
+  return remountHiddenDealIds(
+    client,
+    `SELECT md.id AS dup_id,
+       FIRST_VALUE(md.id) OVER (
+         PARTITION BY (${fp})
+         ORDER BY ${fingerprintKeepOrderSql('md')}
+       ) AS keep_id
+     FROM market_deals md
+     LEFT JOIN (
+       SELECT DISTINCT market_deal_id
+       FROM saved_deals
+       WHERE market_deal_id IS NOT NULL
+     ) saved ON saved.market_deal_id = md.id
+     WHERE (${fp}) IS NOT NULL
+     ${sourceFilter}`,
+    params
+  );
+}
+
 export async function deleteSourceIdDuplicateMarketDeals(client, source = null) {
   const sourceFilter = source ? 'AND source = $1' : '';
   const params = source ? [source] : [];
@@ -158,22 +235,32 @@ export async function deleteFingerprintDuplicateMarketDeals(client, source = nul
 
 /** Full FK-safe dedupe pass. Idempotent when already clean. */
 export async function dedupeMarketDeals(client, { source = null } = {}) {
+  const hiddenSource = await remountHiddenDealIdsForSourceIdDuplicates(client, source);
   const repointedSource = await repointSavedDealsForSourceIdDuplicates(client, source);
   const deletedSource = await deleteSourceIdDuplicateMarketDeals(client, source);
+  const hiddenUrl = await remountHiddenDealIdsForUrlDuplicates(client, source);
   const repointedUrl = await repointSavedDealsForUrlDuplicates(client, source);
   const deletedUrl = await deleteUrlDuplicateMarketDeals(client, source);
+  const hiddenFp = await remountHiddenDealIdsForFingerprintDuplicates(client, source);
   const repointedFp = await repointSavedDealsForFingerprintDuplicates(client, source);
   const deletedFp = await deleteFingerprintDuplicateMarketDeals(client, source);
   const summary = {
+    hiddenSource,
     repointedSource,
     deletedSource,
+    hiddenUrl,
     repointedUrl,
     deletedUrl,
+    hiddenFp,
     repointedFp,
     deletedFp,
     totalDeleted: deletedSource + deletedUrl + deletedFp
   };
-  if (summary.totalDeleted > 0 || repointedSource + repointedUrl + repointedFp > 0) {
+  if (
+    summary.totalDeleted > 0
+    || repointedSource + repointedUrl + repointedFp > 0
+    || hiddenSource + hiddenUrl + hiddenFp > 0
+  ) {
     console.log('[marketDealsDedupe]', summary);
   }
   return summary;

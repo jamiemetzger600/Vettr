@@ -48,6 +48,16 @@ assert(/Maui Dental/.test(moved.title), `moved title names the deal: ${moved.tit
 assert(/requested NDA/i.test(moved.title), `moved title names the action: ${moved.title}`);
 assert(!/moved .* in the pipeline/i.test(moved.title), `no generic pipeline copy: ${moved.title}`);
 
+const overdueWithMatches = buildDigestNotification({
+  grouped,
+  team: {},
+  crmItems: [
+    { kind: 'overdue', title: 'Call broker', dealName: 'HVAC Shop', savedDealId: 9 }
+  ]
+});
+assert(overdueWithMatches.alertType === 'task_due', `overdue wins push: ${overdueWithMatches.alertType}`);
+assert(Array.isArray(overdueWithMatches.dealDbIds) && overdueWithMatches.dealDbIds.length === 2, `match ids still attached: ${overdueWithMatches.dealDbIds}`);
+
 const passed = buildDigestNotification({
   grouped: { groups: [], total: 0 },
   team: {

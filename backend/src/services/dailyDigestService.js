@@ -13,6 +13,7 @@ import { listingMetricCells, listingMetricsTableHtml } from '../lib/listingMetri
 import { getTeamActivitySince } from './teamActivityDigestService.js';
 import { stageActivityHeadline, teamActivityAlertItems } from '../lib/teamActivity.js';
 import { notificationOpenLabel, notificationPath } from '../lib/notificationLinks.js';
+import { excludeHiddenMarketDeals } from '../lib/hiddenDeals.js';
 import { getTodayTaskSummary } from './crmTaskService.js';
 import { getDdOverdueForToday, getRecentPortalComments } from './ddChecklistService.js';
 import { findDormantDeals } from './crmPresenceService.js';
@@ -262,7 +263,8 @@ export async function fetchDigestUsers() {
     `SELECT u.id, u.email,
             us.buy_box, us.preferences, us.notify_new_deals,
             us.notification_frequency, us.notification_channel,
-            us.last_notification_sent, us.last_team_activity_notified
+            us.last_notification_sent, us.last_team_activity_notified,
+            us.hidden_deal_ids
      FROM users u
      JOIN user_settings us ON us.user_id = u.id`
   );
@@ -290,7 +292,15 @@ export async function sendUserDigest(userRow, {
   let grouped = { groups: [], total: 0 };
   if (includeDeals && userRow.notify_new_deals !== false) {
     const deals = marketDeals || await loadNewMarketDeals(dealSince);
-    grouped = matchUserBuyBoxes(deals, userRow);
+    const visible = excludeHiddenMarketDeals(deals, userRow.hidden_deal_ids);
+    if (visible.length !== deals.length) {
+      console.log('[digest] skipped hidden buy-box matches', {
+        userId,
+        hidden: deals.length - visible.length,
+        remaining: visible.length
+      });
+    }
+    grouped = matchUserBuyBoxes(visible, userRow);
   }
 
   const team = includeTeam ? await getTeamActivitySince(userId, teamSince) : { headlines: [], total: 0, mentions: [], added: [], stages: [] };
@@ -393,7 +403,7 @@ export async function sendUserDigest(userRow, {
         body: push.alertType === 'deal_match' ? push.body : summarizeMatchGroups(grouped),
         metadata: {
           total: grouped.total,
-          dealDbId: push.dealDbId || null,
+          dealDbId: push.dealDbId || (Array.isArray(push.dealDbIds) && push.dealDbIds.length === 1 ? push.dealDbIds[0] : null),
           dealDbIds: push.dealDbIds || [],
           newToday: true,
           boxes: grouped.groups.map((g) => ({
@@ -402,6 +412,11 @@ export async function sendUserDigest(userRow, {
           }))
         }
       }).catch((err) => console.warn('[digest] deal_match alert failed', err.message));
+      console.log('[digest] deal_match alert ids', {
+        email: userRow.email,
+        total: grouped.total,
+        ids: (push.dealDbIds || []).length
+      });
     }
     for (const item of teamItems) {
       await createUserAlert({

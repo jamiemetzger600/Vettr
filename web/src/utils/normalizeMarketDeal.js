@@ -191,6 +191,9 @@ export function buildMarketDealsParams({
   if (!showHidden && hiddenDealDbIds && hiddenDealDbIds.length > 0) {
     params.set('exclude_ids', hiddenDealDbIds.join(','));
   }
+  if (showHidden) {
+    params.set('show_hidden', '1');
+  }
 
   if (excludeKeywords && excludeKeywords.length > 0) {
     const cleaned = excludeKeywords

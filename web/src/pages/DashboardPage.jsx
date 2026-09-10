@@ -126,8 +126,6 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     const filter = new URLSearchParams(window.location.search).get('crmFilter');
     return isValidCrmFilter(filter) ? filter : null;
   });
-  /** One-shot Aggregator layout hint (e.g. return from CRM → Inbox on mobile). */
-  const [aggregatorViewHint, setAggregatorViewHint] = useState(null);
   const [tasksListSignal, setTasksListSignal] = useState(0);
   const [crmDealOpenSignal, setCrmDealOpenSignal] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
@@ -550,9 +548,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   }, []);
 
   const backToInbox = useCallback(() => {
-    console.log('[Dashboard] back to Inbox from CRM');
+    console.log('[Dashboard] back to aggregator from CRM (keep last view)');
     setActiveTab('aggregator');
-    setAggregatorViewHint('inbox');
   }, []);
 
   if (loading || authLoading) {
@@ -633,8 +630,6 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
               setBuyBoxModalMode('edit');
               setShowBuyBoxModal(true);
             }}
-            preferredViewStyle={aggregatorViewHint}
-            onPreferredViewStyleConsumed={() => setAggregatorViewHint(null)}
             feedSource={feedSource}
             savedDealIds={aggregatorSavedDealIds}
             savedRowIdByMarketDealId={savedRowIdByMarketDealId}

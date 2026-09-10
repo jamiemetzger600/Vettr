@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import pool from '../db/pool.js';
 import { optionalAuth } from '../middleware/auth.js';
 import { sanitizeMarketDealRow } from '../lib/guestEntitlements.js';
-import { listingDedupeKeySql } from '../lib/listingFingerprint.js';
+import { listingDedupeKeySql, listingFingerprintSql } from '../lib/listingFingerprint.js';
+import { parseHiddenExclude } from '../lib/hiddenDeals.js';
 
 const router = express.Router();
 
@@ -125,6 +126,8 @@ router.get('/', optionalAuth, async (req, res) => {
       first_seen_after,
       first_seen_before,
     } = req.query;
+
+    const showHidden = req.query.show_hidden === '1' || req.query.show_hidden === 'true';
 
     const conditions = ['is_active = true'];
     const params = [];
@@ -255,17 +258,68 @@ router.get('/', optionalAuth, async (req, res) => {
       params.push(remote === 'yes' ? '%Yes%' : '%No%');
     }
 
-    // Exclude hidden deal IDs (and any syndicated copies with the same fingerprint)
-    if (exclude_ids) {
-      const ids = exclude_ids.split(',').map(Number).filter(n => !Number.isNaN(n) && n > 0);
-      if (ids.length > 0) {
-        conditions.push(`${listingDedupeKeySql()} NOT IN (
-          SELECT ${listingDedupeKeySql('h')}
-          FROM market_deals h
-          WHERE h.id = ANY($${idx++})
-        )`);
-        params.push(ids);
+    // Exclude hidden listings (client exclude_ids + signed-in account list).
+    // Fingerprint + URL tokens still match after dedupe deletes the original PK.
+    const excludeIdSet = new Set(
+      String(exclude_ids || '')
+        .split(',')
+        .map(Number)
+        .filter((n) => !Number.isNaN(n) && n > 0)
+    );
+    const fingerprintSet = new Set();
+    const financeStateSet = new Set();
+    const urlSet = new Set();
+    if (!showHidden && req.user?.userId) {
+      try {
+        const hiddenRow = await pool.query(
+          'SELECT hidden_deal_ids FROM user_settings WHERE user_id = $1',
+          [req.user.userId]
+        );
+        const parsed = parseHiddenExclude(hiddenRow.rows[0]?.hidden_deal_ids || []);
+        parsed.dbIds.forEach((id) => excludeIdSet.add(id));
+        (parsed.fingerprints || []).forEach((fp) => fingerprintSet.add(fp));
+        (parsed.financeStates || []).forEach((fs) => financeStateSet.add(fs));
+        (parsed.urls || []).forEach((url) => urlSet.add(url));
+      } catch (err) {
+        console.warn('[market-deals] hidden list load failed', err.message);
       }
+    }
+    const excludeDbIds = [...excludeIdSet];
+    if (excludeDbIds.length > 0) {
+      conditions.push(`${listingDedupeKeySql()} NOT IN (
+        SELECT ${listingDedupeKeySql('h')}
+        FROM market_deals h
+        WHERE h.id = ANY($${idx++})
+      )`);
+      params.push(excludeDbIds);
+    }
+    if (fingerprintSet.size > 0) {
+      conditions.push(`(
+        ${listingFingerprintSql()} IS NULL
+        OR ${listingFingerprintSql()} <> ALL($${idx++}::text[])
+      )`);
+      params.push([...fingerprintSet]);
+    }
+    if (financeStateSet.size > 0) {
+      conditions.push(`NOT EXISTS (
+        SELECT 1
+        FROM unnest($${idx++}::text[]) AS fs(token)
+        WHERE concat_ws('|',
+          ROUND(market_deals.asking_price)::bigint,
+          ROUND(market_deals.annual_profit)::bigint,
+          ROUND(market_deals.annual_revenue)::bigint,
+          lower(btrim(COALESCE(market_deals.state, '')))
+        ) = fs.token
+      )`);
+      params.push([...financeStateSet]);
+    }
+    if (urlSet.size > 0) {
+      conditions.push(`(
+        listing_url IS NULL
+        OR btrim(listing_url) = ''
+        OR lower(trim(split_part(listing_url, '#', 1))) <> ALL($${idx++}::text[])
+      )`);
+      params.push([...urlSet]);
     }
 
     // Exclude listings whose name, description, industries, or location fields contain any keyword

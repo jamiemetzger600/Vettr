@@ -17,7 +17,7 @@ function firstMatchingDeals(grouped, limit = 3) {
   return deals;
 }
 
-function matchingDealIds(grouped, limit = 400) {
+export function matchingDealIds(grouped, limit = 400) {
   const ids = [];
   const seen = new Set();
   for (const group of grouped?.groups || []) {
@@ -165,7 +165,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     alertType: primary.alertType,
     savedDealId: primary.savedDealId || null,
     dealDbId: primary.dealDbId || null,
-    dealDbIds: primary.dealDbIds || [],
+    dealDbIds: primary.dealDbIds || dealDbIds,
     newToday: Boolean(primary.newToday)
   };
 
@@ -178,7 +178,7 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     alertType: primary.alertType,
     savedDealId: primary.savedDealId || null,
     dealDbId: primary.dealDbId || null,
-    dealDbIds: primary.dealDbIds || [],
+    dealDbIds: primary.dealDbIds || dealDbIds,
     newToday: Boolean(primary.newToday)
   };
 }
