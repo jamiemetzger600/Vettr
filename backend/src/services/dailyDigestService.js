@@ -11,7 +11,8 @@ import {
 import { formatNearMatchReasons } from '../lib/buyBoxMatcher.js';
 import { listingMetricCells, listingMetricsTableHtml } from '../lib/listingMetrics.js';
 import { getTeamActivitySince } from './teamActivityDigestService.js';
-import { primaryTeamSavedDealId, teamActivityDetailLine } from '../lib/teamActivity.js';
+import { stageActivityHeadline, teamActivityAlertItems } from '../lib/teamActivity.js';
+import { notificationOpenLabel, notificationPath } from '../lib/notificationLinks.js';
 import { getTodayTaskSummary } from './crmTaskService.js';
 import { getDdOverdueForToday, getRecentPortalComments } from './ddChecklistService.js';
 import { findDormantDeals } from './crmPresenceService.js';
@@ -128,12 +129,10 @@ function buildDigestHtml({ grouped, team, crmItems }) {
       return `<li>${escapeHtml(r.label)} added ${r.count} new deal${r.count === 1 ? '' : 's'}${sample}</li>`;
     }).join('');
     const stageItems = (team.stages || []).map((r) => {
-      const sample = r.names?.length ? ` (${r.names.slice(0, 3).map(escapeHtml).join(', ')})` : '';
-      const dest = r.newStages?.[0] ? ` to ${escapeHtml(r.newStages[0])}` : ' in the pipeline';
-      if (r.count === 1 && r.names?.[0]) {
-        return `<li>${escapeHtml(r.label)} moved ${escapeHtml(r.names[0])}${dest}</li>`;
-      }
-      return `<li>${escapeHtml(r.label)} moved ${r.count} deal${r.count === 1 ? '' : 's'}${dest}${sample}</li>`;
+      const extra = r.count > 1 && r.names?.length
+        ? ` (${r.names.slice(0, 3).map(escapeHtml).join(', ')})`
+        : '';
+      return `<li>${escapeHtml(stageActivityHeadline(r))}${extra}</li>`;
     }).join('');
     sections.push(`
       <h2 style="font-size:18px;margin:24px 0 8px;">Team activity</h2>
@@ -352,9 +351,28 @@ export async function sendUserDigest(userRow, {
     alertType: push.alertType
   });
 
+  const teamItems = teamActivityAlertItems(team);
+  const teamOnly = includeTeam && !includeDeals && !includeCrm;
+
   if (sendPush) {
     const hasSub = await userHasPushSubscription(userId);
-    if (hasSub) {
+    if (hasSub && teamOnly && teamItems.length) {
+      for (let i = 0; i < Math.min(teamItems.length, 5); i += 1) {
+        const item = teamItems[i];
+        const pushed = await sendPushToUser(userId, {
+          title: item.title,
+          body: item.body || '',
+          url: notificationPath({ alertType: 'team_activity', savedDealId: item.savedDealId }),
+          tag: `team-activity-${item.savedDealId || i}`,
+          actionTitle: notificationOpenLabel('team_activity', { savedDealId: item.savedDealId })
+        });
+        result.pushed += pushed.sent || 0;
+      }
+      console.log('[digest] team push items', {
+        email: userRow.email,
+        titles: teamItems.slice(0, 5).map((item) => item.title)
+      });
+    } else if (hasSub && !teamOnly) {
       const pushed = await sendPushToUser(userId, {
         title: push.title,
         body: push.body,
@@ -385,21 +403,21 @@ export async function sendUserDigest(userRow, {
         }
       }).catch((err) => console.warn('[digest] deal_match alert failed', err.message));
     }
-    if (team.total) {
-      const teamDealId = primaryTeamSavedDealId(team);
+    for (const item of teamItems) {
       await createUserAlert({
         userId,
         alertType: 'team_activity',
-        title: team.headlines[0] || 'Team activity',
-        body: teamActivityDetailLine(team, { title: team.headlines[0] }) || null,
-        savedDealId: teamDealId,
-        metadata: {
-          headlines: team.headlines,
-          added: team.added,
-          stages: team.stages,
-          savedDealId: teamDealId
-        }
+        title: item.title,
+        body: item.body || null,
+        savedDealId: item.savedDealId,
+        metadata: item.metadata
       }).catch((err) => console.warn('[digest] team_activity alert failed', err.message));
+    }
+    if (teamItems.length) {
+      console.log('[digest] team alerts', {
+        email: userRow.email,
+        titles: teamItems.map((item) => item.title)
+      });
     }
     if (crmItems.length && !grouped.total && !team.total) {
       await createUserAlert({

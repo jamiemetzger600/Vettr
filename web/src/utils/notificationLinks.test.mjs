@@ -5,30 +5,44 @@ function assert(cond, msg) {
 }
 
 const redundant = alertBannerPreview({
-  title: 'alesha moved 3 deals in the pipeline',
-  body: 'alesha moved 3 deals in the pipeline',
-  deal_name: 'Profitable And Unique Flooring Company In Sacramento For Sale',
+  title: 'Alesha passed on Roofing Co',
+  body: 'Alesha passed on Roofing Co',
+  deal_name: 'Roofing Co',
   metadata: {}
 });
 assert(redundant === '', `hide repeated title: ${redundant}`);
 
 const withNames = alertBannerPreview({
-  title: 'alesha moved 3 deals in the pipeline',
-  body: 'alesha moved 3 deals in the pipeline',
-  deal_name: 'Profitable And Unique Flooring Company In Sacramento For Sale',
+  title: 'Alesha passed on 2 deals',
+  body: 'Roofing Co · HVAC Shop · Dental Practice',
+  deal_name: 'Roofing Co',
   metadata: {
     stages: [{
       names: [
-        'Profitable And Unique Flooring Company In Sacramento For Sale',
+        'Roofing Co',
         'HVAC Shop',
         'Dental Practice'
       ],
-      newStages: ['Requested NDA', 'Review CIM', 'LOI Sent']
+      newStages: ['Passed On Deal', 'Passed On Deal', 'Passed On Deal']
     }]
   }
 });
 assert(withNames.includes('HVAC Shop'), `lists other deals: ${withNames}`);
-assert(withNames.includes('Requested NDA'), `includes stages: ${withNames}`);
-assert(!/^alesha moved 3 deals/i.test(withNames), `does not repeat title: ${withNames}`);
+assert(withNames.includes('Dental Practice'), `lists third deal: ${withNames}`);
+assert(!/passed on 2 deals/i.test(withNames), `does not repeat title: ${withNames}`);
+assert(!/→ Passed On Deal/.test(withNames), `same-stage preview skips stage arrows: ${withNames}`);
+
+const singleNamed = alertBannerPreview({
+  title: 'Alesha requested NDA on Maui Dental',
+  body: '',
+  deal_name: 'Maui Dental',
+  metadata: {
+    stages: [{
+      names: ['Maui Dental'],
+      newStages: ['Requested NDA']
+    }]
+  }
+});
+assert(singleNamed === '', `single deal already in title: ${singleNamed}`);
 
 console.log('alertBannerPreview tests passed');

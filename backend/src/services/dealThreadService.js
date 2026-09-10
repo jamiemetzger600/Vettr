@@ -8,6 +8,7 @@ import { sendEmail } from './emailService.js';
 import { createUserAlert, markDealTalkAlertsRead } from './userAlertService.js';
 import { sendPushToUser } from './pushService.js';
 import { notificationOpenLabel, notificationPath } from '../lib/notificationLinks.js';
+import { actorDisplayName, shortDealName } from '../lib/teamActivity.js';
 
 const MENTION_RE = /@([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
 const WEB_APP_URL = (
@@ -269,6 +270,8 @@ export async function postDealMessage(userId, savedDealId, { body, assigneeUserI
   const dealName = access.deal.name || 'Untitled deal';
   const authorRes = await pool.query(`SELECT email FROM users WHERE id = $1`, [userId]);
   const authorEmail = authorRes.rows[0]?.email || 'A teammate';
+  const who = actorDisplayName(authorEmail);
+  const dealShort = shortDealName(dealName, 36);
 
   // Mentions, assigns, then every other teammate (plain Talk posts used to be silent).
   if (access.deal.team_id) {
@@ -293,9 +296,9 @@ export async function postDealMessage(userId, savedDealId, { body, assigneeUserI
         userId: member.id,
         email,
         alertType: 'talk_mention',
-        title: `${authorEmail} mentioned you`,
-        greeting: `${authorEmail} mentioned you in Talk:`,
-        subject: `${authorEmail} mentioned you on “${dealName}”`,
+        title: `${who} mentioned you on ${dealShort}`,
+        greeting: `${who} mentioned you in Talk:`,
+        subject: `${who} mentioned you on “${dealName}”`,
         body: text,
         savedDealId,
         messageId: message.id,
@@ -314,9 +317,9 @@ export async function postDealMessage(userId, savedDealId, { body, assigneeUserI
           userId: assignee,
           email: assigneeEmail,
           alertType: 'talk_assign',
-          title: `${authorEmail} assigned you`,
-          greeting: `${authorEmail} assigned you in Talk:`,
-          subject: `${authorEmail} assigned you on “${dealName}”`,
+          title: `${who} assigned you on ${dealShort}`,
+          greeting: `${who} assigned you in Talk:`,
+          subject: `${who} assigned you on “${dealName}”`,
           body: text,
           savedDealId,
           messageId: message.id,
@@ -335,9 +338,9 @@ export async function postDealMessage(userId, savedDealId, { body, assigneeUserI
         userId: member.id,
         email: member.email,
         alertType: 'talk_post',
-        title: `${authorEmail} posted an update`,
-        greeting: `${authorEmail} posted an update in Talk:`,
-        subject: `${authorEmail} posted in Talk on “${dealName}”`,
+        title: `${who} posted on ${dealShort}`,
+        greeting: `${who} posted an update in Talk:`,
+        subject: `${who} posted in Talk on “${dealName}”`,
         body: text,
         savedDealId,
         messageId: message.id,

@@ -1,12 +1,13 @@
 import pool from '../db/pool.js';
 import { getUnreadMentions } from './dealThreadService.js';
-import { addedActivityHeadline, stageActivityHeadline } from '../lib/teamActivity.js';
+import {
+  actorDisplayName,
+  actorLabel,
+  addedActivityHeadline,
+  stageActivityHeadline
+} from '../lib/teamActivity.js';
 
-export function actorLabel(email) {
-  if (!email) return 'A teammate';
-  const local = String(email).split('@')[0].trim();
-  return local || 'A teammate';
-}
+export { actorLabel };
 
 function sinceOrDefault(sinceDate, hours = 24) {
   if (sinceDate) {
@@ -45,10 +46,12 @@ export async function getTeamActivitySince(userId, sinceDate) {
   const stages = await pool.query(
     `SELECT actor_id,
             actor_email,
+            new_stage,
             COUNT(*)::int AS n,
             ARRAY_AGG(deal_name ORDER BY occurred_at DESC) FILTER (WHERE deal_name IS NOT NULL) AS names,
             ARRAY_AGG(saved_deal_id ORDER BY occurred_at DESC) AS ids,
-            ARRAY_AGG(new_stage ORDER BY occurred_at DESC) FILTER (WHERE new_stage IS NOT NULL) AS new_stages
+            ARRAY_AGG(new_stage ORDER BY occurred_at DESC) FILTER (WHERE new_stage IS NOT NULL) AS new_stages,
+            MAX(occurred_at) AS last_at
      FROM (
        SELECT DISTINCT ON (a.user_id, a.saved_deal_id)
               a.user_id AS actor_id,
@@ -67,8 +70,8 @@ export async function getTeamActivitySince(userId, sinceDate) {
          AND a.occurred_at >= $2
        ORDER BY a.user_id, a.saved_deal_id, a.occurred_at DESC
      ) latest
-     GROUP BY actor_id, actor_email
-     ORDER BY n DESC`,
+     GROUP BY actor_id, actor_email, new_stage
+     ORDER BY last_at DESC`,
     [userId, since.toISOString()]
   ).catch((err) => {
     console.warn('[teamActivity] stage query failed', err.message);
@@ -80,7 +83,7 @@ export async function getTeamActivitySince(userId, sinceDate) {
   const addedRows = added.rows.map((r) => ({
     actorId: r.actor_id,
     actorEmail: r.actor_email,
-    label: actorLabel(r.actor_email),
+    label: actorDisplayName(r.actor_email),
     count: r.n,
     names: Array.isArray(r.names) ? r.names.filter(Boolean).slice(0, 8) : [],
     ids: Array.isArray(r.ids) ? r.ids.map((id) => Number(id)).filter((id) => id > 0).slice(0, 8) : []
@@ -89,7 +92,7 @@ export async function getTeamActivitySince(userId, sinceDate) {
   const stageRows = stages.rows.map((r) => ({
     actorId: r.actor_id,
     actorEmail: r.actor_email,
-    label: actorLabel(r.actor_email),
+    label: actorDisplayName(r.actor_email),
     count: r.n,
     names: Array.isArray(r.names) ? r.names.filter(Boolean).slice(0, 8) : [],
     ids: Array.isArray(r.ids) ? r.ids.map((id) => Number(id)).filter((id) => id > 0).slice(0, 8) : [],

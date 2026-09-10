@@ -331,13 +331,15 @@ export async function createTask(
   }
 
   if (assignee && Number(assignee) !== Number(userId)) {
+    const assignerRes = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
+    const who = displayNameFromEmail(assignerRes.rows[0]?.email);
     await createUserAlert({
       userId: assignee,
       alertType: 'task_assigned',
-      title: 'New task assigned to you',
-      body: trimmed,
+      title: `${who} assigned you: ${trimmed.slice(0, 72)}`,
+      body: deal.name ? `On ${deal.name}` : null,
       savedDealId,
-      metadata: { taskId: task.id, assignedBy: userId, openTasks: true }
+      metadata: { taskId: task.id, assignedBy: userId, openTasks: true, dealName: deal.name || null }
     }).catch((err) => console.warn('[crmTask] assignee alert failed:', err.message));
   }
 
@@ -567,8 +569,8 @@ async function notifyTaskAssignerOnComplete({ completerUserId, task }) {
   await createUserAlert({
     userId: assignerId,
     alertType: 'task_completed',
-    title: `${completerLabel} completed a task`,
-    body: task.title,
+    title: `${completerLabel} completed “${String(task.title || '').slice(0, 48)}”`,
+    body: `On ${dealName}`,
     savedDealId: task.saved_deal_id,
     metadata: {
       taskId: task.id,

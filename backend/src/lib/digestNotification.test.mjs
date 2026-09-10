@@ -45,5 +45,27 @@ assert(Number(moved.savedDealId) === 77, `moved savedDealId: ${moved.savedDealId
 assert(moved.url.includes('crmDeal=77'), `moved url: ${moved.url}`);
 assert(moved.actionTitle === 'Open deal', `moved action: ${moved.actionTitle}`);
 assert(/Maui Dental/.test(moved.title), `moved title names the deal: ${moved.title}`);
+assert(/requested NDA/i.test(moved.title), `moved title names the action: ${moved.title}`);
+assert(!/moved .* in the pipeline/i.test(moved.title), `no generic pipeline copy: ${moved.title}`);
+
+const passed = buildDigestNotification({
+  grouped: { groups: [], total: 0 },
+  team: {
+    headlines: ['Alesha passed on 2 deals'],
+    added: [],
+    mentions: [],
+    stages: [{
+      label: 'Alesha',
+      count: 2,
+      names: ['Roofing Co', 'Kayak Tours'],
+      ids: [11, 12],
+      newStages: ['Passed On Deal', 'Passed On Deal']
+    }]
+  },
+  crmItems: []
+});
+assert(/passed on 2 deals/i.test(passed.title), `passed title: ${passed.title}`);
+assert(/Roofing Co/.test(passed.body) && /Kayak Tours/.test(passed.body), `passed body lists deals: ${passed.body}`);
+assert(!/pipeline/i.test(passed.title), `passed title skips pipeline jargon: ${passed.title}`);
 
 console.log('digestNotification tests passed');

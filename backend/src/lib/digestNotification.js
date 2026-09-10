@@ -1,11 +1,10 @@
 import { notificationOpenLabel, notificationPath } from './notificationLinks.js';
-import { primaryTeamSavedDealId } from './teamActivity.js';
-
-function actorLabel(email) {
-  if (!email) return 'A teammate';
-  const local = String(email).split('@')[0].trim();
-  return local || 'A teammate';
-}
+import {
+  actorDisplayName,
+  addedActivityHeadline,
+  primaryTeamSavedDealId,
+  stageActivityHeadline
+} from './teamActivity.js';
 
 function firstMatchingDeals(grouped, limit = 3) {
   const deals = [];
@@ -58,10 +57,10 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
   let primary = null;
 
   if (mention?.saved_deal_id) {
-    const who = actorLabel(mention.author_email);
+    const who = actorDisplayName(mention.author_email);
     primary = {
-      title: `${who} mentioned you`,
-      body: mention.deal_name || String(mention.body || '').slice(0, 120),
+      title: `${who} mentioned you on ${mention.deal_name || 'a deal'}`,
+      body: String(mention.body || '').slice(0, 120),
       alertType: 'talk_mention',
       savedDealId: mention.saved_deal_id
     };
@@ -112,32 +111,17 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
       dealDbIds,
       newToday: true
     };
-  } else if (added?.count === 1 && (added.names?.[0] || added.ids?.[0])) {
+  } else if (added?.count >= 1) {
     primary = {
-      title: `${added.label} added ${added.names?.[0] || 'a deal'}`,
-      body: 'New deal in your CRM',
+      title: addedActivityHeadline(added),
+      body: added.count > 1 ? (added.names || []).slice(0, 3).join(' · ') : 'New deal in your CRM',
       alertType: 'team_activity',
       savedDealId: added.ids?.[0] || null
     };
-  } else if (added?.count > 1) {
+  } else if (stages?.count >= 1) {
     primary = {
-      title: `${added.label} added ${added.count} new deals`,
-      body: (added.names || []).slice(0, 3).join(' · '),
-      alertType: 'team_activity',
-      savedDealId: added.ids?.[0] || null
-    };
-  } else if (stages?.count === 1 && (stages.names?.[0] || stages.ids?.[0])) {
-    const stage = stages.newStages?.[0];
-    primary = {
-      title: `${stages.label} moved ${stages.names?.[0] || 'a deal'}${stage ? ` to ${stage}` : ' into the pipeline'}`,
-      body: stage ? `Now: ${stage}` : 'Moved in your pipeline',
-      alertType: 'team_activity',
-      savedDealId: stages.ids?.[0] || null
-    };
-  } else if (stages?.count > 1) {
-    primary = {
-      title: `${stages.label} moved ${stages.count} deals in the pipeline`,
-      body: (stages.names || []).slice(0, 3).join(' · '),
+      title: stageActivityHeadline(stages),
+      body: stages.count > 1 ? (stages.names || []).slice(0, 3).join(' · ') : '',
       alertType: 'team_activity',
       savedDealId: stages.ids?.[0] || null
     };

@@ -43,7 +43,7 @@ export default function TalkAlertBanner({
             });
             const preview = alertBannerPreview(alert);
             showLocalNotification(alert.title || 'New update', {
-              body: preview || alert.deal_name || 'Open in Vettr',
+              body: preview || alert.body || 'Open in Vettr',
               tag: `vettr-alert-${alert.id}`,
               url,
               actionTitle: notificationOpenLabel(alert.alert_type, { savedDealId })
@@ -88,6 +88,15 @@ export default function TalkAlertBanner({
   const top = visible[0];
   const extra = visible.length - 1;
   const preview = alertBannerPreview(top);
+  const metaBits = [];
+  if (top.alert_type === 'deal_match') metaBits.push('Buy box matches');
+  else if (top.alert_type === 'task_due' || top.alert_type === 'task_assigned' || top.alert_type === 'task_completed') {
+    metaBits.push('Tasks');
+  } else if (top.alert_type !== 'team_activity') {
+    metaBits.push(top.deal_name || 'Deal');
+  }
+  if (extra > 0) metaBits.push(`+${extra} more`);
+  const metaText = metaBits.join(' · ');
 
   const openTop = async () => {
     console.log('[TalkAlertBanner] open alert', top.id, 'deal', savedDealIdFromAlert(top), 'preview', preview || null);
@@ -115,18 +124,9 @@ export default function TalkAlertBanner({
     <div className="talk-alert-banner" role="status" aria-live="polite">
       <div className="talk-alert-banner__body">
         <strong className="talk-alert-banner__title">{top.title}</strong>
-        <span className="talk-alert-banner__meta">
-          {top.alert_type === 'deal_match'
-            ? 'Buy box matches'
-            : top.alert_type === 'team_activity'
-              ? (top.deal_name || 'Team CRM')
-              : (top.alert_type === 'task_due'
-                || top.alert_type === 'task_assigned'
-                || top.alert_type === 'task_completed')
-                ? 'Tasks'
-                : (top.deal_name || 'Deal')}
-          {extra > 0 ? ` · +${extra} more` : ''}
-        </span>
+        {metaText ? (
+          <span className="talk-alert-banner__meta">{metaText}</span>
+        ) : null}
         {preview ? (
           <span className="talk-alert-banner__preview">{preview}</span>
         ) : null}

@@ -109,6 +109,8 @@ export function alertBannerPreview(alert) {
   const namedMoves = (row) => {
     const names = Array.isArray(row?.names) ? row.names.filter(Boolean) : [];
     const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+    const uniqueStages = [...new Set(stages.filter(Boolean))];
+    if (uniqueStages.length <= 1) return names.slice(0, 4);
     return names.slice(0, 4).map((name, i) => {
       const stage = stages[i];
       return stage ? `${name} → ${stage}` : name;
@@ -116,6 +118,7 @@ export function alertBannerPreview(alert) {
   };
 
   const fold = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const titleFold = fold(title);
   const seen = new Set();
   const bits = [];
   for (const bit of [
@@ -124,6 +127,7 @@ export function alertBannerPreview(alert) {
   ]) {
     const key = fold(bit);
     if (!key || seen.has(key)) continue;
+    if (titleFold.includes(key) && key.length >= 6) continue;
     seen.add(key);
     bits.push(bit);
   }

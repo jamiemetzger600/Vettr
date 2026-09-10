@@ -3,6 +3,7 @@ import {
   primaryTeamSavedDealId,
   savedDealIdForTeamAlert,
   stageActivityHeadline,
+  teamActivityAlertItems,
   teamActivityDetailLine
 } from './teamActivity.js';
 
@@ -29,9 +30,9 @@ assert(primaryTeamSavedDealId({
 }) === 8, 'many moves still open the most recent deal');
 
 assert(savedDealIdForTeamAlert(
-  { title: 'Alesha moved 1 deal in the pipeline' },
-  { added: [{ count: 1, ids: [1] }], stages: [{ count: 1, ids: [42] }] }
-) === 42, 'moved toast prefers the stage deal');
+  { title: 'Alesha passed on 2 deals' },
+  { added: [{ count: 1, ids: [1] }], stages: [{ count: 2, ids: [42, 43] }] }
+) === 42, 'passed-on toast prefers the stage deal');
 
 assert(
   stageActivityHeadline({
@@ -39,8 +40,18 @@ assert(
     count: 1,
     names: ['Maui Dental'],
     newStages: ['Requested NDA']
-  }) === 'Alesha moved Maui Dental to Requested NDA',
-  'named stage headline'
+  }) === 'Alesha requested NDA on Maui Dental',
+  'named NDA headline'
+);
+
+assert(
+  stageActivityHeadline({
+    label: 'Alesha',
+    count: 2,
+    names: ['Roofing Co', 'Kayak Tours'],
+    newStages: ['Passed On Deal', 'Passed On Deal']
+  }) === 'Alesha passed on 2 deals',
+  'passed-on count headline'
 );
 
 assert(
@@ -51,22 +62,48 @@ assert(
 
 assert(
   teamActivityDetailLine({
-    headlines: ['alesha moved 3 deals in the pipeline'],
+    headlines: ['Alesha passed on 2 deals'],
     stages: [{
-      count: 3,
-      names: ['Flooring Co', 'HVAC Shop', 'Dental'],
-      newStages: ['Requested NDA', 'Review CIM', 'LOI Sent']
+      count: 2,
+      names: ['Roofing Co', 'Kayak Tours'],
+      newStages: ['Passed On Deal', 'Passed On Deal']
     }]
-  }, { title: 'alesha moved 3 deals in the pipeline' })
-    === 'Flooring Co → Requested NDA · HVAC Shop → Review CIM · Dental → LOI Sent',
-  'detail line lists deals and stages'
+  }, { title: 'Alesha passed on 2 deals' })
+    === 'Roofing Co · Kayak Tours',
+  'same-stage detail lists deal names only'
 );
 
 assert(
   teamActivityDetailLine({
-    headlines: ['alesha moved 3 deals in the pipeline']
-  }, { title: 'alesha moved 3 deals in the pipeline' }) === '',
+    headlines: ['Alesha moved 3 deals to Review CIM']
+  }, { title: 'Alesha moved 3 deals to Review CIM' }) === '',
   'no redundant detail when names are missing'
 );
+
+const items = teamActivityAlertItems({
+  added: [],
+  stages: [
+    {
+      label: 'Alesha',
+      count: 2,
+      names: ['Roofing Co', 'Kayak Tours'],
+      ids: [11, 12],
+      newStages: ['Passed On Deal', 'Passed On Deal']
+    },
+    {
+      label: 'Alesha',
+      count: 1,
+      names: ['Maui Dental'],
+      ids: [77],
+      newStages: ['Requested NDA']
+    }
+  ],
+  mentions: [{ saved_deal_id: 99 }]
+});
+assert(items.length === 2, `one alert per action, not mentions: ${items.length}`);
+assert(items[0].title === 'Alesha passed on 2 deals', items[0].title);
+assert(items[0].body === 'Roofing Co · Kayak Tours', items[0].body);
+assert(items[1].title === 'Alesha requested NDA on Maui Dental', items[1].title);
+assert(items[1].savedDealId === 77, String(items[1].savedDealId));
 
 console.log('teamActivity tests passed');
