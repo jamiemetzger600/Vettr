@@ -7316,25 +7316,41 @@ button.aggregator-welcome__buybox {
   cursor: pointer;
 }
 
+/* Own row under the view toggle. Horizontal scroll keeps full names readable
+   instead of crushing labels to a single character + ellipsis. */
 .mobile-feed-toolbar__buyboxes {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
 }
 
 .mobile-feed-toolbar__buybox {
+  flex: 0 0 auto;
+  box-sizing: border-box;
   min-height: var(--touch-target-min);
-  padding: 8px 10px;
+  min-width: max-content;
+  max-width: none;
+  padding: 8px 14px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.25;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: unset;
   white-space: nowrap;
 }
 
@@ -7349,8 +7365,8 @@ button.aggregator-welcome__buybox {
   opacity: 0.65;
 }
 
-.mobile-feed-toolbar--landscape .mobile-feed-toolbar__buyboxes {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.mobile-feed-toolbar--landscape .mobile-feed-toolbar__buyboxes,
+.mobile-feed-toolbar--portrait .mobile-feed-toolbar__buyboxes {
   width: 100%;
 }
 
@@ -12234,8 +12250,10 @@ button.aggregator-welcome__buybox {
   }
 
   .mobile-feed-toolbar__buyboxes {
+    display: flex;
+    flex-wrap: nowrap;
     width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: auto;
   }
 
   .mobile-feed-toolbar__actions {
@@ -12246,7 +12264,12 @@ button.aggregator-welcome__buybox {
   }
 
   .mobile-feed-toolbar__buybox {
-    font-size: 12px;
-    text-overflow: ellipsis;
+    flex: 0 0 auto;
+    min-width: max-content;
+    max-width: none;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: unset;
   }
 }
