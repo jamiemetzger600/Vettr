@@ -1462,6 +1462,29 @@ export default function DealAggregator({
     if (!isFetching) prefetchRequestedRef.current = false;
   }, [isFetching]);
 
+  // Must run before the loading early-return — a hook after that return
+  // crashes the tree (React #310) once deals arrive and blanks the PWA.
+  useEffect(() => {
+    if (!showMobileToolbar) {
+      document.documentElement.style.removeProperty('--mobile-toolbar-h');
+      return undefined;
+    }
+    const toolbar = document.querySelector('.mobile-feed-toolbar');
+    if (!toolbar || typeof ResizeObserver === 'undefined') return undefined;
+    const sync = () => {
+      const h = Math.ceil(toolbar.getBoundingClientRect().height || 0);
+      document.documentElement.style.setProperty('--mobile-toolbar-h', `${h}px`);
+      console.debug('[DealAggregator] mobile sticky toolbar height', h);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(toolbar);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--mobile-toolbar-h');
+    };
+  }, [showMobileToolbar, isPortrait, showMobileFeedFilters, buyBoxesUiState?.buyBoxes?.length, loading]);
+
   if (loading) {
     return <div className="loading">Loading deals...</div>;
   }
@@ -2102,28 +2125,6 @@ export default function DealAggregator({
   const handleDeckPass = () => {
     console.debug('[DealAggregator] deck pass (no persist)');
   };
-
-  // Keep sticky filter chrome stacked under the mobile toolbar (not over cards).
-  useEffect(() => {
-    if (!showMobileToolbar) {
-      document.documentElement.style.removeProperty('--mobile-toolbar-h');
-      return undefined;
-    }
-    const toolbar = document.querySelector('.mobile-feed-toolbar');
-    if (!toolbar || typeof ResizeObserver === 'undefined') return undefined;
-    const sync = () => {
-      const h = Math.ceil(toolbar.getBoundingClientRect().height || 0);
-      document.documentElement.style.setProperty('--mobile-toolbar-h', `${h}px`);
-      console.debug('[DealAggregator] mobile sticky toolbar height', h);
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(toolbar);
-    return () => {
-      ro.disconnect();
-      document.documentElement.style.removeProperty('--mobile-toolbar-h');
-    };
-  }, [showMobileToolbar, isPortrait, showMobileFeedFilters, buyBoxesUiState?.buyBoxes?.length]);
 
   return (
     <div
