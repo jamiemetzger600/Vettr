@@ -6,7 +6,7 @@ For a single list of all environment variables (backend, web, CLI), see **[CONFI
 
 | Layer | Service | Notes |
 |--------|---------|-------|
-| Frontend | Cloudflare Pages | Auto-deploy on push to `main` |
+| Frontend | Cloudflare Pages | Auto-deploy on push to `main` (prod). Branch `staging` → `https://staging.vettr.pages.dev`. PR/branch previews → `https://*.vettr.pages.dev`. |
 | Public API | Worker `vettr-api` (`workers/vettr-api-proxy`) | Stable URL: `https://vettr-api.metzgerbuildsthings.workers.dev` |
 | Backend | This Mac (`com.vettr.api` → `:3001`) | Exposed by Cloudflare quick tunnel (`com.vettr.tunnel`) |
 | Database | Local PostgreSQL | `DATABASE_URL` in `backend/.env` |
@@ -36,8 +36,34 @@ Koyeb is retired. Do not create Koyeb services or run the Koyeb CLI.
    - Without this, the app will show "Total: 0 Deals" because it will request `/api/airtable-deals` on the Pages host (which has no API). Set the variable in Cloudflare Pages → your project → Settings → Environment variables, then trigger a new build.
 5. Deploy — your app will be live at `https://your-project.pages.dev`
 6. **SPA routing:** With no root `404.html`, Cloudflare Pages already sends unknown paths to your React app. Do not add a `/* /index.html 200` `_redirects` rule (it triggers “infinite loop” warnings and is unnecessary).
+7. **Production vs staging:** Keep the Pages **Production branch = `main`** (`https://vettr.pages.dev`). Do **not** set production to `staging`. The git branch `staging` is intentional for a durable preview at `https://staging.vettr.pages.dev` (same `VITE_API_URL` / prod API Worker). Phone testing loop: [docs/guides/PHONE_TESTING.md](docs/guides/PHONE_TESTING.md).
 
 ---
+
+## API CORS (Pages previews + staging)
+
+Browser calls from Pages use credentials, so the API must **reflect** an allowed `Origin` (never `*`).
+
+Allowlist lives in **`shared/corsAllow.js`** and is used by:
+
+| Layer | Path | Role |
+|--------|------|------|
+| Express | `backend/src/index.js` | Primary CORS for tunnel origin |
+| Worker | `workers/vettr-api-proxy` | Also injects ACAO for `https://vettr.pages.dev` and `https://*.vettr.pages.dev` (covers staging + PR previews even if Express is briefly stale) |
+
+Allowed: prod Pages, staging, hash/named branch previews, configured `WEB_APP_URL` / localhost list, `chrome-extension://…`. Rejected: unrelated origins (e.g. `evil.com`).
+
+**Deploy after CORS changes (required for cellular / preview):**
+
+1. Merge/pull backend + Worker code on the Mac.
+2. Restart API: `launchctl kickstart -k gui/$(id -u)/com.vettr.api`
+3. Redeploy Worker (Pages does **not** deploy this):
+   ```bash
+   cd workers/vettr-api-proxy && wrangler deploy
+   ```
+   There is no GitHub Actions auto-deploy for the Worker on `main`; tunnel sync (`scripts/sync-tunnel-origin.sh`) also runs `wrangler deploy` when updating `TUNNEL_ORIGIN`.
+
+Tests: `node shared/corsAllow.test.mjs`
 
 ## Backend — this Mac + Cloudflare tunnel
 

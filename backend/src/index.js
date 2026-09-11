@@ -19,6 +19,7 @@ import { parseCookieHeader } from './lib/authCookies.js';
 import { validateConfig } from './config.js';
 import pool from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
+import { isAllowedCorsOrigin } from '../../shared/corsAllow.js';
 
 dotenv.config();
 validateConfig(); // Exits in production if required env vars missing (see CONFIG.md)
@@ -34,21 +35,12 @@ const webAppUrlRaw = process.env.WEB_APP_URL || 'http://localhost:5173';
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? webAppUrlRaw.split(',').map(s => s.trim()).filter(Boolean).map(url => url.replace(/\/+$/, ''))
   : [webAppUrlRaw, 'http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'];
-// PR / branch previews are https://<hash-or-branch>.vettr.pages.dev (prod stays vettr.pages.dev).
-const VETTR_PAGES_PREVIEW_ORIGIN = /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.vettr\.pages\.dev$/i;
-function isAllowedCorsOrigin(origin) {
-  if (!origin) return true;
-  if (allowedOrigins.includes(origin)) return true;
-  if (/^chrome-extension:\/\//i.test(origin)) return true;
-  if (VETTR_PAGES_PREVIEW_ORIGIN.test(origin)) return true;
-  return false;
-}
 if (process.env.NODE_ENV === 'production') {
-  console.log('[cors] Allowed origins:', allowedOrigins.length ? allowedOrigins : '(none – check WEB_APP_URL)', '+ *.vettr.pages.dev previews');
+  console.log('[cors] Allowed origins:', allowedOrigins.length ? allowedOrigins : '(none – check WEB_APP_URL)', '+ vettr.pages.dev + *.vettr.pages.dev');
 }
 app.use(cors({
   origin: (origin, cb) => {
-    if (isAllowedCorsOrigin(origin)) {
+    if (isAllowedCorsOrigin(origin, { allowedOrigins })) {
       return cb(null, origin || true);
     }
     console.warn('[cors] blocked origin:', origin);
@@ -74,7 +66,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.115' });
+  res.json({ status: 'ok', version: '5.0.116' });
 });
 
 // Routes
