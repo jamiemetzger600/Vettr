@@ -7259,13 +7259,15 @@ button.aggregator-welcome__buybox {
   margin-bottom: 10px;
   position: sticky;
   top: env(safe-area-inset-top, 0px);
-  z-index: 50;
+  z-index: 60;
+  box-shadow: 0 1px 0 var(--border);
 }
 
+/* Landscape phones stay stacked (never one crowded horizontal row). */
 .mobile-feed-toolbar--landscape {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   padding: 8px 12px;
   margin-bottom: 8px;
 }
@@ -7348,11 +7350,21 @@ button.aggregator-welcome__buybox {
 }
 
 .mobile-feed-toolbar--landscape .mobile-feed-toolbar__buyboxes {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
 }
 
-.mobile-feed-toolbar--landscape .mobile-feed-toolbar__actions {
+.mobile-feed-toolbar--landscape .mobile-view-toggle,
+.mobile-feed-toolbar--portrait .mobile-view-toggle,
+.mobile-feed-toolbar--landscape .mobile-feed-toolbar__actions,
+.mobile-feed-toolbar--portrait .mobile-feed-toolbar__actions {
+  width: 100%;
   flex-shrink: 0;
+}
+
+.mobile-feed-toolbar--portrait {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .mobile-feed-toolbar__scope-btn.is-active,
@@ -7430,7 +7442,7 @@ button.aggregator-welcome__buybox {
 }
 
 .deal-aggregator--mobile-landscape.deal-aggregator--mobile-browse .aggregator-table-scroll {
-  max-height: min(78dvh, 520px);
+  max-height: min(58dvh, 420px);
 }
 
 .deal-aggregator--mobile-portrait.deal-aggregator--mobile-browse .aggregator-table-scroll {
@@ -7438,7 +7450,9 @@ button.aggregator-welcome__buybox {
 }
 
 .deal-aggregator--mobile-landscape.deal-aggregator--mobile-browse .aggregator-cards-scroll {
-  max-height: min(78dvh, 560px);
+  /* Short landscape: avoid a nested scrollport that tucks cards under sticky filters */
+  max-height: none;
+  overflow: visible;
 }
 
 .deal-aggregator--mobile-portrait.deal-aggregator--mobile-browse .aggregator-cards-scroll {
@@ -12118,11 +12132,17 @@ button.aggregator-welcome__buybox {
   }
 
   /* 2) Single-column cards — no off-screen 280px columns in phone landscape */
-  .aggregator-cards-scroll,
+  .aggregator-cards-scroll {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .deal-aggregator,
   .deal-aggregator--mobile {
     max-width: 100%;
-    overflow-x: hidden;
+    /* Do not set overflow-x:hidden on the aggregator root — it creates a sticky
+       containing block and lets sticky chrome paint over the first card. */
+    overflow-x: visible;
   }
 
   .aggregator-cards-grid,
@@ -12141,6 +12161,15 @@ button.aggregator-welcome__buybox {
   .aggregator-cards-grid .deal-card {
     width: 100%;
     max-width: 100%;
+    /* Fixed 460px cards are taller than short landscape viewports and slide
+       under sticky filter chrome so metrics look half-cut. */
+    height: auto;
+    min-height: 0;
+  }
+
+  .aggregator-cards-grid .deal-card__inner {
+    height: auto;
+    min-height: 0;
   }
 
   /* 3) Save / Hide / Open tap targets ≥44px */
@@ -12165,5 +12194,59 @@ button.aggregator-welcome__buybox {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  /* 4) Sticky filter chrome stacks under the toolbar — never over card metrics */
+  .deal-aggregator--mobile .mobile-feed-toolbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 60;
+    background: var(--bg-secondary);
+  }
+
+  .deal-aggregator--mobile-filters-open .aggregator-controls:not(.aggregator-controls--mobile-hidden) {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + var(--mobile-toolbar-h, 72px));
+    z-index: 55;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.28);
+    margin-bottom: 12px;
+  }
+
+  .deal-aggregator--mobile .aggregator-cards-scroll {
+    position: relative;
+    z-index: 1;
+    clear: both;
+    padding-top: 4px;
+  }
+
+  /* Toolbar always stacks: view toggle → buy boxes → actions */
+  .mobile-feed-toolbar,
+  .mobile-feed-toolbar--landscape,
+  .mobile-feed-toolbar--portrait {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mobile-feed-toolbar .mobile-view-toggle {
+    width: 100%;
+  }
+
+  .mobile-feed-toolbar__buyboxes {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-feed-toolbar__actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mobile-feed-toolbar__buybox {
+    font-size: 12px;
+    text-overflow: ellipsis;
   }
 }
