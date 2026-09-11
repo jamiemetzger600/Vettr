@@ -12,6 +12,7 @@ import {
   encodeMarketDealsSortSpec,
 } from '../utils/normalizeMarketDeal';
 import {
+  BUY_BOX_SLOT_COUNT,
   criteriaFromSlot,
   defaultBuyBoxSlotName,
   getExcludeListLibrary,
@@ -593,6 +594,14 @@ export default function DealAggregator({
   });
   const [showCardColsPopup, setShowCardColsPopup] = useState(false);
   const cardColsPopupRef = useRef(null);
+  const [buyBoxScrollNonce, setBuyBoxScrollNonce] = useState(0);
+  const cardsScrollRef = useRef(null);
+  /** Cancel stale scroll-to-top when the user switches buy boxes again quickly. */
+  const buyBoxScrollGenRef = useRef(0);
+  const pendingBuyBoxScrollRef = useRef(false);
+  /** Wait until the post-switch fetch has been observed (or a short fallback). */
+  const buyBoxScrollSawFetchRef = useRef(false);
+  const prevActiveBuyBoxForScrollRef = useRef(null);
   const fetchAbortRef = useRef(null);
   /** Same query + manual refresh → send If-None-Match for list 304. */
   const listEtagCacheRef = useRef({ key: '', etag: '' });
@@ -927,6 +936,122 @@ export default function DealAggregator({
   useEffect(() => {
     setCurrentPage(1);
   }, [searchKeywordsFingerprint, sortConfig, showHiddenDeals, viewMode, excludeKeywordsFingerprint, hideSavedDealsInFeed, poolNewFinger, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger]);
+
+  // Mobile Card view: after buy-box switch, jump to top of that box’s feed (newest).
+  // Scroll can live on `.aggregator-cards-scroll` (portrait nested) or the window
+  // (landscape overflow:visible) — reset both once deals for the new box are shown.
+  useEffect(() => {
+    const idx = Math.min(
+      BUY_BOX_SLOT_COUNT - 1,
+      Math.max(0, Number(settings?.activeBuyBoxIndex ?? settings?.preferences?.activeBuyBoxIndex) || 0)
+    );
+    if (prevActiveBuyBoxForScrollRef.current === null) {
+      prevActiveBuyBoxForScrollRef.current = idx;
+      return;
+    }
+    if (prevActiveBuyBoxForScrollRef.current === idx) return;
+    prevActiveBuyBoxForScrollRef.current = idx;
+    if (!isMobileViewport || dealViewStyle !== 'card') return;
+
+    buyBoxScrollGenRef.current += 1;
+    pendingBuyBoxScrollRef.current = true;
+    buyBoxScrollSawFetchRef.current = false;
+    console.log('[DealAggregator] buy box change → queue card feed scroll to top', {
+      activeBuyBoxIndex: idx,
+      gen: buyBoxScrollGenRef.current,
+    });
+  }, [
+    settings?.activeBuyBoxIndex,
+    settings?.preferences?.activeBuyBoxIndex,
+    isMobileViewport,
+    dealViewStyle,
+  ]);
+
+  // Mark that the post-switch list fetch started (avoids scrolling on stale deals).
+  useEffect(() => {
+    if (!pendingBuyBoxScrollRef.current) return;
+    if (isFetching) buyBoxScrollSawFetchRef.current = true;
+  }, [isFetching]);
+
+  // If criteria are identical and no fetch starts, still scroll after a short wait.
+  useEffect(() => {
+    if (!pendingBuyBoxScrollRef.current) return;
+    if (!isMobileViewport || dealViewStyle !== 'card') return;
+    const gen = buyBoxScrollGenRef.current;
+    const t = setTimeout(() => {
+      if (gen !== buyBoxScrollGenRef.current) return;
+      if (!pendingBuyBoxScrollRef.current) return;
+      if (!buyBoxScrollSawFetchRef.current) {
+        buyBoxScrollSawFetchRef.current = true;
+        console.log('[DealAggregator] buy-box scroll fallback (no fetch observed)', { gen });
+        setBuyBoxScrollNonce((n) => n + 1);
+      }
+    }, 320);
+    return () => clearTimeout(t);
+  }, [
+    settings?.activeBuyBoxIndex,
+    settings?.preferences?.activeBuyBoxIndex,
+    isMobileViewport,
+    dealViewStyle,
+  ]);
+
+  useEffect(() => {
+    if (!pendingBuyBoxScrollRef.current) return;
+    if (!isMobileViewport || dealViewStyle !== 'card') {
+      pendingBuyBoxScrollRef.current = false;
+      buyBoxScrollSawFetchRef.current = false;
+      return;
+    }
+    if (isFetching || loading) return;
+    if (!buyBoxScrollSawFetchRef.current) return;
+
+    const gen = buyBoxScrollGenRef.current;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (gen !== buyBoxScrollGenRef.current) {
+          console.log('[DealAggregator] skip stale buy-box scroll', {
+            gen,
+            current: buyBoxScrollGenRef.current,
+          });
+          return;
+        }
+        pendingBuyBoxScrollRef.current = false;
+        buyBoxScrollSawFetchRef.current = false;
+        const el = cardsScrollRef.current;
+        if (el) el.scrollTop = 0;
+        try {
+          window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        } catch {
+          try {
+            window.scrollTo(0, 0);
+          } catch {
+            /* ignore */
+          }
+        }
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
+        console.log('[DealAggregator] card feed scrolled to top after buy box switch', {
+          gen,
+          cardsScrollTop: el?.scrollTop ?? null,
+          windowY: typeof window !== 'undefined' ? window.scrollY : null,
+        });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [
+    isFetching,
+    loading,
+    deals,
+    buyBoxScrollNonce,
+    isMobileViewport,
+    dealViewStyle,
+    settings?.activeBuyBoxIndex,
+    settings?.preferences?.activeBuyBoxIndex,
+  ]);
 
   // Reset prefetch flag when filters change
   useEffect(() => {
@@ -2954,7 +3079,7 @@ export default function DealAggregator({
         )}
 
         {dealViewStyle === 'card' && (
-          <div className="aggregator-cards-scroll">
+          <div className="aggregator-cards-scroll" ref={cardsScrollRef}>
             <div className="aggregator-cards-grid" data-cols={isMobileViewport ? 1 : cardColumnsPerRow}>
               {deals.length === 0 ? (
                 <div className="aggregator-cards-empty">No deals found. Try adjusting your filters or search.</div>
