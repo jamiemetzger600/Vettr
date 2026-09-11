@@ -3,6 +3,7 @@
  * Maps legacy status values to extension-compatible status values
  */
 
+import { displayStageLabel } from './pipelineStages.js';
 const STATUS_MAP = {
   'new': 'none',
   'reviewing': 'warm',
@@ -185,11 +186,7 @@ export function getDealProgressLabel(deal) {
     if (p != null && String(p).trim()) stage = String(p).trim();
   }
   if (!stage) return '';
-  if (stage === 'Custom Status') {
-    const label = (deal.customStageLabel || deal.custom_stage_label || '').trim();
-    if (label) return label;
-  }
-  return stage;
+  return displayStageLabel(stage, deal.customStageLabel || deal.custom_stage_label);
 }
 
 /** True when the deal is marked Passed On (archived from Cards). */

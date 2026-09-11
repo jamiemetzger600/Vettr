@@ -80,8 +80,22 @@ const STAGE_ACTION = {
   }
 };
 
-export function describeStageAction(stage, { dealName, count = 1 } = {}) {
+
+/**
+ * Pipeline stage key → user-facing label.
+ * Built-in stages keep their names; "Custom Status" uses the saved custom label.
+ */
+export function displayStageLabel(stage, customLabel) {
   const s = String(stage || '').trim();
+  if (s === 'Custom Status') {
+    const label = String(customLabel || '').trim();
+    if (label) return label;
+  }
+  return s;
+}
+
+export function describeStageAction(stage, { dealName, count = 1, customLabel } = {}) {
+  const s = displayStageLabel(stage, customLabel);
   const n = Number(count) || 0;
   const deal = shortDealName(dealName);
   const mapped = STAGE_ACTION[s];
@@ -124,9 +138,15 @@ export function savedDealIdForTeamAlert(alert, team) {
   return primaryTeamSavedDealId(team);
 }
 
+export function resolveStageLabels(row) {
+  const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+  const customs = Array.isArray(row?.customLabels) ? row.customLabels : [];
+  return stages.map((stage, i) => displayStageLabel(stage, customs[i]));
+}
+
 export function namedActivityBits(row, limit = 4) {
   const names = Array.isArray(row?.names) ? row.names.filter(Boolean) : [];
-  const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+  const stages = resolveStageLabels(row);
   const uniqueStages = [...new Set(stages.filter(Boolean))];
   if (uniqueStages.length <= 1) {
     return names.slice(0, limit);
@@ -169,7 +189,7 @@ export function addedActivityHeadline(row) {
 export function stageActivityHeadline(row) {
   const label = row?.label || 'A teammate';
   const count = Number(row?.count) || 0;
-  const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+  const stages = resolveStageLabels(row);
   const firstStage = stages[0] || '';
   const sameStage = stages.length === 0 || stages.every((s) => (s || '') === firstStage);
   const action = describeStageAction(sameStage ? firstStage : '', {
@@ -207,6 +227,11 @@ export function teamActivityAlertItems(team) {
     if (!row?.count) continue;
     const title = stageActivityHeadline(row);
     const names = Array.isArray(row.names) ? row.names.filter(Boolean) : [];
+    const resolvedStages = resolveStageLabels(row);
+    const stageRow = {
+      ...row,
+      newStages: resolvedStages.length ? resolvedStages : (row.newStages || [])
+    };
     items.push({
       title,
       body: row.count > 1 ? names.slice(0, 4).join(' · ') : '',
@@ -214,7 +239,7 @@ export function teamActivityAlertItems(team) {
       metadata: {
         headlines: [title],
         added: [],
-        stages: [row],
+        stages: [stageRow],
         savedDealId: firstPositiveId(row.ids?.[0])
       }
     });

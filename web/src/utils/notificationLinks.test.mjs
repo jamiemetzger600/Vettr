@@ -45,4 +45,19 @@ const singleNamed = alertBannerPreview({
 });
 assert(singleNamed === '', `single deal already in title: ${singleNamed}`);
 
+
+const customNow = alertBannerPreview({
+  title: 'Alesha moved Premier Specialty Engineering & Drilling… to Waiting on seller P&Ls',
+  body: '',
+  deal_name: 'Premier Specialty Engineering & Drilling Company LLC',
+  metadata: {
+    stages: [{
+      names: ['Premier Specialty Engineering & Drilling Company LLC'],
+      newStages: ['Custom Status'],
+      customLabels: ['Waiting on seller P&Ls']
+    }]
+  }
+});
+assert(customNow === 'Now: Waiting on seller P&Ls', `custom Now line: ${customNow}`);
+
 console.log('alertBannerPreview tests passed');
