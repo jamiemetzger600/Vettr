@@ -4,17 +4,50 @@
  * TUNNEL_ORIGIN env points at the current Cloudflare quick-tunnel URL
  * and can be updated without redeploying Pages.
  */
+
+const PAGES_PREVIEW_ORIGIN = /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.vettr\.pages\.dev$/i;
+
+function isPagesPreviewOrigin(origin) {
+  return Boolean(origin) && PAGES_PREVIEW_ORIGIN.test(origin);
+}
+
+function withPreviewCors(request, response) {
+  const reqOrigin = request.headers.get('Origin');
+  if (!isPagesPreviewOrigin(reqOrigin)) return response;
+  const headers = new Headers(response.headers);
+  headers.set('Access-Control-Allow-Origin', reqOrigin);
+  headers.set('Access-Control-Allow-Credentials', 'true');
+  headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
+  headers.set(
+    'Access-Control-Allow-Headers',
+    request.headers.get('Access-Control-Request-Headers') || 'content-type, authorization'
+  );
+  headers.append('Vary', 'Origin');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
 export default {
   async fetch(request, env) {
     const origin = (env.TUNNEL_ORIGIN || '').replace(/\/+$/, '');
     if (!origin) {
-      return new Response(
-        JSON.stringify({
-          error: 'TUNNEL_ORIGIN not configured',
-          hint: 'Local tunnel sync has not set the Mac tunnel URL yet',
-        }),
-        { status: 502, headers: { 'content-type': 'application/json' } }
+      return withPreviewCors(
+        request,
+        new Response(
+          JSON.stringify({
+            error: 'TUNNEL_ORIGIN not configured',
+            hint: 'Local tunnel sync has not set the Mac tunnel URL yet',
+          }),
+          { status: 502, headers: { 'content-type': 'application/json' } }
+        )
       );
+    }
+
+    if (request.method === 'OPTIONS' && isPagesPreviewOrigin(request.headers.get('Origin'))) {
+      return withPreviewCors(request, new Response(null, { status: 204 }));
     }
 
     const incoming = new URL(request.url);
@@ -41,15 +74,19 @@ export default {
     }
 
     try {
-      return await fetch(target.toString(), init);
+      const upstream = await fetch(target.toString(), init);
+      return withPreviewCors(request, upstream);
     } catch (err) {
-      return new Response(
-        JSON.stringify({
-          error: 'Upstream tunnel unreachable',
-          detail: String(err && err.message ? err.message : err),
-          origin,
-        }),
-        { status: 502, headers: { 'content-type': 'application/json' } }
+      return withPreviewCors(
+        request,
+        new Response(
+          JSON.stringify({
+            error: 'Upstream tunnel unreachable',
+            detail: String(err && err.message ? err.message : err),
+            origin,
+          }),
+          { status: 502, headers: { 'content-type': 'application/json' } }
+        )
       );
     }
   },

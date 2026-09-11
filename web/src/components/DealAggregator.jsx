@@ -2103,6 +2103,28 @@ export default function DealAggregator({
     console.debug('[DealAggregator] deck pass (no persist)');
   };
 
+  // Keep sticky filter chrome stacked under the mobile toolbar (not over cards).
+  useEffect(() => {
+    if (!showMobileToolbar) {
+      document.documentElement.style.removeProperty('--mobile-toolbar-h');
+      return undefined;
+    }
+    const toolbar = document.querySelector('.mobile-feed-toolbar');
+    if (!toolbar || typeof ResizeObserver === 'undefined') return undefined;
+    const sync = () => {
+      const h = Math.ceil(toolbar.getBoundingClientRect().height || 0);
+      document.documentElement.style.setProperty('--mobile-toolbar-h', `${h}px`);
+      console.debug('[DealAggregator] mobile sticky toolbar height', h);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(toolbar);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--mobile-toolbar-h');
+    };
+  }, [showMobileToolbar, isPortrait, showMobileFeedFilters, buyBoxesUiState?.buyBoxes?.length]);
+
   return (
     <div
       className={[
@@ -2111,6 +2133,7 @@ export default function DealAggregator({
         isMobileViewport ? ' deal-aggregator--mobile' : '',
         isMobileViewport ? (isPortrait ? ' deal-aggregator--mobile-portrait' : ' deal-aggregator--mobile-landscape') : '',
         isMobileViewport && !showMobileDeck ? ' deal-aggregator--mobile-browse' : '',
+        showMobileToolbar && !hideMobileCardFilters ? ' deal-aggregator--mobile-filters-open' : '',
       ].join('')}
     >
       {feedError && (

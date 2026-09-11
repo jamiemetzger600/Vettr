@@ -34,20 +34,24 @@ const webAppUrlRaw = process.env.WEB_APP_URL || 'http://localhost:5173';
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? webAppUrlRaw.split(',').map(s => s.trim()).filter(Boolean).map(url => url.replace(/\/+$/, ''))
   : [webAppUrlRaw, 'http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'];
+// PR / branch previews are https://<hash-or-branch>.vettr.pages.dev (prod stays vettr.pages.dev).
+const VETTR_PAGES_PREVIEW_ORIGIN = /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.vettr\.pages\.dev$/i;
+function isAllowedCorsOrigin(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (/^chrome-extension:\/\//i.test(origin)) return true;
+  if (VETTR_PAGES_PREVIEW_ORIGIN.test(origin)) return true;
+  return false;
+}
 if (process.env.NODE_ENV === 'production') {
-  console.log('[cors] Allowed origins:', allowedOrigins.length ? allowedOrigins : '(none – check WEB_APP_URL)');
+  console.log('[cors] Allowed origins:', allowedOrigins.length ? allowedOrigins : '(none – check WEB_APP_URL)', '+ *.vettr.pages.dev previews');
 }
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) {
-      return cb(null, true);
+    if (isAllowedCorsOrigin(origin)) {
+      return cb(null, origin || true);
     }
-    if (allowedOrigins.includes(origin)) {
-      return cb(null, origin);
-    }
-    if (/^chrome-extension:\/\//i.test(origin)) {
-      return cb(null, origin);
-    }
+    console.warn('[cors] blocked origin:', origin);
     cb(null, false);
   },
   credentials: true
@@ -70,7 +74,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.114' });
+  res.json({ status: 'ok', version: '5.0.115' });
 });
 
 // Routes
