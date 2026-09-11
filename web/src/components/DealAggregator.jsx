@@ -29,7 +29,7 @@ import { useCrmStageControl } from '../hooks/useCrmStageControl';
 import DealSwipeDeck from './DealSwipeDeck';
 import MobileFeedToolbar from './MobileFeedToolbar';
 import GatedPreviewText from './GatedPreviewText';
-import { useIsMobile, useOrientation, startOfLocalDayISO } from '../hooks/useMediaQuery';
+import { useIsMobile, useOrientation, startOfLocalDayISO, matchesMobileViewport } from '../hooks/useMediaQuery';
 import { useTeam } from '../context/TeamContext';
 import { claimPendingSaveDealDbId } from '../utils/pendingSaveDeal';
 import { collapseListingEl, prefersReducedMotion } from '../utils/listingExit';
@@ -117,6 +117,13 @@ function persistStoredDealViewStyle(style) {
 function resolveDealViewStyle(settingsStyle) {
   const stored = loadStoredDealViewStyle();
   if (stored) return stored;
+  // Mobile cold load: prefer Cards. Ignore account/guest default of `table`
+  // (SettingsPage / guestSettings defaults) so phones don't land on Table.
+  // Explicit card/inbox account prefs still win. Desktop unchanged.
+  if (matchesMobileViewport()) {
+    if (settingsStyle === 'card' || settingsStyle === 'inbox') return settingsStyle;
+    return 'card';
+  }
   if (isDealViewStyle(settingsStyle)) return settingsStyle;
   return 'table';
 }

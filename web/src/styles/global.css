@@ -12092,3 +12092,78 @@ button.aggregator-welcome__buybox {
   }
 }
 
+
+/* ─────────────────────────────────────────────────────────────
+   P0 mobile: portrait phones + short landscape phones
+   Keep in sync with MOBILE_MEDIA_QUERY in useMediaQuery.js
+   (max-width: 767) OR (max-width: 950 and max-height: 500 landscape)
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 767px), (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
+  /* 1) Landscape phones keep mobile header chrome (hamburger, not desktop link row) */
+  .app-header-menu-btn {
+    display: flex;
+  }
+
+  .app-header-actions--desktop {
+    display: none;
+  }
+
+  .app-header-mobile-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* 2) Single-column cards — no off-screen 280px columns in phone landscape */
+  .aggregator-cards-scroll,
+  .deal-aggregator,
+  .deal-aggregator--mobile {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .aggregator-cards-grid,
+  .aggregator-cards-grid[data-cols="1"],
+  .aggregator-cards-grid[data-cols="2"],
+  .aggregator-cards-grid[data-cols="3"],
+  .aggregator-cards-grid[data-cols="4"],
+  .aggregator-cards-grid[data-cols="6"],
+  .aggregator-cards-grid[data-cols="8"] {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    justify-content: stretch;
+  }
+
+  .aggregator-cards-grid .deal-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* 3) Save / Hide / Open tap targets ≥44px */
+  .aggregator-cards-grid .deal-card__shortcuts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px 12px;
+    justify-content: stretch;
+  }
+
+  .aggregator-cards-grid .deal-card__shortcuts button {
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    padding: 10px 8px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.06);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
