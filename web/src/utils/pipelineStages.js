@@ -86,13 +86,23 @@ export function defaultStageForKanbanColumn(columnId) {
   return col ? col.defaultStage : null;
 }
 
-export function resolveDealStage(deal) {
-  const stage = (deal?.progressStage || deal?.progress_stage || '').trim();
-  if (stage === 'Custom Status') {
-    const label = (deal?.customStageLabel || deal?.custom_stage_label || '').trim();
+/**
+ * Pipeline stage key → user-facing label.
+ * Built-in stages keep their names; "Custom Status" uses the saved custom label.
+ * Keep in sync with backend/src/lib/teamActivity.js displayStageLabel.
+ */
+export function displayStageLabel(stage, customLabel) {
+  const s = String(stage || '').trim();
+  if (s === 'Custom Status') {
+    const label = String(customLabel || '').trim();
     if (label) return label;
   }
-  return stage;
+  return s;
+}
+
+export function resolveDealStage(deal) {
+  const stage = (deal?.progressStage || deal?.progress_stage || '').trim();
+  return displayStageLabel(stage, deal?.customStageLabel || deal?.custom_stage_label);
 }
 
 export function daysInCurrentStage(deal) {

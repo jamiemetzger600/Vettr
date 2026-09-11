@@ -1,5 +1,7 @@
 import {
   addedActivityHeadline,
+  describeStageAction,
+  displayStageLabel,
   primaryTeamSavedDealId,
   savedDealIdForTeamAlert,
   stageActivityHeadline,
@@ -105,5 +107,38 @@ assert(items[0].title === 'Alesha passed on 2 deals', items[0].title);
 assert(items[0].body === 'Roofing Co · Kayak Tours', items[0].body);
 assert(items[1].title === 'Alesha requested NDA on Maui Dental', items[1].title);
 assert(items[1].savedDealId === 77, String(items[1].savedDealId));
+
+
+assert(displayStageLabel('Requested NDA') === 'Requested NDA', 'built-in stage unchanged');
+assert(displayStageLabel('Custom Status', 'Waiting on seller P&Ls') === 'Waiting on seller P&Ls', 'custom label wins');
+assert(displayStageLabel('Custom Status', '  ') === 'Custom Status', 'blank custom falls back');
+const customAction = describeStageAction('Custom Status', {
+  dealName: 'Acme HVAC',
+  customLabel: 'Waiting on seller P&Ls'
+});
+assert(customAction === 'moved Acme HVAC to Waiting on seller P&Ls', customAction);
+
+const customHeadline = stageActivityHeadline({
+  label: 'Alesha',
+  count: 1,
+  names: ['Acme HVAC'],
+  newStages: ['Custom Status'],
+  customLabels: ['Waiting on seller P&Ls']
+});
+assert(customHeadline === 'Alesha moved Acme HVAC to Waiting on seller P&Ls', customHeadline);
+
+const customItems = teamActivityAlertItems({
+  added: [],
+  stages: [{
+    label: 'Alesha',
+    count: 1,
+    names: ['Premier Specialty'],
+    ids: [55],
+    newStages: ['Custom Status'],
+    customLabels: ['Waiting on seller P&Ls']
+  }]
+});
+assert(customItems[0].title.includes('Waiting on seller P&Ls'), customItems[0].title);
+assert(customItems[0].metadata.stages[0].newStages[0] === 'Waiting on seller P&Ls', 'metadata stores display name');
 
 console.log('teamActivity tests passed');

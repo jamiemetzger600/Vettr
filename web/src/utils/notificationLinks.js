@@ -3,6 +3,8 @@
  * Keep in sync with backend/src/lib/notificationLinks.js
  */
 
+import { displayStageLabel } from './pipelineStages.js';
+
 export function parseMatchDealIds(value) {
   const raw = Array.isArray(value) ? value : String(value || '').split(',');
   const ids = [];
@@ -108,7 +110,9 @@ export function alertBannerPreview(alert) {
 
   const namedMoves = (row) => {
     const names = Array.isArray(row?.names) ? row.names.filter(Boolean) : [];
-    const stages = Array.isArray(row?.newStages) ? row.newStages : [];
+    const rawStages = Array.isArray(row?.newStages) ? row.newStages : [];
+    const customs = Array.isArray(row?.customLabels) ? row.customLabels : [];
+    const stages = rawStages.map((stage, i) => displayStageLabel(stage, customs[i]));
     const uniqueStages = [...new Set(stages.filter(Boolean))];
     if (uniqueStages.length <= 1) return names.slice(0, 4);
     return names.slice(0, 4).map((name, i) => {
@@ -145,7 +149,10 @@ export function alertBannerPreview(alert) {
 
   if (preview && fold(preview) === fold(title)) preview = '';
   if (preview && fold(preview) === fold(dealName)) {
-    const stage = Array.isArray(meta.stages) ? meta.stages[0]?.newStages?.[0] : '';
+    const stageRow = Array.isArray(meta.stages) ? meta.stages[0] : null;
+    const rawStage = stageRow?.newStages?.[0] || '';
+    const custom = Array.isArray(stageRow?.customLabels) ? stageRow.customLabels[0] : '';
+    const stage = displayStageLabel(rawStage, custom);
     preview = stage ? `Now: ${stage}` : '';
   }
   return preview.slice(0, 220);
