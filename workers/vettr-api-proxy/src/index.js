@@ -5,15 +5,12 @@
  * and can be updated without redeploying Pages.
  */
 
-const PAGES_PREVIEW_ORIGIN = /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.vettr\.pages\.dev$/i;
+import { isVettrPagesOrigin } from '../../../shared/corsAllow.js';
 
-function isPagesPreviewOrigin(origin) {
-  return Boolean(origin) && PAGES_PREVIEW_ORIGIN.test(origin);
-}
-
-function withPreviewCors(request, response) {
+/** Reflect Origin for Vettr Pages (prod + staging + previews) when credentials are used. */
+function withPagesCors(request, response) {
   const reqOrigin = request.headers.get('Origin');
-  if (!isPagesPreviewOrigin(reqOrigin)) return response;
+  if (!isVettrPagesOrigin(reqOrigin)) return response;
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', reqOrigin);
   headers.set('Access-Control-Allow-Credentials', 'true');
@@ -34,7 +31,7 @@ export default {
   async fetch(request, env) {
     const origin = (env.TUNNEL_ORIGIN || '').replace(/\/+$/, '');
     if (!origin) {
-      return withPreviewCors(
+      return withPagesCors(
         request,
         new Response(
           JSON.stringify({
@@ -46,8 +43,9 @@ export default {
       );
     }
 
-    if (request.method === 'OPTIONS' && isPagesPreviewOrigin(request.headers.get('Origin'))) {
-      return withPreviewCors(request, new Response(null, { status: 204 }));
+    // Answer preflight here so preview/staging work even if Express allowlist is stale.
+    if (request.method === 'OPTIONS' && isVettrPagesOrigin(request.headers.get('Origin'))) {
+      return withPagesCors(request, new Response(null, { status: 204 }));
     }
 
     const incoming = new URL(request.url);
@@ -75,9 +73,9 @@ export default {
 
     try {
       const upstream = await fetch(target.toString(), init);
-      return withPreviewCors(request, upstream);
+      return withPagesCors(request, upstream);
     } catch (err) {
-      return withPreviewCors(
+      return withPagesCors(
         request,
         new Response(
           JSON.stringify({

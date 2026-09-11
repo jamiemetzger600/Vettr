@@ -5,3 +5,4 @@
 
 export * from './buyBoxMatcher.js';
 export * from './dealNormalizer.js';
+export * from './corsAllow.js';

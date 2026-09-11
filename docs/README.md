@@ -16,6 +16,7 @@ Documentation is organized into the following folders:
 ## Quick Links
 
 - [Quick Start](guides/QUICK_START.md) - Basic setup
+- [Phone testing away from home](guides/PHONE_TESTING.md) - Staging / Pages preview on cellular
 - [Auto-Refresh Guide](guides/AUTO_REFRESH_QUICK_START.md) - 5-minute auto-refresh setup
 - [Latest Release Notes](release-notes/RELEASE_NOTES_v2.2.0.md) - v2.2.0 details
 - [Roadmap](misc/ROADMAP.md) - Future plans

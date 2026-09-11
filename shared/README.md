@@ -4,6 +4,7 @@ Shared business logic for Vettr v4.0.0+ (extension, web app, backend).
 
 ## Features
 
+- **CORS allow-check**: `corsAllow.js` — which browser Origins may call the API (`vettr.pages.dev`, `*.vettr.pages.dev`, localhost list, chrome-extension)
 - **Buy Box Matching**: Filter deals based on price, EBITDA, revenue, location, industry
 - **Exclude Filtering**: Filter out deals by keywords
 - **Hidden Deals**: Track and filter hidden deals
@@ -93,6 +94,10 @@ Calculate revenue/EBITDA multiples and margin.
 ```
 
 ## Testing
+
+```bash
+node shared/corsAllow.test.mjs
+```
 
 ```bash
 node --input-type=module -e "
