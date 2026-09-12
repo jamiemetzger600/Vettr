@@ -21,7 +21,8 @@ import {
   exchangeCodeAndStoreTokens,
   disconnectGoogleCalendar,
   getGoogleCalendarRedirectUri,
-  connectionHasGmailSend
+  connectionHasGmailSend,
+  connectionHasGmailReadonly
 } from '../services/googleCalendarService.js';
 import { sendGmailMessage } from '../services/googleGmailService.js';
 import { isSmtpConfigured } from '../services/emailService.js';
@@ -619,6 +620,7 @@ export const getCalendarStatus = async (req, res) => {
       connectedAt: connection?.connected_at || null,
       googleEmail: connection?.google_email || null,
       gmail: connectionHasGmailSend(connection),
+      gmailReadonly: connectionHasGmailReadonly(connection),
       calendar: Boolean(connection),
       oauthConfigured: isGoogleCalendarOAuthConfigured(),
       redirectUri: getGoogleCalendarRedirectUri(),
@@ -633,7 +635,8 @@ export const getCalendarStatus = async (req, res) => {
 export const getCalendarOAuthUrl = async (req, res) => {
   try {
     const returnTo = req.query.returnTo === 'settings' ? 'settings' : 'calendar';
-    const url = getGoogleCalendarAuthUrl(req.user.userId, returnTo);
+    const gmailReadonly = req.query.gmailReadonly === '1' || req.query.gmailReadonly === 'true';
+    const url = getGoogleCalendarAuthUrl(req.user.userId, returnTo, { gmailReadonly });
     res.json({ url });
   } catch (error) {
     if (error.status === 503) return res.status(503).json({ error: error.message });

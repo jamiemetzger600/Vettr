@@ -6,12 +6,18 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 const OAUTH_STATE_PURPOSE = 'google_calendar_oauth';
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
-const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.events',
-  GMAIL_SEND_SCOPE,
-  'openid',
-  'email'
-].join(' ');
+export const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+
+function buildScopeString({ gmailReadonly = false } = {}) {
+  const scopes = [
+    'https://www.googleapis.com/auth/calendar.events',
+    GMAIL_SEND_SCOPE,
+    'openid',
+    'email'
+  ];
+  if (gmailReadonly) scopes.push(GMAIL_READONLY_SCOPE);
+  return scopes.join(' ');
+}
 
 const VETTR_EXTENDED_PROP = 'vettrEventId';
 const TASK_EXTENDED_PROP = 'vettrTaskId';
@@ -55,7 +61,7 @@ export function verifyOAuthState(state) {
   };
 }
 
-export function getGoogleCalendarAuthUrl(userId, returnTo = 'calendar') {
+export function getGoogleCalendarAuthUrl(userId, returnTo = 'calendar', opts = {}) {
   if (!isGoogleCalendarOAuthConfigured()) {
     const err = new Error(
       'Google OAuth is not configured. Set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET on the API server.'
@@ -68,7 +74,7 @@ export function getGoogleCalendarAuthUrl(userId, returnTo = 'calendar') {
     client_id: getGoogleCalendarClientId(),
     redirect_uri: getGoogleCalendarRedirectUri(),
     response_type: 'code',
-    scope: SCOPES,
+    scope: buildScopeString({ gmailReadonly: Boolean(opts.gmailReadonly) }),
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
@@ -97,6 +103,11 @@ export async function isGoogleCalendarConnected(userId) {
 export function connectionHasGmailSend(connection) {
   const scopes = String(connection?.granted_scopes || '');
   return scopes.includes('gmail.send');
+}
+
+export function connectionHasGmailReadonly(connection) {
+  const scopes = String(connection?.granted_scopes || '');
+  return scopes.includes('gmail.readonly');
 }
 
 async function fetchGoogleEmail(accessToken) {
@@ -282,7 +293,7 @@ export async function exchangeCodeAndStoreTokens(userId, code) {
     : null;
 
   const googleEmail = await fetchGoogleEmail(data.access_token);
-  const grantedScopes = data.scope || SCOPES;
+  const grantedScopes = data.scope || buildScopeString();
 
   await pool.query(
     `INSERT INTO calendar_connections (

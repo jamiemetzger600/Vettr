@@ -444,8 +444,16 @@ export const crmAPI = {
 
   getCalendarOAuthConfig: () => apiRequest('/crm/calendar/oauth-config'),
 
-  startCalendarOAuth: (returnTo) =>
-    apiRequest(`/crm/calendar/oauth/start${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`),
+  startCalendarOAuth: (returnToOrOpts) => {
+    const opts = typeof returnToOrOpts === 'string' || !returnToOrOpts
+      ? { returnTo: returnToOrOpts }
+      : returnToOrOpts;
+    const params = new URLSearchParams();
+    if (opts.returnTo) params.set('returnTo', opts.returnTo);
+    if (opts.gmailReadonly) params.set('gmailReadonly', '1');
+    const qs = params.toString();
+    return apiRequest(`/crm/calendar/oauth/start${qs ? `?${qs}` : ''}`);
+  },
 
   disconnectCalendar: () =>
     apiRequest('/crm/calendar/connection', { method: 'DELETE' }),
@@ -827,6 +835,64 @@ export const feedbackAPI = {
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   },
+};
+
+export const offMarketAPI = {
+  getStatus: () => apiRequest('/off-market/status'),
+  listCampaigns: () => apiRequest('/off-market/campaigns'),
+  createCampaign: (payload) =>
+    apiRequest('/off-market/campaigns', { method: 'POST', body: JSON.stringify(payload) }),
+  getCampaign: (id) => apiRequest(`/off-market/campaigns/${id}`),
+  updateCampaign: (id, payload) =>
+    apiRequest(`/off-market/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  getSequence: (id) => apiRequest(`/off-market/campaigns/${id}/sequence`),
+  saveSequence: (id, steps) =>
+    apiRequest(`/off-market/campaigns/${id}/sequence`, {
+      method: 'PUT',
+      body: JSON.stringify({ steps })
+    }),
+  listProspects: (id, status) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return apiRequest(`/off-market/campaigns/${id}/prospects${qs}`);
+  },
+  addProspects: (id, payload) =>
+    apiRequest(`/off-market/campaigns/${id}/prospects`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  research: (id, payload) =>
+    apiRequest(`/off-market/campaigns/${id}/research`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {})
+    }),
+  enqueue: (id, payload) =>
+    apiRequest(`/off-market/campaigns/${id}/enqueue`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {})
+    }),
+  sendTick: (id, payload) =>
+    apiRequest(`/off-market/campaigns/${id}/send-tick`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {})
+    }),
+  getStats: (id) => apiRequest(`/off-market/campaigns/${id}/stats`),
+  patchProspect: (prospectId, payload) =>
+    apiRequest(`/off-market/prospects/${prospectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  promote: (prospectId, payload) =>
+    apiRequest(`/off-market/prospects/${prospectId}/promote`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {})
+    }),
+  syncInbox: () => apiRequest('/off-market/sync', { method: 'POST' }),
+  getLlmConnection: () => apiRequest('/off-market/llm-connection'),
+  saveLlmConnection: (payload) =>
+    apiRequest('/off-market/llm-connection', { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteLlmConnection: () => apiRequest('/off-market/llm-connection', { method: 'DELETE' }),
+  testLlmConnection: () => apiRequest('/off-market/llm-connection/test', { method: 'POST' }),
+  rotateIngestToken: () => apiRequest('/off-market/llm-connection/ingest-token', { method: 'POST' })
 };
 
 // Payments API

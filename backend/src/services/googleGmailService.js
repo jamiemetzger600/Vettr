@@ -31,13 +31,15 @@ function stripHtml(html) {
     .trim();
 }
 
-function buildRfc822({ from, to, subject, text, html }) {
+function buildRfc822({ from, to, subject, text, html, inReplyTo, references }) {
   const headers = [
     `From: ${oneLine(from)}`,
     `To: ${oneLine(to)}`,
     `Subject: ${encodeMimeSubject(subject)}`,
     'MIME-Version: 1.0'
   ];
+  if (inReplyTo) headers.push(`In-Reply-To: ${oneLine(inReplyTo)}`);
+  if (references) headers.push(`References: ${oneLine(references)}`);
 
   if (html) {
     headers.push('Content-Type: text/html; charset=utf-8');
@@ -103,7 +105,116 @@ export async function sendGmailMessage(userId, { to, subject, text, html }) {
   }
 
   console.log('[gmail] sent', { userId, to: recipient, id: data.id });
-  return { sent: true, id: data.id, from };
+  return { sent: true, id: data.id, threadId: data.threadId || null, from };
+}
+
+export async function sendGmailCampaignMessage(userId, { to, subject, text, html, threadId, inReplyTo }) {
+  const result = await sendGmailRaw(userId, {
+    to,
+    subject,
+    text,
+    html,
+    threadId,
+    inReplyTo,
+    references: inReplyTo
+  });
+  let rfcMessageId = null;
+  if (result.id) {
+    try {
+      rfcMessageId = await getGmailRfcMessageId(userId, result.id);
+    } catch (err) {
+      console.warn('[gmail] rfc822 Message-ID lookup failed', err.message);
+    }
+  }
+  return { ...result, rfcMessageId };
+}
+
+async function sendGmailRaw(userId, { to, subject, text, html, threadId, inReplyTo, references }) {
+  const connection = await getGoogleConnection(userId);
+  if (!connection?.access_token) {
+    const err = new Error('Google is not connected. Connect Gmail in Settings.');
+    err.status = 400;
+    err.code = 'google_not_connected';
+    throw err;
+  }
+  if (!connectionHasGmailSend(connection)) {
+    const err = new Error('Reconnect Google in Settings to send from Gmail.');
+    err.status = 409;
+    err.code = 'reconnect_google';
+    throw err;
+  }
+
+  const recipient = oneLine(to);
+  if (!recipient || !recipient.includes('@')) {
+    const err = new Error('A valid recipient email is required');
+    err.status = 400;
+    err.code = 'missing_recipient';
+    throw err;
+  }
+
+  const from = connection.google_email || 'me';
+  const raw = toBase64Url(buildRfc822({
+    from,
+    to: recipient,
+    subject,
+    text: text || (html ? stripHtml(html) : ''),
+    html,
+    inReplyTo,
+    references
+  }));
+
+  const token = await getValidGoogleAccessToken(userId);
+  const body = { raw };
+  if (threadId) body.threadId = threadId;
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = data.error?.message || 'Gmail send failed';
+    console.error('[gmail] send failed', { userId, to: recipient, message });
+    const err = new Error(message);
+    err.status = res.status === 401 ? 401 : 502;
+    err.code = 'gmail_send_failed';
+    throw err;
+  }
+
+  console.log('[gmail] sent', { userId, to: recipient, id: data.id, threadId: data.threadId || null });
+  return { sent: true, id: data.id, threadId: data.threadId || null, from };
+}
+
+async function getGmailRfcMessageId(userId, messageId) {
+  const token = await getValidGoogleAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=Message-Id`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return null;
+  const headers = data.payload?.headers || [];
+  const found = headers.find((h) => String(h.name).toLowerCase() === 'message-id');
+  return found?.value || null;
+}
+
+export async function getGmailThread(userId, threadId) {
+  const token = await getValidGoogleAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}?format=full`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error?.message || 'Gmail thread fetch failed');
+    err.status = res.status === 401 ? 401 : 502;
+    throw err;
+  }
+  return data;
 }
 
 /** Prefer the user's connected Gmail; fall back to Vettr SMTP. */

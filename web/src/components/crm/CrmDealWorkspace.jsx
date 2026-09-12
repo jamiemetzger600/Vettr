@@ -697,6 +697,12 @@ export default function CrmDealWorkspace({
             {lastTouchedLabel}
           </p>
         ) : null}
+        {String(deal.source || '') === 'Off Market' ? (
+          <p className="crm-workspace-last-touch">
+            <span className="crm-chip">Off Market</span>
+            {deal.referralSource ? ` · ${deal.referralSource}` : ''}
+          </p>
+        ) : null}
         <nav className="crm-record-tabs" aria-label="Deal record sections">
           {RECORD_TABS.map((tab) => (
             <button
