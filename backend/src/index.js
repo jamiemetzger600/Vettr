@@ -59,14 +59,14 @@ app.use((req, res, next) => {
   if (req.originalUrl === '/api/payments/webhook') {
     next();
   } else {
-    // 8mb allows feedback screenshot + voice base64 payloads
-    express.json({ limit: '8mb' })(req, res, next);
+    // 12mb: feedback screenshot/voice + Quick IOI image attachments (base64)
+    express.json({ limit: '12mb' })(req, res, next);
   }
 });
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.116' });
+  res.json({ status: 'ok', version: '5.0.117' });
 });
 
 // Routes

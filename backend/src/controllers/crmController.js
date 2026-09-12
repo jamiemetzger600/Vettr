@@ -708,14 +708,15 @@ export const googleCalendarOAuthCallback = async (req, res) => {
 
 export const postGmailSend = async (req, res) => {
   try {
-    const { to, subject, text } = req.body || {};
+    const { to, subject, text, attachments } = req.body || {};
     if (!subject || !String(text || '').trim()) {
       return res.status(400).json({ error: 'subject and text are required' });
     }
     const result = await sendGmailMessage(req.user.userId, {
       to,
       subject,
-      text
+      text,
+      attachments
     });
     res.json(result);
   } catch (error) {
