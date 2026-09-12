@@ -6,15 +6,22 @@ export NODE_ENV="${NODE_ENV:-development}"
 ROOT="$(cd "$(dirname "$0")/../backend" && pwd)"
 cd "$ROOT"
 
-# Avoid port conflict with a leftover process
+# kickstart -k can leave an orphan node on :3001. The old "monitor existing"
+# loop then never starts this tree, so new routes (Off Market) stay 404.
 LSOF=/usr/sbin/lsof
-if "$LSOF" -tiTCP:3001 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Port 3001 already in use — monitoring existing Vettr API"
-  # Stay alive so launchd KeepAlive doesn't thrash; monitor the listener
-  while "$LSOF" -tiTCP:3001 -sTCP:LISTEN >/dev/null 2>&1; do
-    sleep 30
-  done
-  echo "Port 3001 freed; starting API"
+PIDS="$("$LSOF" -tiTCP:3001 -sTCP:LISTEN 2>/dev/null || true)"
+if [ -n "$PIDS" ]; then
+  echo "Port 3001 in use by leftover API ($PIDS) — stopping so this LaunchAgent can start current code"
+  # shellcheck disable=SC2086
+  kill $PIDS 2>/dev/null || true
+  sleep 1
+  PIDS="$("$LSOF" -tiTCP:3001 -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "$PIDS" ]; then
+    echo "Port 3001 still held ($PIDS) — kill -9"
+    # shellcheck disable=SC2086
+    kill -9 $PIDS 2>/dev/null || true
+    sleep 1
+  fi
 fi
 
 exec /usr/local/bin/node --max-old-space-size=768 src/index.js

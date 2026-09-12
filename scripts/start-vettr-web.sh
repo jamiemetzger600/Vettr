@@ -5,13 +5,22 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 ROOT="$(cd "$(dirname "$0")/../web" && pwd)"
 cd "$ROOT"
 
+# Same leftover-listener trap as the API LaunchAgent: do not sit in a monitor
+# loop on an old Vite, or this checkout (Off Market tab) never loads.
 LSOF=/usr/sbin/lsof
-if "$LSOF" -tiTCP:5173 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Port 5173 already in use — monitoring existing Vettr web"
-  while "$LSOF" -tiTCP:5173 -sTCP:LISTEN >/dev/null 2>&1; do
-    sleep 30
-  done
-  echo "Port 5173 freed; starting web"
+PIDS="$("$LSOF" -tiTCP:5173 -sTCP:LISTEN 2>/dev/null || true)"
+if [ -n "$PIDS" ]; then
+  echo "Port 5173 in use by leftover web ($PIDS) — stopping so this LaunchAgent can start current code"
+  # shellcheck disable=SC2086
+  kill $PIDS 2>/dev/null || true
+  sleep 1
+  PIDS="$("$LSOF" -tiTCP:5173 -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "$PIDS" ]; then
+    echo "Port 5173 still held ($PIDS) — kill -9"
+    # shellcheck disable=SC2086
+    kill -9 $PIDS 2>/dev/null || true
+    sleep 1
+  fi
 fi
 
 # Bind to 0.0.0.0 so phones/tablets on the same Wi-Fi can reach the dev server
