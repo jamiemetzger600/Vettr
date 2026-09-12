@@ -6546,6 +6546,8 @@ button.aggregator-welcome__buybox {
   min-height: 44px;
   width: 100%;
   max-width: 280px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
 }
 
