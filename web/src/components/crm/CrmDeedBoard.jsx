@@ -641,24 +641,58 @@ export default function CrmDeedBoard({
   const matchEmpty = !boardEmpty && visibleCount === 0;
   const dragging = Boolean(dragDealId);
 
+  const bannerFull = isTeamMode ? (
+    <>
+      <strong>Team board.</strong> Pins, order, color, and waiting-on are shared with{' '}
+      {activeTeam?.name || 'the team'}. Saved deals are newest first. Drop a card into{' '}
+      <strong>Pinned</strong> to keep it up front — teammates see the same pins.
+    </>
+  ) : (
+    <>
+      <strong>Personal board.</strong> Saved deals are newest first. Drag a card into{' '}
+      <strong>Pinned</strong> to keep it up front. Drop it on Saved deals to unpin.
+      Passed-on deals are archived.
+    </>
+  );
+  const bannerViewer = writeEnabled ? '' : ' Viewer role — cards are read-only.';
+  const bannerSummary = isTeamMode
+    ? (
+      <>
+        <strong>Team board.</strong>
+        {' '}
+        Shared with
+        {' '}
+        {activeTeam?.name || 'the team'}
+        .
+        {bannerViewer}
+      </>
+    )
+    : (
+      <>
+        <strong>Personal board.</strong>
+        {' '}
+        Pins stay up front; passed-on deals are archived.
+        {bannerViewer}
+      </>
+    );
+
   return (
     <div className={`crm-deed-board${dragging ? ' crm-deed-board--dragging' : ''}`}>
-      <div className="crm-deed-board__banner">
-        {isTeamMode ? (
-          <>
-            <strong>Team board.</strong> Pins, order, color, and waiting-on are shared with{' '}
-            {activeTeam?.name || 'the team'}. Saved deals are newest first. Drop a card into{' '}
-            <strong>Pinned</strong> to keep it up front — teammates see the same pins.
-          </>
-        ) : (
-          <>
-            <strong>Personal board.</strong> Saved deals are newest first. Drag a card into{' '}
-            <strong>Pinned</strong> to keep it up front. Drop it on Saved deals to unpin.
-            Passed-on deals are archived.
-          </>
-        )}
-        {writeEnabled ? '' : ' Viewer role — cards are read-only.'}
+      {/* Desktop: full blurb. Mobile: one-line summary + disclose (CSS toggles). */}
+      <div className="crm-deed-board__banner crm-deed-board__banner--desktop" role="note">
+        {bannerFull}
+        {bannerViewer}
       </div>
+      <details className="crm-deed-board__banner crm-deed-board__banner--mobile">
+        <summary className="crm-deed-board__banner-summary">
+          <span className="crm-deed-board__banner-summary-text">{bannerSummary}</span>
+          <span className="crm-deed-board__banner-more-label" aria-hidden="true">More</span>
+        </summary>
+        <p className="crm-deed-board__banner-details">
+          {bannerFull}
+          {bannerViewer}
+        </p>
+      </details>
 
       <div className="crm-deed-board__toolbar">
         <label className="crm-deed-board__search">
@@ -674,46 +708,49 @@ export default function CrmDeedBoard({
             aria-label="Search deal cards"
           />
         </label>
-        <select
-          className="modal-input"
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value)}
-          aria-label="Filter by status"
-        >
-          <option value="">All statuses</option>
-          <option value="__unstaged__">Unstaged</option>
-          {stageOptions.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-        <select
-          className="modal-input"
-          value={waitingFilter}
-          onChange={(e) => setWaitingFilter(e.target.value)}
-          aria-label="Filter by waiting on"
-        >
-          <option value="">Waiting on: all</option>
-          {WAITING_DEFAULTS.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}</option>
-          ))}
-        </select>
-        {hasFilters ? (
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              setQuery('');
-              setStageFilter('');
-              setWaitingFilter('');
-            }}
+        <div className="crm-deed-board__filters">
+          <select
+            className="modal-input"
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            aria-label="Filter by status"
           >
-            Clear
-          </button>
-        ) : null}
+            <option value="">All statuses</option>
+            <option value="__unstaged__">Unstaged</option>
+            {stageOptions.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          <select
+            className="modal-input"
+            value={waitingFilter}
+            onChange={(e) => setWaitingFilter(e.target.value)}
+            aria-label="Filter by waiting on"
+          >
+            <option value="">Waiting on: all</option>
+            {WAITING_DEFAULTS.map((item) => (
+              <option key={item.id} value={item.id}>{item.label}</option>
+            ))}
+          </select>
+          {hasFilters ? (
+            <button
+              type="button"
+              className="btn-secondary crm-deed-board__clear"
+              onClick={() => {
+                setQuery('');
+                setStageFilter('');
+                setWaitingFilter('');
+                console.log('[CrmDeedBoard] clear filters');
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
         {archivedCount > 0 ? (
           <button
             type="button"
-            className={`btn-secondary${showArchived ? ' crm-deed-board__archive-btn--on' : ''}`}
+            className={`btn-secondary crm-deed-board__archive-btn${showArchived ? ' crm-deed-board__archive-btn--on' : ''}`}
             aria-pressed={showArchived}
             onClick={() => {
               const next = !showArchived;
@@ -725,14 +762,14 @@ export default function CrmDeedBoard({
             {showArchived ? 'Back to active' : `Archived (${archivedCount})`}
           </button>
         ) : null}
-        <span className="crm-kanban-count">
+        <span className="crm-kanban-count crm-deed-board__count">
           {showArchived
             ? `${visibleCount}${hasFilters ? ` of ${archivedCount}` : ''} archived`
             : `${visibleCount}${hasFilters ? ` of ${activeCount}` : ''} deals`}
           {!showArchived && pinnedDeals.length > 0 ? ` · ${pinnedDeals.length} pinned` : ''}
         </span>
         {typeof onAddDeal === 'function' ? (
-          <button type="button" className="btn-primary" onClick={onAddDeal}>
+          <button type="button" className="btn-primary crm-deed-board__add-deal" onClick={onAddDeal}>
             Add deal
           </button>
         ) : null}
