@@ -40,6 +40,15 @@ export function isValidCrmFilter(filter) {
   return VALID_CRM_FILTERS.has(filter);
 }
 
+/** Canonical dashboard tab id, including Off Market aliases. */
+export function normalizeDashboardTab(tab) {
+  const t = String(tab || '').trim().toLowerCase();
+  if (t === 'off-market' || t === 'offmarket' || t === 'off_market') return 'off-market';
+  if (t === 'saved-deals' || t === 'crm') return 'crm';
+  if (t === 'aggregator') return 'aggregator';
+  return null;
+}
+
 export function readStoredDashboardLocation() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

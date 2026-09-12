@@ -68,6 +68,9 @@ export default function OffMarketDashboard({
       const [st, list] = await Promise.all([
         offMarketAPI.getStatus().catch((err) => {
           console.warn('[OffMarket] status failed', err.message);
+          if (err.status === 404 || /route not found/i.test(err.message || '')) {
+            throw err;
+          }
           return null;
         }),
         loadCampaigns()
@@ -80,7 +83,11 @@ export default function OffMarketDashboard({
         llm: st?.llm?.provider || null
       });
     } catch (err) {
-      setError(err.message || 'Failed to load Off Market');
+      const missing = err.status === 404 || /route not found/i.test(err.message || '');
+      console.error('[OffMarket] load failed', { status: err.status, message: err.message, missing });
+      setError(missing
+        ? 'The API on this machine does not have Off Market yet. Restart the Vettr API from this branch so migration off_market_v5_95 can run (port 3001).'
+        : (err.message || 'Failed to load Off Market'));
     } finally {
       setLoading(false);
     }
@@ -510,8 +517,12 @@ export default function OffMarketDashboard({
   if (loading) return <div className="crm-panel">Loading Off Market…</div>;
   if (error) {
     return (
-      <div className="crm-panel crm-panel--error">
+      <div className="crm-panel crm-panel--error om-section">
+        <h2>Off Market could not load</h2>
         <p>{error}</p>
+        <p className="om-muted">
+          You should still see the Off Market tab next to CRM. After the API restart, click Retry.
+        </p>
         <button type="button" className="btn-secondary" onClick={loadAll}>Retry</button>
       </div>
     );

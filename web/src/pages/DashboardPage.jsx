@@ -29,7 +29,8 @@ import {
   readStoredDashboardLocation,
   isValidCrmSubview,
   isValidOmSubview,
-  isValidCrmFilter
+  isValidCrmFilter,
+  normalizeDashboardTab
 } from '../utils/dashboardLocation';
 import { notificationPath, parseMatchDealIds, savedDealIdFromAlert } from '../utils/notificationLinks';
 import { pollWhenVisible } from '../utils/pollWhenVisible';
@@ -85,10 +86,11 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'aggregator';
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab');
-    // Legacy My Deals tab → Vettr CRM
-    if (tab === 'saved-deals' || tab === 'crm' || params.get('crmDeal')) return 'crm';
+    const tab = normalizeDashboardTab(params.get('tab'));
+    // Explicit Off Market URL must win over leftover crmDeal from a prior CRM view.
     if (tab === 'off-market') return 'off-market';
+    // Legacy My Deals tab → Vettr CRM
+    if (tab === 'crm' || params.get('crmDeal')) return 'crm';
     if (tab === 'aggregator') return 'aggregator';
     const stored = readStoredDashboardLocation();
     if (stored?.tab === 'crm' || stored?.tab === 'aggregator' || stored?.tab === 'off-market') return stored.tab;
@@ -291,11 +293,10 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
 
   /** Deep link: /dashboard?tab=crm&crmDeal=123&section=crm-talk (also legacy tab=saved-deals) */
   useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam === 'aggregator') {
-      if (activeTab !== 'aggregator') skipPersistFromUrlRef.current = true;
-      setActiveTab('aggregator');
-    } else if (tabParam === 'saved-deals') {
+    const tabParam = normalizeDashboardTab(searchParams.get('tab'))
+      || (searchParams.get('tab') === 'saved-deals' ? 'crm' : null);
+    const rawTab = searchParams.get('tab');
+    if (rawTab === 'saved-deals') {
       console.log('[Dashboard] redirecting legacy My Deals tab → Vettr CRM list');
       skipPersistFromUrlRef.current = true;
       setActiveTab('crm');
@@ -304,13 +305,16 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     } else if (tabParam === 'off-market') {
       if (activeTab !== 'off-market') skipPersistFromUrlRef.current = true;
       setActiveTab('off-market');
+      const omSub = searchParams.get('omSubview');
+      if (isValidOmSubview(omSub)) setOmSubview(omSub);
+      console.log('[Dashboard] deep link Off Market', omSub || 'campaigns');
+      return;
+    } else if (tabParam === 'aggregator') {
+      if (activeTab !== 'aggregator') skipPersistFromUrlRef.current = true;
+      setActiveTab('aggregator');
     } else if (tabParam === 'crm' || searchParams.get('crmDeal')) {
       if (activeTab !== 'crm') skipPersistFromUrlRef.current = true;
       setActiveTab('crm');
-    }
-    const omSub = searchParams.get('omSubview');
-    if (tabParam === 'off-market' && isValidOmSubview(omSub)) {
-      setOmSubview(omSub);
     }
     const sub = searchParams.get('crmSubview');
     if ((tabParam === 'crm' || searchParams.get('crmDeal')) && isValidCrmSubview(sub)) {
@@ -444,6 +448,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
 
   const showFirstVisitSheet =
     !authLoading &&
+    activeTab === 'aggregator' &&
     !suppressGuestOnboarding &&
     Boolean(settings) &&
     isBuyBoxEmpty(settings.buyBox) &&
@@ -553,7 +558,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   }, [settings?.activeBuyBoxIndex, settings?.preferences?.activeBuyBoxIndex]);
 
   const handleTabChange = (tab) => {
-    if (tab === 'saved-deals') {
+    const next = normalizeDashboardTab(tab) || tab;
+    if (next === 'saved-deals' || tab === 'saved-deals') {
       console.log('[Dashboard] saved-deals tab remapped to Vettr CRM');
       if (isGuest) logGuestEvent('guest_my_deals_tab');
       setActiveTab('crm');
@@ -561,13 +567,13 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
       setCrmInitialViewOverride('list');
       return;
     }
-    if (isGuest && tab === 'crm') {
+    if (isGuest && next === 'crm') {
       logGuestEvent('guest_my_deals_tab');
     }
-    if (isGuest && tab === 'off-market') {
+    if (isGuest && next === 'off-market') {
       logGuestEvent('guest_off_market_tab');
     }
-    setActiveTab(tab);
+    setActiveTab(next);
   };
 
   const openVettrCrm = useCallback((opts = {}) => {
