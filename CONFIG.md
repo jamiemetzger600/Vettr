@@ -31,6 +31,7 @@ Single reference for all environment variables and deployment config. Copy the r
 | `DIGEST_TZ` | No | `America/Los_Angeles` | Timezone for the 9:00 AM daily/weekly summary email |
 | `GOOGLE_CALENDAR_CLIENT_ID` | No | — | OAuth Web client ID. Enables Connect Google (Calendar + Gmail send). Enable **Gmail API** and **Google Calendar API** on the same Cloud project. |
 | `GOOGLE_CALENDAR_CLIENT_SECRET` | No | — | OAuth client secret. Redirect URI: `{API_BASE_URL}/api/crm/calendar/oauth/callback` |
+| `LLM_CREDENTIALS_KEY` | No | falls back to `JWT_SECRET` | AES-256-GCM key for Off Market BYO LLM API keys. Generate: `openssl rand -base64 32` |
 | `AIRTABLE_SHARE_URL` | No | (hardcoded fallback) | Airtable shared view URL for scraper |
 | `AIRTABLE_SCRAPE_CRON` | No | `0 4 * * *` | Cron expression; interpreted in `AIRTABLE_SCRAPE_CRON_TZ` |
 | `AIRTABLE_SCRAPE_CRON_TZ` | No | `America/Los_Angeles` | IANA timezone for the cron schedule |

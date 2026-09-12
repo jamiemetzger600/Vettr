@@ -17,6 +17,7 @@ export default function Navigation({
   aggregatorCount = 0,
   crmCount = 0,
   crmBadgeCount = 0,
+  offMarketCount = 0,
   onOpenQuickCalculator = null,
   onStartTour = null,
   compact = false,
@@ -205,6 +206,15 @@ export default function Navigation({
             ) : (
               <span className="tab-badge">{crmCount}</span>
             )}
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'off-market' ? 'active' : ''}`}
+            onClick={() => setActiveTab('off-market')}
+            title="Off Market outreach"
+          >
+            <span>Off Market</span>
+            <span className="tab-badge">{offMarketCount}</span>
           </button>
           {!compact && (
             <span className="app-header-version tab-navigation-version" title="App version">v{pkg.version}</span>

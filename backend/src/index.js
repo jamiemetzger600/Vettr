@@ -13,6 +13,7 @@ import airtableDealsRoutes from './routes/airtableDeals.js';
 import marketDealsRoutes from './routes/marketDeals.js';
 import teamsRoutes from './routes/teams.js';
 import feedbackRoutes from './routes/feedback.js';
+import offMarketRoutes from './routes/offMarket.js';
 import './services/notificationScheduler.js'; // Start notification jobs
 import './services/airtableScraper.js';
 import { parseCookieHeader } from './lib/authCookies.js';
@@ -66,7 +67,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.116' });
+  res.json({ status: 'ok', version: '5.0.117' });
 });
 
 // Routes
@@ -74,6 +75,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/deals', dealsRoutes);
 app.use('/api/crm', crmRoutes);
+app.use('/api/off-market', offMarketRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/dd/public', ddPublicRoutes);

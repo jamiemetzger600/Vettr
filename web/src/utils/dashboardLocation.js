@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'vettr.dashboard.location.v1';
 
-const VALID_TABS = new Set(['aggregator', 'crm']);
+const VALID_TABS = new Set(['aggregator', 'crm', 'off-market']);
 const VALID_CRM_VIEWS = new Set([
   'home',
   'cards',
@@ -9,6 +9,13 @@ const VALID_CRM_VIEWS = new Set([
   'contacts',
   'calendar',
   'analytics'
+]);
+const VALID_OM_VIEWS = new Set([
+  'campaigns',
+  'research',
+  'prospects',
+  'sequences',
+  'stats'
 ]);
 const VALID_CRM_FILTERS = new Set([
   'nudges',
@@ -25,6 +32,10 @@ export function isValidCrmSubview(view) {
   return VALID_CRM_VIEWS.has(view);
 }
 
+export function isValidOmSubview(view) {
+  return VALID_OM_VIEWS.has(view);
+}
+
 export function isValidCrmFilter(filter) {
   return VALID_CRM_FILTERS.has(filter);
 }
@@ -36,18 +47,20 @@ export function readStoredDashboardLocation() {
     const parsed = JSON.parse(raw);
     const tab = VALID_TABS.has(parsed?.tab) ? parsed.tab : null;
     const crmSubview = isValidCrmSubview(parsed?.crmSubview) ? parsed.crmSubview : null;
-    return tab ? { tab, crmSubview } : null;
+    const omSubview = isValidOmSubview(parsed?.omSubview) ? parsed.omSubview : null;
+    return tab ? { tab, crmSubview, omSubview } : null;
   } catch (err) {
     console.warn('[dashboardLocation] read failed', err.message);
     return null;
   }
 }
 
-export function persistDashboardLocation({ tab, crmSubview = null }) {
+export function persistDashboardLocation({ tab, crmSubview = null, omSubview = null }) {
   if (!VALID_TABS.has(tab)) return;
   const next = {
     tab,
-    crmSubview: tab === 'crm' && isValidCrmSubview(crmSubview) ? crmSubview : null
+    crmSubview: tab === 'crm' && isValidCrmSubview(crmSubview) ? crmSubview : null,
+    omSubview: tab === 'off-market' && isValidOmSubview(omSubview) ? omSubview : null
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -56,8 +69,8 @@ export function persistDashboardLocation({ tab, crmSubview = null }) {
   }
 }
 
-/** Merge tab + CRM subview into the current query, keeping deep-link params. */
-export function patchDashboardSearchParams(searchParams, { tab, crmSubview = null }) {
+/** Merge tab + CRM/Off Market subview into the current query, keeping deep-link params. */
+export function patchDashboardSearchParams(searchParams, { tab, crmSubview = null, omSubview = null }) {
   const next = new URLSearchParams(searchParams);
   if (VALID_TABS.has(tab)) next.set('tab', tab);
   if (tab === 'crm' && isValidCrmSubview(crmSubview)) {
@@ -65,18 +78,33 @@ export function patchDashboardSearchParams(searchParams, { tab, crmSubview = nul
   } else {
     next.delete('crmSubview');
   }
+  if (tab === 'off-market' && isValidOmSubview(omSubview)) {
+    next.set('omSubview', omSubview);
+  } else {
+    next.delete('omSubview');
+  }
   if (tab === 'crm') {
     next.delete('matchIds');
     next.delete('newToday');
     next.delete('dealDbId');
+    next.delete('omSubview');
     if (crmSubview === 'tasks') {
       next.delete('crmDeal');
       next.delete('section');
     }
   }
+  if (tab === 'off-market') {
+    next.delete('matchIds');
+    next.delete('newToday');
+    next.delete('dealDbId');
+    next.delete('crmDeal');
+    next.delete('section');
+    next.delete('crmSubview');
+  }
   if (tab === 'aggregator') {
     next.delete('crmDeal');
     next.delete('section');
+    next.delete('omSubview');
   }
   return next;
 }

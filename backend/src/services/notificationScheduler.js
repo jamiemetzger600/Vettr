@@ -5,6 +5,7 @@ import {
   runInstantDealMatches,
   runTeamActivityFlush
 } from './dailyDigestService.js';
+import { runOffMarketSendTick, runOffMarketInboxSync } from './offMarketMailService.js';
 
 const TZ = process.env.DIGEST_TZ || 'America/Los_Angeles';
 
@@ -53,8 +54,28 @@ cron.schedule('*/15 * * * *', async () => {
   }
 });
 
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    const result = await runOffMarketSendTick();
+    if (result.sent) console.log('[scheduler] off-market send-tick', result);
+  } catch (error) {
+    console.error('[scheduler] off-market send-tick error', error);
+  }
+});
+
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    const result = await runOffMarketInboxSync();
+    if (result.synced) console.log('[scheduler] off-market inbox sync', result);
+  } catch (error) {
+    console.error('[scheduler] off-market inbox sync error', error);
+  }
+});
+
 console.log('[scheduler] initialized');
 console.log(`   - Daily email/push summary: 9:00 AM ${TZ}`);
 console.log(`   - Weekly (weekly-frequency users): Monday 9:00 AM ${TZ}`);
 console.log('   - Instant matches + team activity: every 15 minutes');
 console.log('   - CRM task reminders: every 15 minutes');
+console.log('   - Off Market send-tick: every 5 minutes');
+console.log('   - Off Market inbox sync: every 10 minutes');

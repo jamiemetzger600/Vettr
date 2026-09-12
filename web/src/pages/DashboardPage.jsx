@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { userAPI, dealsAPI, paymentsAPI, crmAPI } from '../utils/api';
+import { userAPI, dealsAPI, paymentsAPI, crmAPI, offMarketAPI } from '../utils/api';
 import { normalizeDeal } from '../utils/normalizeDeal';
 import DealAggregator from '../components/DealAggregator';
 import CrmDashboard from '../components/crm/CrmDashboard';
@@ -18,6 +18,8 @@ import ScrapeActivityToast from '../components/ScrapeActivityToast';
 import GuestOnboardingTour from '../components/GuestOnboardingTour';
 import GuestFirstVisitSheet from '../components/GuestFirstVisitSheet';
 import GuestMyDealsEmpty from '../components/GuestMyDealsEmpty';
+import GuestOffMarketEmpty from '../components/off-market/GuestOffMarketEmpty';
+import OffMarketDashboard from '../components/off-market/OffMarketDashboard';
 import { loadGuestSettings, persistGuestSettings } from '../utils/guestSettings';
 import { useGuestAccess } from '../hooks/useGuestAccess';
 import { logGuestEvent } from '../utils/guestAnalytics';
@@ -26,6 +28,7 @@ import {
   patchDashboardSearchParams,
   readStoredDashboardLocation,
   isValidCrmSubview,
+  isValidOmSubview,
   isValidCrmFilter
 } from '../utils/dashboardLocation';
 import { notificationPath, parseMatchDealIds, savedDealIdFromAlert } from '../utils/notificationLinks';
@@ -85,9 +88,10 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     const tab = params.get('tab');
     // Legacy My Deals tab → Vettr CRM
     if (tab === 'saved-deals' || tab === 'crm' || params.get('crmDeal')) return 'crm';
+    if (tab === 'off-market') return 'off-market';
     if (tab === 'aggregator') return 'aggregator';
     const stored = readStoredDashboardLocation();
-    if (stored?.tab === 'crm' || stored?.tab === 'aggregator') return stored.tab;
+    if (stored?.tab === 'crm' || stored?.tab === 'aggregator' || stored?.tab === 'off-market') return stored.tab;
     return 'aggregator';
   });
   const [crmSubview, setCrmSubview] = useState(() => {
@@ -100,6 +104,15 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     if (isValidCrmSubview(stored?.crmSubview)) return stored.crmSubview;
     return 'cards';
   });
+  const [omSubview, setOmSubview] = useState(() => {
+    if (typeof window === 'undefined') return 'campaigns';
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('omSubview');
+    if (isValidOmSubview(fromUrl)) return fromUrl;
+    const stored = readStoredDashboardLocation();
+    if (isValidOmSubview(stored?.omSubview)) return stored.omSubview;
+    return 'campaigns';
+  });
   const [guestTourBlocking, setGuestTourBlocking] = useState(false);
   const [firstVisitClosed, setFirstVisitClosed] = useState(false);
   const [settings, setSettings] = useState(null);
@@ -107,6 +120,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   /** All personal + team saves — used for aggregator “already saved” markers only. */
   const [savedDealIndex, setSavedDealIndex] = useState([]);
   const [crmBadgeCount, setCrmBadgeCount] = useState(0);
+  const [offMarketCount, setOffMarketCount] = useState(0);
   const [crmInitialDealId, setCrmInitialDealId] = useState(() => {
     const n = Number(crmDealParam);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -257,6 +271,24 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     };
   }, [authLoading, isGuest]);
 
+  useEffect(() => {
+    if (authLoading || isGuest) return;
+    let cancelled = false;
+    const pull = () => {
+      offMarketAPI.getStatus()
+        .then((data) => {
+          if (!cancelled) setOffMarketCount(data?.campaignCount ?? 0);
+        })
+        .catch((err) => console.warn('[Dashboard] Off Market status failed', err.message));
+    };
+    pull();
+    const stopPoll = pollWhenVisible(pull, 60000);
+    return () => {
+      cancelled = true;
+      stopPoll();
+    };
+  }, [authLoading, isGuest]);
+
   /** Deep link: /dashboard?tab=crm&crmDeal=123&section=crm-talk (also legacy tab=saved-deals) */
   useEffect(() => {
     const tabParam = searchParams.get('tab');
@@ -269,9 +301,16 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
       setActiveTab('crm');
       setCrmSubview('list');
       setCrmInitialViewOverride((prev) => prev || 'list');
+    } else if (tabParam === 'off-market') {
+      if (activeTab !== 'off-market') skipPersistFromUrlRef.current = true;
+      setActiveTab('off-market');
     } else if (tabParam === 'crm' || searchParams.get('crmDeal')) {
       if (activeTab !== 'crm') skipPersistFromUrlRef.current = true;
       setActiveTab('crm');
+    }
+    const omSub = searchParams.get('omSubview');
+    if (tabParam === 'off-market' && isValidOmSubview(omSub)) {
+      setOmSubview(omSub);
     }
     const sub = searchParams.get('crmSubview');
     if ((tabParam === 'crm' || searchParams.get('crmDeal')) && isValidCrmSubview(sub)) {
@@ -296,19 +335,20 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   }, [crmDealParam, sectionParam, searchParams]);
 
   useEffect(() => {
-    persistDashboardLocation({ tab: activeTab, crmSubview });
+    persistDashboardLocation({ tab: activeTab, crmSubview, omSubview });
     if (skipPersistFromUrlRef.current) {
       skipPersistFromUrlRef.current = false;
       return;
     }
     const next = patchDashboardSearchParams(searchParamsRef.current, {
       tab: activeTab,
-      crmSubview: activeTab === 'crm' ? crmSubview : null
+      crmSubview: activeTab === 'crm' ? crmSubview : null,
+      omSubview: activeTab === 'off-market' ? omSubview : null
     });
     if (next.toString() === searchParamsRef.current.toString()) return;
-    console.log('[Dashboard] persist location', { tab: activeTab, crmSubview });
+    console.log('[Dashboard] persist location', { tab: activeTab, crmSubview, omSubview });
     setSearchParams(next, { replace: true });
-  }, [activeTab, crmSubview, setSearchParams]);
+  }, [activeTab, crmSubview, omSubview, setSearchParams]);
 
   /** Team workspace change: refresh My Deals / CRM list silently; market feed stays mounted. */
   useEffect(() => {
@@ -524,6 +564,9 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     if (isGuest && tab === 'crm') {
       logGuestEvent('guest_my_deals_tab');
     }
+    if (isGuest && tab === 'off-market') {
+      logGuestEvent('guest_off_market_tab');
+    }
     setActiveTab(tab);
   };
 
@@ -599,6 +642,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
         aggregatorCount={feedCountReady ? matchCount : totalDeals}
         crmCount={savedDeals.length}
         crmBadgeCount={crmBadgeCount}
+        offMarketCount={offMarketCount}
         compact={mobileDeckActive && isMobile && activeTab === 'aggregator'}
         onOpenQuickCalculator={() => {
           if (isGuest) {
@@ -686,6 +730,26 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             onCrmViewChange={handleCrmViewChange}
             onLiveDealsRefresh={loadScopedSavedDeals}
           />
+          </div>
+        )}
+
+        {activeTab === 'off-market' && isGuest && (
+          <div className="dashboard-tab-pane dashboard-tab-pane--active">
+            <GuestOffMarketEmpty
+              onRequireSignup={requireSignup}
+              onBackToAggregator={() => setActiveTab('aggregator')}
+            />
+          </div>
+        )}
+
+        {activeTab === 'off-market' && !isGuest && (
+          <div className="dashboard-tab-pane dashboard-tab-pane--active">
+            <OffMarketDashboard
+              initialView={omSubview}
+              onViewChange={setOmSubview}
+              teamId={activeTeamId}
+              onOpenCrmDeal={(dealId) => openVettrCrm({ view: 'home', dealId, focusSection: 'overview' })}
+            />
           </div>
         )}
       </div>

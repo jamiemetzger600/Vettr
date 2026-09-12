@@ -4,28 +4,28 @@ overview: "Add a top-level Off Market workspace to the right of CRM so buyers ca
 todos:
   - id: m0-locked-decisions
     content: "M0: Confirm locked architecture (tab vs CRM subview, no market_deals dump, BYO LLM, Gmail-from-user) before any code"
-    status: pending
+    status: completed
   - id: m1-shell-tab
     content: "M1: Off Market tab, URL/location, guest gate, empty workspace + subnav chrome"
-    status: pending
+    status: completed
   - id: m2-schema-campaigns
     content: "M2: Migrations + /api/off-market CRUD for campaigns, prospects, sequences"
-    status: pending
+    status: completed
   - id: m3-byo-llm
     content: "M3: Settings AI/Agent panel — encrypted BYO LLM key + agent ingest webhook"
-    status: pending
+    status: completed
   - id: m4-research
     content: "M4: Vertical research workspace — LLM/agent/CSV into prospect lists"
-    status: pending
+    status: completed
   - id: m5-batch-email
     content: "M5: Templates, merge tags, throttled batch send via existing Gmail send"
-    status: pending
+    status: completed
   - id: m6-inbox-stats
     content: "M6: Optional Gmail readonly sync — bounce/reply/unanswered + campaign stats"
-    status: pending
+    status: completed
   - id: m7-promote-crm
     content: "M7: Promote interested prospects to saved_deals + activity/contact sync"
-    status: pending
+    status: completed
 isProject: false
 ---
 
