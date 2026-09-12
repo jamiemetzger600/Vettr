@@ -104,10 +104,16 @@ export default function GoogleIntegrationsPanel() {
         <li>
           <strong>Gmail</strong>
           {status?.gmail
-            ? ` — send IOIs from ${status.googleEmail || 'your Google account'}`
+            ? ` — send IOIs and Off Market campaigns from ${status.googleEmail || 'your Google account'}`
             : connected
               ? ' — reconnect to allow sending from Gmail'
               : ' — not connected'}
+        </li>
+        <li>
+          <strong>Gmail inbox tracking</strong>
+          {status?.gmailReadonly
+            ? ' — Off Market can read campaign threads for bounce/reply'
+            : ' — not enabled (optional)'}
         </li>
         <li>
           <strong>Calendar</strong>
@@ -147,6 +153,24 @@ export default function GoogleIntegrationsPanel() {
               onClick={handleConnect}
             >
               {connecting ? 'Redirecting…' : 'Reconnect Google'}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={connecting || !oauthReady || Boolean(status?.gmailReadonly)}
+              onClick={async () => {
+                setConnecting(true);
+                setFlash(null);
+                try {
+                  const { url } = await crmAPI.startCalendarOAuth({ returnTo: 'settings', gmailReadonly: true });
+                  window.location.href = url;
+                } catch (err) {
+                  setFlash({ type: 'error', text: err.message || 'Could not start Google sign-in' });
+                  setConnecting(false);
+                }
+              }}
+            >
+              {status?.gmailReadonly ? 'Inbox tracking on' : 'Enable inbox tracking'}
             </button>
             <button
               type="button"

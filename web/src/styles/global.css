@@ -12440,3 +12440,159 @@ button.aggregator-welcome__buybox {
     text-overflow: unset;
   }
 }
+
+/* Off Market workspace — match CRM chrome */
+.om-dashboard {
+  min-height: 50vh;
+}
+
+.om-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.om-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.om-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.om-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.om-lead,
+.om-muted {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.om-subhead {
+  margin: 20px 0 8px;
+  font-size: 15px;
+}
+
+.om-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.om-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.om-campaign-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.om-campaign-card {
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.om-campaign-card:hover {
+  background: var(--bg-tertiary);
+}
+
+.om-campaign-card--active {
+  border-color: var(--primary);
+}
+
+.om-table-wrap {
+  overflow-x: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.om-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text-primary);
+}
+
+.om-table th,
+.om-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 13px;
+}
+
+.om-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.om-inline-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.om-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 0 0 12px;
+}
+
+.om-flash {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.om-flash--success {
+  background: rgba(39, 174, 96, 0.15);
+  color: var(--success);
+}
+
+.om-flash--error {
+  background: rgba(231, 76, 60, 0.15);
+  color: var(--error);
+}
+
+.om-llm-form {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .om-grid,
+  .om-inline-form {
+    grid-template-columns: 1fr;
+  }
+}
+

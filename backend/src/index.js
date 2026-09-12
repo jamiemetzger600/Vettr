@@ -13,6 +13,7 @@ import airtableDealsRoutes from './routes/airtableDeals.js';
 import marketDealsRoutes from './routes/marketDeals.js';
 import teamsRoutes from './routes/teams.js';
 import feedbackRoutes from './routes/feedback.js';
+import offMarketRoutes from './routes/offMarket.js';
 import './services/notificationScheduler.js'; // Start notification jobs
 import './services/airtableScraper.js';
 import { parseCookieHeader } from './lib/authCookies.js';
@@ -66,7 +67,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.116' });
+  res.json({ status: 'ok', version: '5.0.119' });
 });
 
 // Routes
@@ -74,6 +75,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/deals', dealsRoutes);
 app.use('/api/crm', crmRoutes);
+app.use('/api/off-market', offMarketRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/dd/public', ddPublicRoutes);
@@ -94,12 +96,6 @@ app.use((err, req, res, next) => {
 });
 
 async function startServer() {
-  app.listen(PORT, () => {
-    console.log(`🚀 Vettr API server running on port ${PORT}`);
-    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🌐 Web app URL: ${process.env.WEB_APP_URL || 'http://localhost:5173'}`);
-  });
-
   try {
     await runMigrations(pool);
   } catch (err) {
@@ -108,6 +104,12 @@ async function startServer() {
       process.exit(1);
     }
   }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Vettr API server running on port ${PORT}`);
+    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Web app URL: ${process.env.WEB_APP_URL || 'http://localhost:5173'}`);
+  });
 }
 
 startServer();

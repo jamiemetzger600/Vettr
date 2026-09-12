@@ -1211,6 +1211,112 @@ const migrations = [
       WHERE sd.team_id IS NOT NULL
       ON CONFLICT (user_id, saved_deal_id) DO NOTHING;
     `
+  },
+  {
+    name: 'off_market_v5_95',
+    up: `
+      CREATE TABLE IF NOT EXISTS user_llm_connections (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        provider VARCHAR(30) NOT NULL DEFAULT 'openai_compat',
+        model TEXT,
+        base_url TEXT,
+        api_key_cipher BYTEA,
+        api_key_nonce BYTEA,
+        key_last4 TEXT,
+        ingest_token_hash TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_user_llm_ingest_hash
+        ON user_llm_connections (ingest_token_hash)
+        WHERE ingest_token_hash IS NOT NULL;
+
+      CREATE TABLE IF NOT EXISTS off_market_sequences (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_off_market_sequences_user
+        ON off_market_sequences (user_id);
+
+      CREATE TABLE IF NOT EXISTS off_market_campaigns (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+        name TEXT NOT NULL,
+        vertical TEXT,
+        geography TEXT,
+        brief TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+        daily_send_cap INTEGER NOT NULL DEFAULT 50,
+        send_delay_sec INTEGER NOT NULL DEFAULT 90,
+        auto_promote_on_interested BOOLEAN NOT NULL DEFAULT false,
+        sequence_id INTEGER REFERENCES off_market_sequences(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_off_market_campaigns_user
+        ON off_market_campaigns (user_id, status);
+
+      CREATE TABLE IF NOT EXISTS off_market_prospects (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id INTEGER NOT NULL REFERENCES off_market_campaigns(id) ON DELETE CASCADE,
+        company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+        contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+        saved_deal_id INTEGER REFERENCES saved_deals(id) ON DELETE SET NULL,
+        company_name TEXT NOT NULL,
+        owner_name TEXT,
+        email TEXT,
+        title TEXT,
+        location TEXT,
+        notes TEXT,
+        source_url TEXT,
+        research_json JSONB DEFAULT '{}'::jsonb,
+        status VARCHAR(20) NOT NULL DEFAULT 'new',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_off_market_prospects_campaign
+        ON off_market_prospects (campaign_id, status);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_off_market_prospects_email
+        ON off_market_prospects (campaign_id, lower(email))
+        WHERE email IS NOT NULL AND email <> '';
+
+      CREATE TABLE IF NOT EXISTS off_market_messages (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id INTEGER NOT NULL REFERENCES off_market_campaigns(id) ON DELETE CASCADE,
+        prospect_id INTEGER NOT NULL REFERENCES off_market_prospects(id) ON DELETE CASCADE,
+        step_index INTEGER NOT NULL DEFAULT 0,
+        gmail_message_id TEXT,
+        gmail_thread_id TEXT,
+        rfc_message_id TEXT,
+        to_email TEXT NOT NULL,
+        subject TEXT,
+        body_text TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'queued',
+        sent_at TIMESTAMPTZ,
+        last_event_at TIMESTAMPTZ,
+        error TEXT,
+        metadata JSONB DEFAULT '{}'::jsonb
+      );
+      CREATE INDEX IF NOT EXISTS idx_off_market_messages_campaign
+        ON off_market_messages (campaign_id, status);
+      CREATE INDEX IF NOT EXISTS idx_off_market_messages_queued
+        ON off_market_messages (user_id, status)
+        WHERE status = 'queued';
+
+      CREATE TABLE IF NOT EXISTS off_market_suppressions (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        reason VARCHAR(30) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (user_id, email)
+      );
+    `
   }
 ];
 

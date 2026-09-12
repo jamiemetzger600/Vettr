@@ -14,6 +14,7 @@ export const SIGNUP_COPY_BY_REASON = {
   broker_click: { title: 'View broker contact', body: 'Sign up to see broker name, email, and phone for this listing.' },
   listing: { title: 'Open original listing', body: 'Sign up to open the listing on the source site.' },
   save: { title: 'Save to Vettr CRM', body: 'Sign up to save deals, sync calculator inputs, and track your pipeline.' },
+  off_market: { title: 'Open Off Market', body: 'Sign up to research verticals, send outreach from your Gmail, and promote willing sellers into CRM.' },
   ioi: { title: 'Send indication of interest', body: 'Sign up to generate and send IOI emails from Vettr.' },
   notifications: { title: 'Get match alerts', body: 'Sign up to get notified when new deals match your buy box.' },
   default: { title: 'Create a free account', body: 'Sign up for full access to descriptions, broker contact, and saved deals.' },

@@ -5,6 +5,7 @@ import Navigation from '../components/Navigation';
 import TeamsSettingsPanel from '../components/TeamsSettingsPanel';
 import GetTheAppPanel from '../components/GetTheAppPanel';
 import GoogleIntegrationsPanel from '../components/GoogleIntegrationsPanel';
+import LlmIntegrationsPanel from '../components/LlmIntegrationsPanel';
 import { useAuth } from '../context/AuthContext';
 import {
   notificationPermission,
@@ -515,9 +516,21 @@ export default function SettingsPage() {
           <div className="settings-section">
             <h2>Google</h2>
             <p>
-              One connect for Gmail send (Quick IOI) and CRM Calendar. Sheets and Docs are on the roadmap.
+              One connect for Gmail send (Quick IOI and Off Market campaigns) and CRM Calendar.
+              Inbox tracking for Off Market replies is optional — enable it below after connect.
             </p>
             <GoogleIntegrationsPanel />
+          </div>
+        ) : null}
+
+        {user ? (
+          <div className="settings-section">
+            <h2>AI / Agent</h2>
+            <p>
+              Bring your own model or outreach agent for Off Market research and reply classification.
+              Keys are stored encrypted on the API and never included in Settings export.
+            </p>
+            <LlmIntegrationsPanel />
           </div>
         ) : null}
 
