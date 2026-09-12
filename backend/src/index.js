@@ -67,7 +67,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.118' });
+  res.json({ status: 'ok', version: '5.0.119' });
 });
 
 // Routes
@@ -96,12 +96,6 @@ app.use((err, req, res, next) => {
 });
 
 async function startServer() {
-  app.listen(PORT, () => {
-    console.log(`🚀 Vettr API server running on port ${PORT}`);
-    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🌐 Web app URL: ${process.env.WEB_APP_URL || 'http://localhost:5173'}`);
-  });
-
   try {
     await runMigrations(pool);
   } catch (err) {
@@ -110,6 +104,12 @@ async function startServer() {
       process.exit(1);
     }
   }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Vettr API server running on port ${PORT}`);
+    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Web app URL: ${process.env.WEB_APP_URL || 'http://localhost:5173'}`);
+  });
 }
 
 startServer();

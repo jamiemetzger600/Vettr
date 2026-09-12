@@ -33,7 +33,7 @@ function rowToPublic(row, { ingestToken } = {}) {
 
 export async function getLlmConnection(userId) {
   const result = await pool.query(
-    `SELECT id, provider, model, base_url, key_last4, ingest_token_hash,
+    `SELECT user_id, provider, model, base_url, key_last4, ingest_token_hash,
             (api_key_cipher IS NOT NULL) AS has_cipher
      FROM user_llm_connections WHERE user_id = $1`,
     [userId]
@@ -49,7 +49,7 @@ export async function getLlmConnection(userId) {
       api_key_cipher: row.has_cipher,
       ingest_token_hash: row.ingest_token_hash
     }),
-    id: row.id
+    userId: row.user_id
   };
 }
 

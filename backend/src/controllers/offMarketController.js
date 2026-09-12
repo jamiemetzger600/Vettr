@@ -40,7 +40,12 @@ function handleError(res, error, label) {
 export const getOffMarketStatus = async (req, res) => {
   try {
     const connection = await getGoogleConnection(req.user.userId);
-    const llm = await getLlmConnection(req.user.userId);
+    let llm = { connected: false, provider: null, hasKey: false };
+    try {
+      llm = await getLlmConnection(req.user.userId);
+    } catch (llmErr) {
+      console.warn('[off-market] llm status skipped', llmErr.message);
+    }
     const campaignCount = await activeCampaignCount(req.user.userId);
     res.json({
       campaignCount,
