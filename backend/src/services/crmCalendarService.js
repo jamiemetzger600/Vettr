@@ -347,8 +347,6 @@ export async function updateCalendarEvent(userId, eventId, patch) {
   const row = existing.rows[0];
   const title = patch.title != null ? String(patch.title).trim() : row.title;
   const description = patch.description !== undefined ? patch.description : row.description;
-  const startsAt = patch.startsAt ? new Date(patch.startsAt).toISOString() : row.starts_at;
-  const endsAt = patch.endsAt ? new Date(patch.endsAt).toISOString() : row.ends_at;
   const allDay = patch.allDay !== undefined ? !!patch.allDay : row.all_day;
   const times = (patch.startsAt || patch.endsAt || patch.allDay !== undefined)
     ? normalizeStoredTimes(
