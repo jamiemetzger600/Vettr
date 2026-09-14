@@ -1211,6 +1211,36 @@ const migrations = [
       WHERE sd.team_id IS NOT NULL
       ON CONFLICT (user_id, saved_deal_id) DO NOTHING;
     `
+  },
+  {
+    name: 'calculator_scenario_names_structure_v5_129',
+    up: `
+      UPDATE saved_deals
+      SET calculator_state = jsonb_set(
+        calculator_state,
+        '{scenarios}',
+        COALESCE((
+          SELECT jsonb_agg(
+            CASE
+              WHEN COALESCE(btrim(elem->>'name'), '') = ''
+                THEN jsonb_set(elem, '{name}', to_jsonb('Structure ' || ord::text))
+              WHEN elem->>'name' ~ '^Scenario [0-9]+$'
+                THEN jsonb_set(
+                  elem,
+                  '{name}',
+                  to_jsonb(regexp_replace(elem->>'name', '^Scenario', 'Structure'))
+                )
+              ELSE elem
+            END
+            ORDER BY ord
+          )
+          FROM jsonb_array_elements(COALESCE(calculator_state->'scenarios', '[]'::jsonb))
+            WITH ORDINALITY AS t(elem, ord)
+        ), '[]'::jsonb)
+      )
+      WHERE calculator_state IS NOT NULL
+        AND jsonb_typeof(calculator_state->'scenarios') = 'array';
+    `
   }
 ];
 

@@ -386,12 +386,28 @@ export function stringifyDealNumber(value) {
 }
 
 export function defaultScenarioName(index) {
-  return `Scenario ${index + 1}`;
+  return `Structure ${index + 1}`;
+}
+
+export function isDefaultScenarioName(name, index) {
+  const n = String(name || '').trim();
+  if (!n) return true;
+  const slot = index + 1;
+  return n === defaultScenarioName(index) || n.toLowerCase() === `scenario ${slot}`;
 }
 
 export function scenarioDisplayName(scenario, index) {
   const name = typeof scenario?.name === 'string' ? scenario.name.trim() : '';
-  return name || defaultScenarioName(index);
+  if (isDefaultScenarioName(name, index)) return defaultScenarioName(index);
+  return name;
+}
+
+/** Email header: custom tab names get "Structure"; defaults stay "Structure 1". */
+export function ioiScenarioBlockLabel(scenario, index) {
+  const name = scenarioDisplayName(scenario, index);
+  if (isDefaultScenarioName(scenario?.name, index)) return name;
+  if (/structure$/i.test(name)) return name;
+  return `${name} Structure`;
 }
 
 export function isValidCalculatorPayload(data, scenarioCount) {

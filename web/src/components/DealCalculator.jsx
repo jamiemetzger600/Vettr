@@ -99,6 +99,13 @@ export default function DealCalculator({
       const merged = stored.scenarios.map((s, i) => {
         const mergedRow = { ...defaults[i], ...s };
         mergedRow.name = scenarioDisplayName(mergedRow, i);
+        if (mergedRow.name !== (typeof s?.name === 'string' ? s.name : '')) {
+          console.debug('[DealCalculator] remapped scenario name', {
+            index: i,
+            from: s?.name,
+            to: mergedRow.name
+          });
+        }
         return mergedRow;
       });
       setScenarios(merged);

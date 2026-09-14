@@ -2,6 +2,15 @@
  * Lightweight SBA 7(a) readiness heuristic for listing cards.
  * Not a credit decision — flags common SOP 50 10 gaps.
  */
+export const SBA_READINESS_DISCLAIMER =
+  'This score is an indication from listing data, not a credit decision. The SBA does not guarantee a loan.';
+
+export function sbaReadinessTone(score) {
+  if (score >= 75) return 'ready';
+  if (score >= 50) return 'possible';
+  return 'needs-work';
+}
+
 export function sbaReadinessScore(deal) {
   const price = Number(deal?.askingPrice ?? deal?.asking_price);
   const ebitda = Number(deal?.ebitda ?? deal?.annual_profit ?? deal?.annualProfit);

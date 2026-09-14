@@ -1,4 +1,4 @@
-import { analyzeDealScenario, resolveSellerNoteTermYears, resolveSellerStandbyYears } from './dealCalculatorMath';
+import { analyzeDealScenario, resolveSellerNoteTermYears, resolveSellerStandbyYears, ioiScenarioBlockLabel } from './dealCalculatorMath';
 
 export const DEFAULT_IOI_TIMELINE = '30-45 days from accepted offer';
 
@@ -230,13 +230,12 @@ export function generateIOIText({
   }
   lines.push('');
 
-  selectedIndices.forEach((idx, i) => {
+  selectedIndices.forEach((idx) => {
     const scenario = scenarios[idx];
     if (!scenario) return;
     const analysis = analyzeDealScenario(scenario, qualityPrefs);
-    const label = selectedIndices.length === 1
-      ? 'Proposed Deal Structure'
-      : `Structure ${i + 1}`;
+    const label = ioiScenarioBlockLabel(scenario, idx);
+    console.debug('[IOI] scenario block', { idx, label });
     lines.push(buildScenarioBlock(scenario, analysis, label));
   });
 

@@ -6,6 +6,7 @@ import { getCalculatorDefaultsFromSettings } from '../utils/calculatorDefaultsFr
 import { loadCalculatorState } from '../utils/dealCalculatorStorage';
 import GatedPreviewText from './GatedPreviewText';
 import { sbaReadinessScore } from '../utils/sbaReadiness';
+import SbaReadinessChip from './SbaReadinessChip';
 
 const POSITION_OPTIONS = ['left', 'center', 'right'];
 const DEFAULT_PRIMARY = 'description';
@@ -787,11 +788,7 @@ export default function DealDetailsPanel({
           ) : (
             <>
               <h2>{deal.name || 'Deal Details'}</h2>
-              {sba ? (
-                <span className="sba-readiness-chip" title={sba.checks.map((c) => `${c.ok ? '✓' : '!'} ${c.label}`).join('\n')}>
-                  SBA {sba.score} · {sba.label}
-                </span>
-              ) : null}
+              <SbaReadinessChip sba={sba} />
             </>
           )}
           <div className="deal-details-header-meta-row">

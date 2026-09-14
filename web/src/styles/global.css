@@ -3561,6 +3561,8 @@ button.aggregator-welcome__buybox {
 }
 
 .deal-details-header {
+  position: relative;
+  z-index: 5;
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -3579,13 +3581,156 @@ button.aggregator-welcome__buybox {
   margin-right: 10px;
 }
 .sba-readiness-chip {
-  display: inline-block;
-  font-size: 12px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 8px;
+  position: relative;
+  display: inline-flex;
   vertical-align: middle;
+  margin: 0 0 2px 2px;
+}
+.sba-readiness-chip__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  cursor: pointer;
+  line-height: 1.2;
+}
+.sba-readiness-chip__btn:hover,
+.sba-readiness-chip__btn:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+.sba-readiness-chip__btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.sba-readiness-chip__kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.sba-readiness-chip__score {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.sba-readiness-chip__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sba-readiness-chip__info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+  opacity: 0.85;
+}
+.sba-readiness-chip--ready .sba-readiness-chip__btn {
+  border-color: rgba(39, 174, 96, 0.55);
+  background: rgba(39, 174, 96, 0.14);
+}
+.sba-readiness-chip--ready .sba-readiness-chip__score,
+.sba-readiness-chip--ready .sba-readiness-chip__kicker {
+  color: var(--success);
+}
+.sba-readiness-chip--possible .sba-readiness-chip__btn {
+  border-color: rgba(234, 179, 8, 0.5);
+  background: rgba(234, 179, 8, 0.12);
+}
+.sba-readiness-chip--possible .sba-readiness-chip__score,
+.sba-readiness-chip--possible .sba-readiness-chip__kicker {
+  color: #eab308;
+}
+.sba-readiness-chip--needs-work .sba-readiness-chip__btn {
+  border-color: rgba(231, 76, 60, 0.45);
+  background: rgba(231, 76, 60, 0.1);
+}
+.sba-readiness-chip--needs-work .sba-readiness-chip__score,
+.sba-readiness-chip--needs-work .sba-readiness-chip__kicker {
+  color: var(--error);
+}
+.sba-readiness-chip__tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: min(300px, 72vw);
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  box-shadow: 0 12px 32px var(--shadow);
+  color: var(--text-primary);
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+}
+.sba-readiness-chip.is-open .sba-readiness-chip__tip,
+.sba-readiness-chip:focus-within .sba-readiness-chip__tip {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sba-readiness-chip:hover .sba-readiness-chip__tip {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+  }
+}
+.sba-readiness-chip__tip-title {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.sba-readiness-chip__tip-disclaimer {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.sba-readiness-chip__tip-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sba-readiness-chip__tip-list li {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.sba-readiness-chip__tip-list li span {
+  flex-shrink: 0;
+  width: 12px;
+  font-weight: 700;
+}
+.sba-readiness-chip__tip-list li.is-ok span {
+  color: var(--success);
+}
+.sba-readiness-chip__tip-list li.is-gap span {
+  color: #eab308;
 }
 .crm-compare { padding: 8px 0 24px; }
 .crm-compare__picks {
