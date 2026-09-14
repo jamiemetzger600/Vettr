@@ -12,6 +12,7 @@ const VETTR_EXTENDED_PROP = 'vettrEventId';
 const TASK_EXTENDED_PROP = 'vettrTaskId';
 
 function mapRow(row) {
+  const savedDealId = row.linked_deal_id ?? row.saved_deal_id ?? null;
   return {
     id: row.id,
     title: row.title,
@@ -22,7 +23,7 @@ function mapRow(row) {
     source: row.source,
     googleEventId: row.google_event_id,
     taskId: row.task_id,
-    savedDealId: row.saved_deal_id,
+    savedDealId: savedDealId != null ? Number(savedDealId) : null,
     dealName: row.deal_name || null
   };
 }
@@ -150,9 +151,10 @@ async function pushOpenTasksToGoogle(userId, startIso, endIso) {
       });
       await pool.query(
         `UPDATE calendar_events
-         SET title = $1, description = $2, starts_at = $3, ends_at = $4, updated_at = NOW()
+         SET title = $1, description = $2, starts_at = $3, ends_at = $4,
+             saved_deal_id = $7, task_id = $8, updated_at = NOW()
          WHERE user_id = $5 AND google_event_id = $6`,
-        [title, description, startsAt, endsAt, userId, task.google_event_id]
+        [title, description, startsAt, endsAt, userId, task.google_event_id, task.saved_deal_id, task.id]
       );
       continue;
     }
@@ -215,9 +217,13 @@ export async function listCalendarEvents(userId, startIso, endIso, { sync = true
   }
 
   const result = await pool.query(
-    `SELECT ce.*, sd.name AS deal_name
+    `SELECT ce.*,
+            COALESCE(ce.saved_deal_id, t.saved_deal_id) AS linked_deal_id,
+            COALESCE(sd.name, tsd.name) AS deal_name
      FROM calendar_events ce
+     LEFT JOIN tasks t ON t.id = ce.task_id
      LEFT JOIN saved_deals sd ON sd.id = ce.saved_deal_id
+     LEFT JOIN saved_deals tsd ON tsd.id = t.saved_deal_id
      WHERE ce.user_id = $1
        AND ce.deleted_at IS NULL
        AND ce.starts_at < $3::timestamptz

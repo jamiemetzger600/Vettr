@@ -9683,18 +9683,20 @@ button.aggregator-welcome__buybox {
 }
 
 .crm-cal-event {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   text-align: left;
   border: none;
   border-radius: 4px;
   padding: 2px 6px;
-  margin: 2px 0;
   font-size: 11px;
+  line-height: 1.3;
   cursor: pointer;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .crm-cal-event--vettr {
@@ -9708,18 +9710,23 @@ button.aggregator-welcome__buybox {
 }
 
 .crm-cal-event__title {
-  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
 }
 
 .crm-cal-event__time {
-  display: block;
+  flex: 0 0 auto;
   opacity: 0.85;
   font-size: 10px;
+  white-space: nowrap;
 }
 
 .crm-cal-month {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -9727,7 +9734,7 @@ button.aggregator-welcome__buybox {
 .crm-cal-month__head,
 .crm-cal-month__row {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .crm-cal-month__dow {
@@ -9735,17 +9742,24 @@ button.aggregator-welcome__buybox {
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
 }
 
 .crm-cal-month__cell {
-  min-height: 96px;
+  box-sizing: border-box;
+  height: 118px;
+  min-height: 118px;
+  max-height: 118px;
+  min-width: 0;
+  overflow: hidden;
   padding: 6px;
+  display: flex;
+  flex-direction: column;
   border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.15);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
   text-align: left;
   cursor: pointer;
   color: inherit;
@@ -9760,19 +9774,32 @@ button.aggregator-welcome__buybox {
 }
 
 .crm-cal-month__cell--today {
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--bg-tertiary);
 }
 
 .crm-cal-month__date {
   display: block;
+  flex: 0 0 auto;
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .crm-cal-month__events {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+.crm-cal-month__more {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .crm-cal-week {
@@ -9783,8 +9810,8 @@ button.aggregator-welcome__buybox {
 
 .crm-cal-week__head {
   display: grid;
-  grid-template-columns: 48px repeat(7, 1fr);
-  background: rgba(255, 255, 255, 0.04);
+  grid-template-columns: 48px repeat(7, minmax(0, 1fr));
+  background: var(--bg-tertiary);
 }
 
 .crm-cal-week__gutter {
@@ -9805,7 +9832,7 @@ button.aggregator-welcome__buybox {
 
 .crm-cal-week__body {
   display: grid;
-  grid-template-columns: 48px repeat(7, 1fr);
+  grid-template-columns: 48px repeat(7, minmax(0, 1fr));
   max-height: 640px;
   overflow-y: auto;
 }
@@ -9823,16 +9850,20 @@ button.aggregator-welcome__buybox {
 }
 
 .crm-cal-week__col {
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
 }
 
 .crm-cal-week__slot {
   display: block;
   width: 100%;
-  min-height: 48px;
+  min-width: 0;
+  height: 48px;
+  overflow: hidden;
   padding: 2px;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -9875,33 +9906,168 @@ button.aggregator-welcome__buybox {
 }
 
 .crm-cal-day__slot {
+  min-width: 0;
+  overflow: hidden;
   padding: 4px;
 }
 
-.crm-cal-modal-backdrop {
+.crm-cal-tip {
+  position: fixed;
+  z-index: 10002;
+  max-width: 280px;
+  padding: 6px 8px;
+  background: #111;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-primary);
+  pointer-events: none;
+  box-shadow: 0 4px 12px var(--shadow);
+}
+
+.crm-cal-pop-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: transparent;
+  z-index: 10001;
+}
+
+.crm-cal-pop {
+  position: fixed;
+  box-sizing: border-box;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 4px 8px 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  color: var(--text-primary);
+}
+
+.crm-cal-pop__toolbar {
   display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 0;
+}
+
+.crm-cal-pop__icon {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
-  padding: 16px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
 }
 
-.crm-cal-modal {
-  width: min(480px, 100%);
-  background: #1a1f2e;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 20px;
+.crm-cal-pop__icon:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.crm-cal-pop__icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.crm-cal-pop__body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  padding: 4px 12px 4px 16px;
 }
 
-.crm-cal-modal h3 {
+.crm-cal-pop__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.crm-cal-pop__swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 6px;
+  border-radius: 3px;
+}
+
+.crm-cal-pop__swatch--vettr {
+  background: #60a5fa;
+}
+
+.crm-cal-pop__swatch--google {
+  background: #4ade80;
+}
+
+.crm-cal-pop__title {
   margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.crm-cal-pop__when {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.crm-cal-pop__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding-left: 2px;
+}
+
+.crm-cal-pop__row-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  margin-top: 1px;
+  color: var(--text-secondary);
+}
+
+.crm-cal-pop__desc,
+.crm-cal-pop__calname {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.crm-cal-pop__desc--link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #93c5fd;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.crm-cal-pop__desc--link:hover {
+  text-decoration: underline;
+}
+
+.crm-cal-pop__desc-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.crm-cal-pop__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 12px 4px;
 }
 
 .crm-cal-field {
@@ -9909,13 +10075,31 @@ button.aggregator-welcome__buybox {
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
+  color: var(--text-secondary);
 }
 
-.crm-cal-modal__actions {
+.crm-cal-pop__input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.crm-cal-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.crm-cal-pop__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .dd-portal-comment {

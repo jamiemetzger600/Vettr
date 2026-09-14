@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { crmAPI } from '../../utils/api';
 import CrmCalendarView from './CrmCalendarView';
 
-export default function CrmCalendar() {
+export default function CrmCalendar({ onOpenDeal }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -15,11 +15,13 @@ export default function CrmCalendar() {
     setLoading(true);
     let oauthConfigured = false;
     let redirectUri = null;
+    let warning = null;
 
     try {
       const config = await crmAPI.getCalendarOAuthConfig();
       oauthConfigured = Boolean(config.oauthConfigured);
       redirectUri = config.redirectUri || null;
+      warning = config.warning || null;
     } catch (err) {
       console.error('[CrmCalendar] oauth config load failed', err);
     }
@@ -29,7 +31,8 @@ export default function CrmCalendar() {
       setStatus({
         ...connection,
         oauthConfigured: oauthConfigured || Boolean(connection.oauthConfigured),
-        redirectUri: redirectUri || connection.redirectUri || null
+        redirectUri: redirectUri || connection.redirectUri || null,
+        warning
       });
     } catch (err) {
       console.error('[CrmCalendar] calendar status load failed', err);
@@ -37,6 +40,7 @@ export default function CrmCalendar() {
         connected: false,
         oauthConfigured,
         redirectUri,
+        warning,
         statusError: err.message || 'Could not load calendar connection status'
       });
     } finally {
@@ -108,7 +112,11 @@ export default function CrmCalendar() {
             {flash.text}
           </p>
         ) : null}
-        <CrmCalendarView onDisconnect={handleDisconnect} disconnecting={disconnecting} />
+        <CrmCalendarView
+          onDisconnect={handleDisconnect}
+          disconnecting={disconnecting}
+          onOpenDeal={onOpenDeal}
+        />
       </div>
     );
   }
@@ -124,7 +132,7 @@ export default function CrmCalendar() {
       ) : null}
 
       {status?.statusError ? (
-        <p className="crm-muted">Connection status unavailable — you can still try connecting below.</p>
+        <p className="crm-panel--error">{status.statusError}</p>
       ) : null}
 
       <p>
@@ -134,6 +142,9 @@ export default function CrmCalendar() {
           ? ' Add GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET to the API server to enable OAuth.'
           : ''}
       </p>
+      {status?.warning ? (
+        <p className="crm-panel--error">{status.warning}</p>
+      ) : null}
       {status?.redirectUri ? (
         <p className="crm-muted crm-calendar__redirect">
           OAuth redirect URI (register in Google Cloud):{' '}

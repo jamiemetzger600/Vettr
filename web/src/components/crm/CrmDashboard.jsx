@@ -656,7 +656,7 @@ export default function CrmDashboard({
         />
       )}
 
-      {crmView === 'calendar' && <CrmCalendar />}
+      {crmView === 'calendar' && <CrmCalendar onOpenDeal={handleSelectDeal} />}
 
       {crmView === 'analytics' && <CrmAnalytics />}
     </>
