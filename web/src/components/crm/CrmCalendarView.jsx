@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { crmAPI } from '../../utils/api';
+import { crmAPI, userAPI } from '../../utils/api';
 import {
   addDays,
   allDayFormValues,
@@ -14,12 +14,16 @@ import {
   sameDay,
   startOfDay,
   startOfWeek,
-  toDatetimeLocalValue
+  toDatetimeLocalValue,
+  weekStartsOnFromPrefs,
+  weekdayLabels
 } from '../../utils/calendarUtils';
 
 const VIEWS = ['month', 'week', 'day'];
 /** Native `title` tooltips wait ~1s. Half that. */
 const HOVER_TIP_MS = 500;
+/** Pull Google Calendar while this view is open. Focus/tab-back also syncs. */
+const AUTO_SYNC_MS = 30_000;
 
 function formatEventWhen({ startsAt, endsAt, allDay }) {
   if (allDay) return formatAllDayLabel(startsAt);
@@ -105,47 +109,83 @@ function cellKeyDown(e, fn) {
   fn();
 }
 
-export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDeal }) {
+export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDeal, settings = null }) {
   const [view, setView] = useState('month');
   const [anchor, setAnchor] = useState(() => new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [hoverTip, setHoverTip] = useState(null);
+  const [weekStartsOn, setWeekStartsOn] = useState(() => weekStartsOnFromPrefs(settings?.preferences));
+  const modalRef = useRef(null);
+  const inFlightRef = useRef(false);
+  const hasLoadedRef = useRef(false);
+  modalRef.current = modal;
 
-  const range = useMemo(() => rangeForView(view, anchor), [view, anchor]);
+  useEffect(() => {
+    setWeekStartsOn(weekStartsOnFromPrefs(settings?.preferences));
+  }, [settings?.preferences?.calendarWeekStartsOn]);
 
-  const loadEvents = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const range = useMemo(() => rangeForView(view, anchor, weekStartsOn), [view, anchor, weekStartsOn]);
+
+  const loadEvents = useCallback(async ({ silent = false } = {}) => {
+    if (silent && inFlightRef.current) return;
+    inFlightRef.current = true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const data = await crmAPI.getCalendarEvents(range.start.toISOString(), range.end.toISOString());
       setEvents(data.events || []);
+      console.debug('[CrmCalendar] sync', {
+        silent,
+        count: (data.events || []).length,
+        start: range.start.toISOString()
+      });
     } catch (err) {
-      setError(err.message || 'Failed to load calendar');
-      setEvents([]);
+      console.warn('[CrmCalendar] load failed', { silent, message: err.message });
+      if (!silent) {
+        setError(err.message || 'Failed to load calendar');
+        setEvents([]);
+      }
     } finally {
-      setLoading(false);
+      inFlightRef.current = false;
+      hasLoadedRef.current = true;
+      if (!silent) setLoading(false);
     }
   }, [range.start, range.end]);
 
   useEffect(() => {
-    loadEvents();
+    loadEvents({ silent: hasLoadedRef.current });
   }, [loadEvents]);
 
-  const handleSync = async () => {
-    setSyncing(true);
-    setError(null);
+  useEffect(() => {
+    const tick = () => {
+      const open = modalRef.current;
+      if (open && (open.mode === 'create' || open.mode === 'edit')) return;
+      loadEvents({ silent: true });
+    };
+    const id = setInterval(tick, AUTO_SYNC_MS);
+    const onFocus = () => tick();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [loadEvents]);
+
+  const handleWeekStartsOn = async (next) => {
+    const value = next === 1 ? 1 : 0;
+    if (value === weekStartsOn) return;
+    setWeekStartsOn(value);
+    console.debug('[CrmCalendar] week starts on', value === 1 ? 'Monday' : 'Sunday');
     try {
-      const data = await crmAPI.syncCalendar(range.start.toISOString(), range.end.toISOString());
-      setEvents(data.events || []);
+      await userAPI.updateSettings({ preferences: { calendarWeekStartsOn: value } });
     } catch (err) {
-      setError(err.message || 'Sync failed');
-    } finally {
-      setSyncing(false);
+      console.warn('[CrmCalendar] failed to save week start', err.message);
     }
   };
 
@@ -282,18 +322,22 @@ export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDea
   const titleLabel = useMemo(() => {
     if (view === 'day') return formatDayLabel(anchor);
     if (view === 'week') {
-      const start = startOfWeek(anchor);
+      const start = startOfWeek(anchor, weekStartsOn);
       const end = addDays(start, 6);
       return `${formatDayLabel(start)} – ${formatDayLabel(end)}`;
     }
     return anchor.toLocaleDateString([], { month: 'long', year: 'numeric' });
-  }, [view, anchor]);
+  }, [view, anchor, weekStartsOn]);
 
-  const monthWeeks = useMemo(() => (view === 'month' ? monthMatrix(anchor) : []), [view, anchor]);
+  const monthWeeks = useMemo(
+    () => (view === 'month' ? monthMatrix(anchor, weekStartsOn) : []),
+    [view, anchor, weekStartsOn]
+  );
   const weekDays = useMemo(() => {
-    const start = startOfWeek(anchor);
+    const start = startOfWeek(anchor, weekStartsOn);
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  }, [anchor]);
+  }, [anchor, weekStartsOn]);
+  const dowLabels = useMemo(() => weekdayLabels(weekStartsOn), [weekStartsOn]);
 
   return (
     <div className="crm-calendar-view">
@@ -315,9 +359,23 @@ export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDea
               {v.charAt(0).toUpperCase() + v.slice(1)}
             </button>
           ))}
-          <button type="button" className="btn-secondary" disabled={syncing} onClick={handleSync}>
-            {syncing ? 'Syncing…' : 'Sync now'}
-          </button>
+          <span className="crm-cal-weekstart">
+            Week starts
+            <button
+              type="button"
+              className={`crm-chip${weekStartsOn === 0 ? ' crm-chip--active' : ''}`}
+              onClick={() => handleWeekStartsOn(0)}
+            >
+              Sunday
+            </button>
+            <button
+              type="button"
+              className={`crm-chip${weekStartsOn === 1 ? ' crm-chip--active' : ''}`}
+              onClick={() => handleWeekStartsOn(1)}
+            >
+              Monday
+            </button>
+          </span>
           <button type="button" className="btn-secondary" onClick={() => openCreate(anchor)}>
             + Event
           </button>
@@ -330,7 +388,7 @@ export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDea
       <p className="crm-muted crm-calendar-view__legend">
         <span className="crm-cal-legend crm-cal-event--vettr">Vettr</span>
         <span className="crm-cal-legend crm-cal-event--google">Google</span>
-        Events sync both ways — create in Vettr or Google, then click Sync now.
+        Events sync automatically with Google Calendar.
       </p>
 
       {error ? <p className="crm-panel--error">{error}</p> : null}
@@ -339,7 +397,7 @@ export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDea
       {!loading && view === 'month' ? (
         <div className="crm-cal-month">
           <div className="crm-cal-month__head">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+            {dowLabels.map((d) => (
               <div key={d} className="crm-cal-month__dow">{d}</div>
             ))}
           </div>

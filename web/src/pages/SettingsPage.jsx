@@ -14,6 +14,7 @@ import {
   subscribeWebPush,
   unsubscribeWebPush
 } from '../utils/webNotifications';
+import { weekStartsOnFromPrefs } from '../utils/calendarUtils';
 
 const SETTINGS_EXPORT_VERSION = 1;
 const DEFAULT_SETTINGS = {
@@ -64,6 +65,7 @@ export default function SettingsPage() {
   const [notificationFrequency, setNotificationFrequency] = useState('daily');
   const [hideSavedDealsInFeed, setHideSavedDealsInFeed] = useState(false);
   const [crmEmailDigest, setCrmEmailDigest] = useState(false);
+  const [calendarWeekStartsOn, setCalendarWeekStartsOn] = useState(0);
   const [browserNotifications, setBrowserNotifications] = useState(false);
   const [pushStatus, setPushStatus] = useState(() => notificationPermission());
   const [notifyBusy, setNotifyBusy] = useState(false);
@@ -100,6 +102,7 @@ export default function SettingsPage() {
       setNotificationFrequency(data.notificationFrequency || 'daily');
       setHideSavedDealsInFeed(Boolean(data.preferences?.hideSavedDealsInFeed));
       setCrmEmailDigest(Boolean(data.preferences?.crmEmailDigest));
+      setCalendarWeekStartsOn(weekStartsOnFromPrefs(data.preferences));
       setBrowserNotifications(Boolean(data.preferences?.browserNotifications));
       setPushStatus(notificationPermission());
       setShowSavedHighlightInFeed(data.preferences?.showSavedHighlightInFeed !== false);
@@ -218,6 +221,21 @@ export default function SettingsPage() {
       flashNotify(err.message || 'Failed to send digest');
     } finally {
       setNotifyBusy(false);
+    }
+  };
+
+  const handleCalendarWeekStartsOn = async (value) => {
+    const next = value === 1 ? 1 : 0;
+    const prev = calendarWeekStartsOn;
+    setCalendarWeekStartsOn(next);
+    try {
+      await userAPI.updateSettings({ preferences: { calendarWeekStartsOn: next } });
+      setSettings((s) =>
+        s ? { ...s, preferences: { ...s.preferences, calendarWeekStartsOn: next } } : s
+      );
+    } catch (error) {
+      setCalendarWeekStartsOn(prev);
+      alert('Failed to save: ' + error.message);
     }
   };
 
@@ -538,6 +556,29 @@ export default function SettingsPage() {
                 <strong>Daily CRM digest</strong> — fold overdue tasks, due-today items, and DD deadlines into the morning summary email.
               </span>
             </label>
+            <p style={{ marginTop: 16 }}>
+              <strong>Calendar week starts on</strong> — saved to this account (Sunday vs Monday).
+            </p>
+            <div className="radio-group">
+              <label>
+                <input
+                  type="radio"
+                  name="calendar-week-start"
+                  checked={calendarWeekStartsOn === 0}
+                  onChange={() => handleCalendarWeekStartsOn(0)}
+                />
+                <span>Sunday</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="calendar-week-start"
+                  checked={calendarWeekStartsOn === 1}
+                  onChange={() => handleCalendarWeekStartsOn(1)}
+                />
+                <span>Monday</span>
+              </label>
+            </div>
           </div>
         ) : null}
 

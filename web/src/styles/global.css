@@ -9903,6 +9903,15 @@ button.aggregator-welcome__buybox {
   gap: 8px;
 }
 
+.crm-cal-weekstart {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .crm-calendar-view__legend {
   display: flex;
   flex-wrap: wrap;

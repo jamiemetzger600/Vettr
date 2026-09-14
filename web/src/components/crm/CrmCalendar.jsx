@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { crmAPI } from '../../utils/api';
 import CrmCalendarView from './CrmCalendarView';
 
-export default function CrmCalendar({ onOpenDeal }) {
+export default function CrmCalendar({ onOpenDeal, settings = null }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -116,6 +116,7 @@ export default function CrmCalendar({ onOpenDeal }) {
           onDisconnect={handleDisconnect}
           disconnecting={disconnecting}
           onOpenDeal={onOpenDeal}
+          settings={settings}
         />
       </div>
     );

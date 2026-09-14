@@ -16,15 +16,16 @@ export function addDays(date, days) {
   return d;
 }
 
-export function startOfWeek(date) {
+export function startOfWeek(date, weekStartsOn = 0) {
   const d = startOfDay(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
+  const start = Number(weekStartsOn) === 1 ? 1 : 0;
+  const offset = (d.getDay() - start + 7) % 7;
+  d.setDate(d.getDate() - offset);
   return d;
 }
 
-export function endOfWeek(date) {
-  const d = startOfWeek(date);
+export function endOfWeek(date, weekStartsOn = 0) {
+  const d = startOfWeek(date, weekStartsOn);
   d.setDate(d.getDate() + 7);
   d.setMilliseconds(-1);
   return d;
@@ -43,8 +44,8 @@ export function endOfMonth(date) {
   return d;
 }
 
-export function monthMatrix(anchorDate) {
-  const start = startOfWeek(startOfMonth(anchorDate));
+export function monthMatrix(anchorDate, weekStartsOn = 0) {
+  const start = startOfWeek(startOfMonth(anchorDate), weekStartsOn);
   const weeks = [];
   let cursor = new Date(start);
   for (let w = 0; w < 6; w += 1) {
@@ -121,16 +122,19 @@ export function formatAllDayLabel(startsAt) {
   return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
-export function rangeForView(view, anchorDate) {
+export function rangeForView(view, anchorDate, weekStartsOn = 0) {
   if (view === 'day') {
     return { start: startOfDay(anchorDate), end: endOfDay(anchorDate) };
   }
   if (view === 'week') {
-    return { start: startOfWeek(anchorDate), end: endOfWeek(anchorDate) };
+    return { start: startOfWeek(anchorDate, weekStartsOn), end: endOfWeek(anchorDate, weekStartsOn) };
   }
   const monthStart = startOfMonth(anchorDate);
   const monthEnd = endOfMonth(anchorDate);
-  return { start: startOfWeek(monthStart), end: endOfWeek(monthEnd) };
+  return {
+    start: startOfWeek(monthStart, weekStartsOn),
+    end: endOfWeek(monthEnd, weekStartsOn)
+  };
 }
 
 export function eventOnDay(event, day) {
@@ -151,3 +155,14 @@ export function eventOnDay(event, day) {
 }
 
 export const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function weekStartsOnFromPrefs(preferences) {
+  return Number(preferences?.calendarWeekStartsOn) === 1 ? 1 : 0;
+}
+
+export function weekdayLabels(weekStartsOn = 0) {
+  const start = Number(weekStartsOn) === 1 ? 1 : 0;
+  return Array.from({ length: 7 }, (_, i) => DOW_SHORT[(start + i) % 7]);
+}
