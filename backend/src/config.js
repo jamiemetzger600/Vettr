@@ -48,6 +48,18 @@ function validateConfig() {
 
   if (process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim() && process.env.GOOGLE_CALENDAR_CLIENT_SECRET?.trim()) {
     console.log('[config] Google Calendar OAuth configured');
+    if (isProduction) {
+      const apiBase = (process.env.API_BASE_URL || '').trim();
+      if (!apiBase || /localhost|127\.0\.0\.1/i.test(apiBase)) {
+        console.error('[config] Google OAuth requires public API_BASE_URL in production (not localhost).');
+        process.exit(1);
+      }
+      const web = (process.env.WEB_APP_URL || '').trim();
+      if (/localhost|127\.0\.0\.1/i.test(web)) {
+        console.error('[config] WEB_APP_URL cannot be localhost in production (Google OAuth callback).');
+        process.exit(1);
+      }
+    }
   }
 }
 

@@ -250,16 +250,35 @@ async function upsertDeals(deals) {
   const client = await pool.connect();
   let inserted = 0;
   let updated = 0;
+  let financialChanges = 0;
   /** DB ids for rows inserted this run (for in-app "new pool" navigation; capped). */
   const newRowIds = [];
 
   try {
     await client.query('BEGIN');
+    const prior = await client.query(
+      `SELECT source_id, asking_price, annual_profit FROM market_deals WHERE source = $1`,
+      [SOURCE_KEY]
+    );
+    const priorById = new Map(
+      prior.rows.map((r) => [String(r.source_id), { price: r.asking_price, ebitda: r.annual_profit }])
+    );
 
     for (const deal of deals) {
       const rawKey = deal.airtable_record_id ?? deal.airtable_id;
       if (rawKey == null || String(rawKey).trim() === '') continue;
       const sourceId = String(rawKey).trim();
+      const prevFin = priorById.get(sourceId);
+      if (prevFin) {
+        const nextPrice = deal.asking_price ?? null;
+        const nextEbitda = deal.annual_profit ?? null;
+        const priceChanged = String(prevFin.price ?? '') !== String(nextPrice ?? '');
+        const ebitdaChanged = String(prevFin.ebitda ?? '') !== String(nextEbitda ?? '');
+        if (priceChanged || ebitdaChanged) {
+          financialChanges += 1;
+          console.log('[scrape] financial change', { sourceId, priceChanged, ebitdaChanged });
+        }
+      }
       const urlKey = normalizeListingUrlKey(deal.listing_url);
       const params = [
         SOURCE_KEY,
@@ -400,6 +419,7 @@ async function upsertDeals(deals) {
           JSON.stringify({
             inserted,
             updated,
+            financialChanges,
             ts: new Date().toISOString(),
             ...(newRowIds.length > 0 ? { new_row_ids: newRowIds } : {}),
           }),
@@ -416,7 +436,7 @@ async function upsertDeals(deals) {
     client.release();
   }
 
-  return { inserted, updated };
+  return { inserted, updated, financialChanges };
 }
 
 // ---------------------------------------------------------------------------

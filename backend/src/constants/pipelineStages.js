@@ -26,15 +26,13 @@ export const KANBAN_COLUMNS = [
     defaultStage: null
   },
   {
-    id: 'screening',
-    label: 'Screening',
-    stages: ['Requested NDA', 'Signed NDA', 'Review CIM', 'Seller Call'],
-    defaultStage: 'Requested NDA'
-  },
-  {
     id: 'under_review',
     label: 'Under Review',
     stages: [
+      'Requested NDA',
+      'Signed NDA',
+      'Review CIM',
+      'Seller Call',
       'Review Financials',
       'Review Tax Returns',
       'Preliminary Valuation',
@@ -42,7 +40,7 @@ export const KANBAN_COLUMNS = [
       'Bank Pre-Approval',
       'Custom Status'
     ],
-    defaultStage: 'Review Financials'
+    defaultStage: 'Requested NDA'
   },
   {
     id: 'loi',
@@ -60,9 +58,14 @@ export const KANBAN_COLUMNS = [
     id: 'passed',
     label: 'Passed',
     stages: ['Passed On Deal'],
-    defaultStage: 'Passed On Deal'
+    defaultStage: 'Passed On Deal',
+    hidden: true
   }
 ];
+
+export function visibleKanbanColumns() {
+  return KANBAN_COLUMNS.filter((col) => !col.hidden);
+}
 
 export function kanbanColumnForStage(stage) {
   const trimmed = (stage || '').trim();

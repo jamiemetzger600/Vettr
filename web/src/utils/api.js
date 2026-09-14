@@ -288,7 +288,13 @@ export const dealsAPI = {
     });
     notifyExtensionDealsSync();
     return result;
-  }
+  },
+
+  submitOffMarket: (payload) =>
+    apiRequest('/market-deals/off-market', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
 };
 
 export const teamsAPI = {

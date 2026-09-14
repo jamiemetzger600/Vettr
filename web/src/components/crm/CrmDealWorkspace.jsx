@@ -17,6 +17,7 @@ import UnderwritingCrmLaunch from './underwriting/UnderwritingCrmLaunch';
 import DealThread from './DealThread';
 import CrmDealContacts from './CrmDealContacts';
 import { useAuth } from '../../context/AuthContext';
+import { recordIoiSent } from '../../utils/recordIoiSent';
 import { useTeam } from '../../context/TeamContext';
 
 const RECORD_TABS = [
@@ -336,27 +337,14 @@ export default function CrmDealWorkspace({
 
   const handleIOISent = async (ioiText) => {
     if (!deal?.id) return;
-    const timestamp = new Date().toISOString();
-    const dateLabel = new Date().toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    const separator = `\n\n--- IOI Sent ${dateLabel} ---\n`;
-    const currentNotes = deal?.notes || '';
-    const updatedNotes = (currentNotes ? currentNotes + separator : `--- IOI Sent ${dateLabel} ---\n`) + ioiText;
-    const newHistory = [...progressHistory, { stage: 'Send IOI', timestamp }];
-
     try {
-      await dealsAPI.updateDeal(deal.id, {
-        notes: updatedNotes,
-        progressStage: 'Send IOI',
-        progressHistory: newHistory
+      const { progressHistory: nextHistory } = await recordIoiSent(deal.id, {
+        ioiText,
+        existingNotes: deal?.notes || ''
       });
       setProgressStage('Send IOI');
-      setProgressHistory(newHistory);
+      if (nextHistory) setProgressHistory(nextHistory);
+      onStageChanged?.({ progressStage: 'Send IOI', savedDealId: deal.id }, deal.name);
       onRefresh?.();
       await loadDetail();
     } catch (error) {

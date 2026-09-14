@@ -80,6 +80,47 @@ export function toDatetimeLocalValue(date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** YYYY-MM-DD from a datetime-local value or ISO string — never timezone-shifted. */
+export function civilDateFromValue(value) {
+  const m = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
+export function addCivilDays(yyyyMmDd, days) {
+  const d = new Date(`${yyyyMmDd}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Inclusive local dates → UTC midnight start + exclusive end (Google all-day). */
+export function allDayIsoRange(startsLocal, endsLocal) {
+  const start = civilDateFromValue(startsLocal);
+  let lastInclusive = civilDateFromValue(endsLocal) || start;
+  if (!start) return { startsAt: '', endsAt: '' };
+  if (lastInclusive < start) lastInclusive = start;
+  return {
+    startsAt: `${start}T00:00:00.000Z`,
+    endsAt: `${addCivilDays(lastInclusive, 1)}T00:00:00.000Z`
+  };
+}
+
+/** Stored all-day (exclusive end) → datetime-local values on the civil date. */
+export function allDayFormValues(startsAt, endsAt) {
+  const start = civilDateFromValue(startsAt);
+  const endExcl = civilDateFromValue(endsAt);
+  const lastInclusive = !endExcl || endExcl <= start ? start : addCivilDays(endExcl, -1);
+  return {
+    startsAt: start ? `${start}T00:00` : '',
+    endsAt: lastInclusive ? `${lastInclusive}T00:00` : ''
+  };
+}
+
+export function formatAllDayLabel(startsAt) {
+  const [y, m, d] = civilDateFromValue(startsAt).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
 export function rangeForView(view, anchorDate) {
   if (view === 'day') {
     return { start: startOfDay(anchorDate), end: endOfDay(anchorDate) };
@@ -93,6 +134,15 @@ export function rangeForView(view, anchorDate) {
 }
 
 export function eventOnDay(event, day) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const dayKey = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+  if (event.allDay) {
+    const start = civilDateFromValue(event.startsAt);
+    let endExcl = civilDateFromValue(event.endsAt);
+    if (!start) return false;
+    if (!endExcl || endExcl <= start) endExcl = addCivilDays(start, 1);
+    return dayKey >= start && dayKey < endExcl;
+  }
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
   const dayStart = startOfDay(day);

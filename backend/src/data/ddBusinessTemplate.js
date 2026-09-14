@@ -69,10 +69,12 @@ export const BUSINESS_ACQUISITION_DD_TEMPLATE = {
       ]
     },
     {
-      name: 'Insurance',
+      name: 'SBA',
       items: [
-        { title: 'Policies and coverage summary', requestsDocument: true },
-        { title: 'Claims history', requestsDocument: false }
+        { title: 'Buyer equity injection (cash + source of funds)', requestsDocument: true },
+        { title: 'SBA Franchise Directory / Form 2462 (if franchise)', requestsDocument: true },
+        { title: 'Phase I ESA (SOP 50 10 when required)', requestsDocument: true },
+        { title: 'Seller note standby / CDC confirmation', requestsDocument: true }
       ]
     }
   ]

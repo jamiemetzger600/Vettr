@@ -8,7 +8,8 @@ const VALID_CRM_VIEWS = new Set([
   'tasks',
   'contacts',
   'calendar',
-  'analytics'
+  'analytics',
+  'compare'
 ]);
 const VALID_CRM_FILTERS = new Set([
   'nudges',

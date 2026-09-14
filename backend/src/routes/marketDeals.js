@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import pool from '../db/pool.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { optionalAuth, authMiddleware } from '../middleware/auth.js';
 import { sanitizeMarketDealRow } from '../lib/guestEntitlements.js';
 import { listingDedupeKeySql, listingFingerprintSql } from '../lib/listingFingerprint.js';
 import { parseHiddenExclude } from '../lib/hiddenDeals.js';
@@ -446,6 +446,52 @@ router.get('/', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('Market deals list error:', err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/market-deals/off-market — broker / buyer off-market intake
+router.post('/off-market', authMiddleware, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Business name is required' });
+    const sourceId = crypto.randomUUID();
+    const asking = body.askingPrice ? Number(String(body.askingPrice).replace(/[^0-9.]/g, '')) : null;
+    const ebitda = body.ebitda ? Number(String(body.ebitda).replace(/[^0-9.]/g, '')) : null;
+    const result = await pool.query(
+      `INSERT INTO market_deals (
+         source, source_id, name, description, industries, listing_url,
+         asking_price, annual_profit, city, state, broker_email,
+         source_added_at, source_updated_at, last_scraped_at, is_active
+       ) VALUES (
+         'off-market', $1, $2, $3, $4, $5,
+         $6, $7, $8, $9, $10,
+         NOW(), NOW(), NOW(), true
+       )
+       RETURNING id`,
+      [
+        sourceId,
+        name,
+        body.notes || null,
+        body.industry ? [String(body.industry)] : null,
+        body.listingUrl || null,
+        Number.isFinite(asking) ? asking : null,
+        Number.isFinite(ebitda) ? ebitda : null,
+        body.city || null,
+        body.state || null,
+        body.brokerEmail || null
+      ]
+    );
+    await pool.query(
+      `INSERT INTO deal_sources (source_key, display_name, source_type, scrape_enabled)
+       VALUES ('off-market', 'Off-market intake', 'manual', false)
+       ON CONFLICT (source_key) DO NOTHING`
+    );
+    console.log('[market] off-market submitted', result.rows[0].id, 'by', req.user?.userId);
+    res.status(201).json({ id: result.rows[0].id, sourceId });
+  } catch (err) {
+    console.error('[market] off-market submit failed', err);
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 

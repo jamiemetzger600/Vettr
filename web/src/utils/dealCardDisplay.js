@@ -105,13 +105,15 @@ export function getListingAgeClass(discoveredAt) {
   return 'deal-date-age--older';
 }
 
-export function listingAgeTitle(discoveredAt) {
-  const days = getListingAgeDays(discoveredAt);
-  const dateStr = formatDealDate(discoveredAt);
-  if (days == null) return dateStr;
-  if (days === 0) return `${dateStr} — today`;
-  if (days === 1) return `${dateStr} — 1 day ago`;
-  return `${dateStr} — ${days} days ago`;
+export function listingAgeTitle(discoveredAt, { source, sourceUpdatedAt } = {}) {
+  const days = getListingAgeDays(sourceUpdatedAt || discoveredAt);
+  const dateStr = formatDealDate(sourceUpdatedAt || discoveredAt);
+  const src = source ? String(source).replace(/_/g, ' ') : '';
+  let age = dateStr;
+  if (days === 0) age = `${dateStr} — today`;
+  else if (days === 1) age = `${dateStr} — 1 day ago`;
+  else if (days != null) age = `${dateStr} — ${days} days ago`;
+  return src ? `${src} · ${age}` : age;
 }
 
 /** Listing-age header colors — matches `.deal-age-legend` dots. */

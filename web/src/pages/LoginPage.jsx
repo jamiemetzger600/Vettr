@@ -118,6 +118,8 @@ export default function LoginPage() {
           </p>
           <p className="auth-footer">
             <Link to="/dashboard">Browse without signing in</Link>
+            {' · '}
+            <Link to="/">What is Vettr?</Link>
           </p>
         </form>
       </div>

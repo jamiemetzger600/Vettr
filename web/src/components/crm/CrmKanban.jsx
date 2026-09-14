@@ -136,7 +136,8 @@ export default function CrmKanban({
   highlightDealIds = null,
   nextActionByDealId = null,
   onAddDeal = null,
-  onImportCsv = null
+  onImportCsv = null,
+  boardEpoch = 0
 }) {
   const { activeTeamId, activeTeam, isTeamMode } = useTeam();
   const canWriteBoard = !isTeamMode || activeTeam?.role !== 'viewer';
@@ -181,14 +182,23 @@ export default function CrmKanban({
 
   useEffect(() => {
     loadKanban();
-  }, [loadKanban, deals.length]);
+  }, [loadKanban, deals.length, boardEpoch]);
 
   const normalizeKanbanDeal = useCallback(
     (row) => {
       const fromParent = dealsById.get(row.id);
       const lastActivity = row.last_activity || row.lastActivity || null;
+      const stage = row.progress_stage || row.progressStage || fromParent?.progressStage || '';
+      const customLabel = row.custom_stage_label || row.customStageLabel || fromParent?.customStageLabel || '';
       if (fromParent) {
-        return lastActivity ? { ...fromParent, last_activity: lastActivity } : fromParent;
+        return {
+          ...fromParent,
+          progressStage: stage,
+          progress_stage: stage,
+          customStageLabel: customLabel,
+          last_activity: lastActivity || fromParent.last_activity,
+          lastActivity: lastActivity || fromParent.lastActivity
+        };
       }
       const n = normalizeDeal(row);
       return lastActivity ? { ...n, last_activity: lastActivity } : n;
@@ -304,6 +314,7 @@ export default function CrmKanban({
     if (currentCol.id === columnId) return;
 
     const targetStage = defaultStageForKanbanColumn(columnId);
+    console.log('[CrmKanban] drop', { dealId, from: currentCol.id, to: columnId, targetStage });
 
     setMoving(true);
     try {
@@ -346,6 +357,8 @@ export default function CrmKanban({
     );
   }
 
+  const boardCount = columns.reduce((n, col) => n + (col.deals?.length || 0), 0);
+  const passedCount = kanban?.passedCount ?? 0;
   const totalDeals = kanban?.totalDeals ?? 0;
 
   return (
@@ -353,7 +366,7 @@ export default function CrmKanban({
       <div className="crm-kanban-toolbar">
         <p className="crm-kanban-toolbar__hint">
           {canWriteBoard
-            ? 'Drag deals between columns to update pipeline stage. Click a card to peek — right-click for Open, Calculator, Delete.'
+            ? 'Drag deals between columns to update pipeline stage. Click a card to peek — right-click for Open, Calculator, Delete. Passed deals live in Cards → Archived.'
             : 'Viewer role — pipeline is read-only. Open a deal to use Talk.'}
         </p>
         <div className="crm-kanban-toolbar__actions">
@@ -372,7 +385,10 @@ export default function CrmKanban({
               New blank underwriting
             </button>
           ) : null}
-          <span className="crm-kanban-count">{totalDeals} deals</span>
+          <span className="crm-kanban-count">
+            {boardCount} on board
+            {passedCount > 0 ? ` · ${passedCount} archived` : ''}
+          </span>
         </div>
       </div>
 

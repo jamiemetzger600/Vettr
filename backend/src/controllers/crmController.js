@@ -1,6 +1,6 @@
 import pool from '../db/pool.js';
 import { hydrateCrmForSavedDeal } from '../services/crmHydration.js';
-import { PIPELINE_STAGES, UNSTAGED_KEY, KANBAN_COLUMNS, kanbanColumnForStage } from '../constants/pipelineStages.js';
+import { PIPELINE_STAGES, UNSTAGED_KEY, KANBAN_COLUMNS, visibleKanbanColumns, kanbanColumnForStage } from '../constants/pipelineStages.js';
 import { updateDealPipelineStage } from '../services/crmStageService.js';
 import { findStaleListings } from '../services/crmStaleListing.js';
 import {
@@ -141,19 +141,23 @@ export const getCrmKanban = async (req, res) => {
       buckets.get(col.id).push(deal);
     }
 
-    const columns = KANBAN_COLUMNS.map((col) => ({
+    const boardColumns = visibleKanbanColumns();
+    const columns = boardColumns.map((col) => ({
       id: col.id,
       label: col.label,
       stage: col.id,
       deals: buckets.get(col.id) || []
     }));
+    const passedCount = (buckets.get('passed') || []).length;
+    console.log('[crm] kanban board columns', boardColumns.map((c) => c.id).join(','), 'passedHidden', passedCount);
 
     res.json({
       columns,
       unstaged: buckets.get(UNSTAGED_KEY) || [],
       unstagedKey: UNSTAGED_KEY,
       stages: PIPELINE_STAGES,
-      kanbanColumns: KANBAN_COLUMNS.map(({ id, label }) => ({ id, label })),
+      kanbanColumns: boardColumns.map(({ id, label }) => ({ id, label })),
+      passedCount,
       totalDeals: deals.length,
       scope,
       teamId: teamId || null
@@ -595,13 +599,19 @@ export const postDealDocument = async (req, res) => {
 export const getCalendarOAuthConfig = async (req, res) => {
   try {
     const configured = isGoogleCalendarOAuthConfigured();
+    const redirectUri = getGoogleCalendarRedirectUri();
+    const localhostRedirect = /localhost|127\.0\.0\.1/i.test(redirectUri || '');
     res.json({
       oauthConfigured: configured,
-      redirectUri: getGoogleCalendarRedirectUri()
+      redirectUri,
+      localhostRedirect,
+      warning: localhostRedirect && process.env.NODE_ENV === 'production'
+        ? 'API_BASE_URL is localhost — Google OAuth will fail. Set the public API URL.'
+        : null
     });
   } catch (error) {
     console.error('[crm] getCalendarOAuthConfig error:', error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 
@@ -638,15 +648,16 @@ export const getCalendarOAuthUrl = async (req, res) => {
   } catch (error) {
     if (error.status === 503) return res.status(503).json({ error: error.message });
     console.error('[crm] getCalendarOAuthUrl error:', error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 
 export const googleCalendarOAuthCallback = async (req, res) => {
+  const isProd = process.env.NODE_ENV === 'production';
   const webBase = (
-    process.env.NODE_ENV !== 'production'
-      ? (process.env.WEB_APP_URL_LOCAL || 'http://localhost:5173')
-      : (process.env.WEB_APP_URL || 'http://localhost:5173')
+    isProd
+      ? (process.env.WEB_APP_URL || '')
+      : (process.env.WEB_APP_URL_LOCAL || process.env.WEB_APP_URL || 'http://localhost:5173')
   )
     .split(',')[0]
     .trim()
@@ -708,14 +719,15 @@ export const googleCalendarOAuthCallback = async (req, res) => {
 
 export const postGmailSend = async (req, res) => {
   try {
-    const { to, subject, text } = req.body || {};
+    const { to, subject, text, attachments } = req.body || {};
     if (!subject || !String(text || '').trim()) {
       return res.status(400).json({ error: 'subject and text are required' });
     }
     const result = await sendGmailMessage(req.user.userId, {
       to,
       subject,
-      text
+      text,
+      attachments
     });
     res.json(result);
   } catch (error) {

@@ -29,8 +29,29 @@ function getGoogleCalendarClientId() {
 }
 
 export function getGoogleCalendarRedirectUri() {
-  const base = (process.env.API_BASE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+  const isProd = process.env.NODE_ENV === 'production';
+  const raw = (process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (isProd) {
+    if (!raw || /localhost|127\.0\.0\.1/i.test(raw)) {
+      console.error('[google-oauth] API_BASE_URL must be a public URL in production, got', raw || '(empty)');
+      return '';
+    }
+    return `${raw}/api/crm/calendar/oauth/callback`;
+  }
+  const base = raw || 'http://localhost:3001';
   return `${base}/api/crm/calendar/oauth/callback`;
+}
+
+export function assertGoogleRedirectUriSafe() {
+  const uri = getGoogleCalendarRedirectUri();
+  if (process.env.NODE_ENV === 'production' && (!uri || /localhost|127\.0\.0\.1/i.test(uri))) {
+    const err = new Error(
+      'Google OAuth is misconfigured: set API_BASE_URL to the public API (not localhost).'
+    );
+    err.status = 503;
+    throw err;
+  }
+  return uri;
 }
 
 function createOAuthState(userId, returnTo = 'calendar') {
@@ -66,7 +87,7 @@ export function getGoogleCalendarAuthUrl(userId, returnTo = 'calendar') {
 
   const params = new URLSearchParams({
     client_id: getGoogleCalendarClientId(),
-    redirect_uri: getGoogleCalendarRedirectUri(),
+    redirect_uri: assertGoogleRedirectUriSafe(),
     response_type: 'code',
     scope: SCOPES,
     access_type: 'offline',
@@ -179,8 +200,16 @@ function toGoogleEventBody({ title, description, startsAt, endsAt, allDay, vettr
   };
 
   if (allDay) {
-    body.start = { date: startsAt.slice(0, 10) };
-    body.end = { date: endsAt.slice(0, 10) };
+    const startDate = String(startsAt || '').slice(0, 10);
+    let endDate = String(endsAt || '').slice(0, 10);
+    if (!endDate || endDate <= startDate) {
+      const d = new Date(`${startDate}T00:00:00.000Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      endDate = d.toISOString().slice(0, 10);
+    }
+    body.start = { date: startDate };
+    body.end = { date: endDate };
+    console.log('[calendar] google all-day', { title, startDate, endDate });
   } else {
     body.start = { dateTime: startsAt };
     body.end = { dateTime: endsAt };

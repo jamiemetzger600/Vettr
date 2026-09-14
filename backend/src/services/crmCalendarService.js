@@ -38,6 +38,40 @@ function defaultEnd(startIso, allDay = false) {
   return new Date(start.getTime() + 60 * 60 * 1000).toISOString();
 }
 
+function civilDate(value) {
+  const m = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function addCivilDays(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function normalizeStoredTimes(startsAt, endsAt, allDay) {
+  if (!allDay) {
+    const start = new Date(startsAt).toISOString();
+    const end = endsAt ? new Date(endsAt).toISOString() : defaultEnd(start, false);
+    return { start, end };
+  }
+  const startDate = civilDate(startsAt);
+  if (!startDate) {
+    const err = new Error('Start time is required');
+    err.status = 400;
+    throw err;
+  }
+  let endDate = civilDate(endsAt);
+  if (!endDate || endDate <= startDate) endDate = addCivilDays(startDate, 1);
+  return {
+    start: `${startDate}T00:00:00.000Z`,
+    end: `${endDate}T00:00:00.000Z`
+  };
+}
+
 function googleEventToLocal(userId, item) {
   const start = item.start?.dateTime || item.start?.date;
   const end = item.end?.dateTime || item.end?.date;
@@ -248,8 +282,8 @@ export async function createCalendarEvent(userId, { title, description, startsAt
     throw err;
   }
 
-  const start = new Date(startsAt).toISOString();
-  const end = endsAt ? new Date(endsAt).toISOString() : defaultEnd(start, allDay);
+  const { start, end } = normalizeStoredTimes(startsAt, endsAt, allDay);
+  console.log('[calendar] create event', { allDay: !!allDay, start, end, title: trimmed });
 
   if (!(await isGoogleCalendarConnected(userId))) {
     const err = new Error('Connect Google Calendar first');
@@ -316,6 +350,16 @@ export async function updateCalendarEvent(userId, eventId, patch) {
   const startsAt = patch.startsAt ? new Date(patch.startsAt).toISOString() : row.starts_at;
   const endsAt = patch.endsAt ? new Date(patch.endsAt).toISOString() : row.ends_at;
   const allDay = patch.allDay !== undefined ? !!patch.allDay : row.all_day;
+  const times = (patch.startsAt || patch.endsAt || patch.allDay !== undefined)
+    ? normalizeStoredTimes(
+        patch.startsAt || row.starts_at,
+        patch.endsAt || row.ends_at,
+        allDay
+      )
+    : { start: row.starts_at, end: row.ends_at };
+  const startsAt = times.start;
+  const endsAt = times.end;
+  console.log('[calendar] update event', { eventId, allDay, startsAt, endsAt });
 
   if (row.google_event_id) {
     await updateGoogleCalendarEvent(userId, row.google_event_id, {

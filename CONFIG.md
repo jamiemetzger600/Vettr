@@ -30,7 +30,7 @@ Single reference for all environment variables and deployment config. Copy the r
 | `VAPID_SUBJECT` | No | `mailto:` + `SMTP_USER` | Contact URL or mailto used in VAPID. |
 | `DIGEST_TZ` | No | `America/Los_Angeles` | Timezone for the 9:00 AM daily/weekly summary email |
 | `GOOGLE_CALENDAR_CLIENT_ID` | No | — | OAuth Web client ID. Enables Connect Google (Calendar + Gmail send). Enable **Gmail API** and **Google Calendar API** on the same Cloud project. |
-| `GOOGLE_CALENDAR_CLIENT_SECRET` | No | — | OAuth client secret. Redirect URI: `{API_BASE_URL}/api/crm/calendar/oauth/callback` |
+| `GOOGLE_CALENDAR_CLIENT_SECRET` | No | — | OAuth client secret. Redirect URI: `{API_BASE_URL}/api/crm/calendar/oauth/callback`. In production `API_BASE_URL` must be the public Worker URL, not localhost. |
 | `AIRTABLE_SHARE_URL` | No | (hardcoded fallback) | Airtable shared view URL for scraper |
 | `AIRTABLE_SCRAPE_CRON` | No | `0 4 * * *` | Cron expression; interpreted in `AIRTABLE_SCRAPE_CRON_TZ` |
 | `AIRTABLE_SCRAPE_CRON_TZ` | No | `America/Los_Angeles` | IANA timezone for the cron schedule |

@@ -11,6 +11,7 @@ import {
 } from '../utils/savedDealCalculatorSummary';
 import { saveCalculatorState } from '../utils/dealCalculatorStorage';
 import DealDetailsPanel from './DealDetailsPanel';
+import { recordIoiSent } from '../utils/recordIoiSent';
 import DealShareMenu from './DealShareMenu';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import {
@@ -755,25 +756,14 @@ function SavedDealModal({ deal, settings = null, onClose, onUpdateNotes, onDelet
   };
 
   const handleIOISent = async (ioiText) => {
-    const timestamp = new Date().toISOString();
-    const dateLabel = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const separator = `\n\n--- IOI Sent ${dateLabel} ---\n`;
-    const updatedNotes = (notes ? notes + separator : `--- IOI Sent ${dateLabel} ---\n`) + ioiText;
-
-    const newHistory = [
-      ...progressHistory,
-      { stage: 'Send IOI', timestamp }
-    ];
-
     try {
-      await dealsAPI.updateDeal(deal.id, {
-        notes: updatedNotes,
-        progressStage: 'Send IOI',
-        progressHistory: newHistory
+      const { notes: updatedNotes, progressHistory: nextHistory } = await recordIoiSent(deal.id, {
+        ioiText,
+        existingNotes: notes
       });
       setNotes(updatedNotes);
       setProgressStage('Send IOI');
-      setProgressHistory(newHistory);
+      if (nextHistory) setProgressHistory(nextHistory);
       onUpdate();
     } catch (error) {
       console.error('Failed to save IOI record:', error);

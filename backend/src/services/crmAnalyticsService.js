@@ -49,6 +49,12 @@ export async function getCrmFunnelAnalytics(userId, { scope = 'all', teamId = nu
   return {
     totalDeals: deals.rows.length,
     unstaged,
+    stalled: deals.rows.filter((r) => {
+      const ref = r.updated_at || r.saved_at;
+      if (!ref) return false;
+      const days = (Date.now() - new Date(ref).getTime()) / 86400000;
+      return days >= 14 && r.progress_stage && r.progress_stage !== 'Passed On Deal';
+    }).length,
     byColumn: KANBAN_COLUMNS.map((c) => ({
       id: c.id,
       label: c.label,

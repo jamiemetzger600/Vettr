@@ -348,6 +348,90 @@ const OVERLAYS = {
         ]
       }
     ]
+  },
+  hvac: {
+    industryKey: 'hvac',
+    name: 'HVAC / Home Services DD',
+    groups: [
+      {
+        name: 'Financial & QoE',
+        items: [
+          { title: 'Maintenance agreement / recurring revenue schedule', requestsDocument: true },
+          { title: 'Job costing vs quoted vs actual (12 months)', requestsDocument: true },
+          { title: 'Seasonality of service vs install mix', requestsDocument: false }
+        ]
+      },
+      {
+        name: 'Operations',
+        items: [
+          { title: 'Technician roster, licenses, and overtime', requestsDocument: true },
+          { title: 'Vehicle / van fleet list, titles, and liens', requestsDocument: true },
+          { title: 'Dispatch software and customer data export', requestsDocument: false }
+        ]
+      },
+      {
+        name: 'Legal & Corporate',
+        items: [
+          { title: 'HVAC contractor license transferability', requestsDocument: true },
+          { title: 'EPA 608 / refrigerant certifications', requestsDocument: true }
+        ]
+      }
+    ]
+  },
+  trucking: {
+    industryKey: 'trucking',
+    name: 'Trucking / Logistics DD',
+    groups: [
+      {
+        name: 'Financial & QoE',
+        items: [
+          { title: 'Lane / customer revenue concentration', requestsDocument: true },
+          { title: 'Owner-operator vs company-driver mix and pay', requestsDocument: true },
+          { title: 'Fuel surcharge and accessorial recovery', requestsDocument: false }
+        ]
+      },
+      {
+        name: 'Operations',
+        items: [
+          { title: 'Equipment list (tractors/trailers) with liens', requestsDocument: true },
+          { title: 'ELD / TMS data export and CSA scores', requestsDocument: true }
+        ]
+      },
+      {
+        name: 'Legal & Corporate',
+        items: [
+          { title: 'Authority (MC/DOT) transfer plan', requestsDocument: true },
+          { title: 'Insurance (auto liability, cargo) and claims', requestsDocument: true }
+        ]
+      }
+    ]
+  },
+  laundromat: {
+    industryKey: 'laundromat',
+    name: 'Laundromat / Car Wash DD',
+    groups: [
+      {
+        name: 'Financial & QoE',
+        items: [
+          { title: 'Coin / card / app collections vs reported revenue', requestsDocument: true },
+          { title: 'Utility (water/gas/electric) vs volume', requestsDocument: true }
+        ]
+      },
+      {
+        name: 'Operations',
+        items: [
+          { title: 'Machine schedule, age, and remaining useful life', requestsDocument: true },
+          { title: 'POS / card system and unattended operations', requestsDocument: false }
+        ]
+      },
+      {
+        name: 'Real Estate & Facilities',
+        items: [
+          { title: 'Lease assignment, CAM, and remaining term', requestsDocument: true },
+          { title: 'Water/sewer capacity and environmental permits', requestsDocument: true }
+        ]
+      }
+    ]
   }
 };
 
@@ -358,6 +442,9 @@ export const DD_SYSTEM_INDUSTRY_KEYS = [
   'healthcare',
   'saas',
   'services',
+  'hvac',
+  'trucking',
+  'laundromat',
   'environmental',
   'retail',
   'manufacturing',

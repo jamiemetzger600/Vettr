@@ -56,18 +56,45 @@ const RULES = [
     ]
   },
   {
-    key: 'services',
+    key: 'hvac',
     patterns: [
       /\bhvac\b/i,
+      /\bheating\b/i,
+      /\bair\s*conditioning/i,
       /\bplumbing/i,
-      /\belectric/i,
-      /\blandscap/i,
+      /\belectrician/i,
+      /\bhome\s*services/i,
+      /\bfield\s*services/i
+    ]
+  },
+  {
+    key: 'trucking',
+    patterns: [
+      /\btruck/i,
+      /\blogistic/i,
+      /\bfreight/i,
+      /\bcarrier\b/i,
+      /\btransportation/i,
+      /\bdelivery\s*service/i
+    ]
+  },
+  {
+    key: 'laundromat',
+    patterns: [
+      /\blaundr/i,
+      /\bcar\s*wash/i,
+      /\bcoin\s*op/i,
+      /\bwash.*fold/i
+    ]
+  },
+  {
+    key: 'services',
+    patterns: [
       /\bcleaning/i,
+      /\blandscap/i,
       /\bjanitorial/i,
       /\bconsulting/i,
       /\bprofessional\s*services/i,
-      /\bhome\s*services/i,
-      /\bfield\s*services/i,
       /\bstaffing/i,
       /\baccounting/i,
       /\blaw\s*firm/i,
@@ -96,7 +123,7 @@ const RULES = [
   },
   {
     key: 'auto',
-    patterns: [/\bauto\s*repair/i, /\bautomotive/i, /\bcar\s*wash/i, /\bdealership/i, /\bgarage\b/i]
+    patterns: [/\bauto\s*repair/i, /\bautomotive/i, /\bdealership/i, /\bgarage\b/i]
   },
   {
     key: 'retail',
@@ -131,6 +158,9 @@ export const INDUSTRY_LABELS = {
   healthcare: 'Healthcare / Dental / MedSpa',
   saas: 'SaaS / Software',
   services: 'Professional / Field Services',
+  hvac: 'HVAC / Home Services',
+  trucking: 'Trucking / Logistics',
+  laundromat: 'Laundromat / Car Wash',
   environmental: 'Environmental / Industrial Services',
   manufacturing: 'Manufacturing',
   construction: 'Construction / Trades',

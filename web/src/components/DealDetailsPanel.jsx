@@ -5,6 +5,7 @@ import IOIModal from './IOIModal';
 import { getCalculatorDefaultsFromSettings } from '../utils/calculatorDefaultsFromSettings';
 import { loadCalculatorState } from '../utils/dealCalculatorStorage';
 import GatedPreviewText from './GatedPreviewText';
+import { sbaReadinessScore } from '../utils/sbaReadiness';
 
 const POSITION_OPTIONS = ['left', 'center', 'right'];
 const DEFAULT_PRIMARY = 'description';
@@ -345,6 +346,8 @@ export default function DealDetailsPanel({
     }
     return null;
   }, [deal?.id, deal?.calculatorState]);
+
+  const sba = useMemo(() => (deal ? sbaReadinessScore(deal) : null), [deal]);
 
   const openIOIModal = useCallback((data) => {
     if (isGuest && typeof requireSignup === 'function') {
@@ -782,17 +785,17 @@ export default function DealDetailsPanel({
               aria-label="Deal name"
             />
           ) : (
-            <h2>{deal.name || 'Deal Details'}</h2>
+            <>
+              <h2>{deal.name || 'Deal Details'}</h2>
+              {sba ? (
+                <span className="sba-readiness-chip" title={sba.checks.map((c) => `${c.ok ? '✓' : '!'} ${c.label}`).join('\n')}>
+                  SBA {sba.score} · {sba.label}
+                </span>
+              ) : null}
+            </>
           )}
           <div className="deal-details-header-meta-row">
               <div className="deal-details-header-cta-row">
-              <button
-                type="button"
-                className="btn-primary deal-details-ioi-header-btn"
-                onClick={() => openIOIModal()}
-              >
-                Quick IOI
-              </button>
               {renderSaveButton('deal-details-header-save')}
               {deal.url ? (
                 isGuest && !entitlements?.listingLinkEnabled ? (

@@ -72,6 +72,7 @@ export function normalizeMarketDeal(row) {
     source: row.source || 'unknown',
     sourceType: row.source || 'unknown',
     discoveredAt: row.source_added_at ? new Date(row.source_added_at).getTime() : Date.now(),
+    sourceUpdatedAt: row.source_updated_at ? new Date(row.source_updated_at).getTime() : null,
   };
 }
 

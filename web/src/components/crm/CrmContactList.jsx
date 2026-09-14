@@ -110,6 +110,16 @@ export default function CrmContactList({ onSelectDeal, deals = [], highlightCont
     ? contacts.filter((c) => (c.tags || []).some((t) => String(t).includes(tagFilter.toLowerCase())))
     : contacts;
 
+  const duplicateEmails = (() => {
+    const counts = {};
+    for (const c of contacts) {
+      const e = String(c.email || '').trim().toLowerCase();
+      if (!e) continue;
+      counts[e] = (counts[e] || 0) + 1;
+    }
+    return new Set(Object.keys(counts).filter((e) => counts[e] > 1));
+  })();
+
   if (loading) return <div className="crm-panel">Loading contacts…</div>;
   if (error) {
     return (
@@ -200,7 +210,12 @@ export default function CrmContactList({ onSelectDeal, deals = [], highlightCont
                     {c.name || '—'}
                     {c.title ? <div className="crm-muted">{c.title}</div> : null}
                   </td>
-                  <td>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '—'}</td>
+                  <td>
+                    {c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '—'}
+                    {c.email && duplicateEmails.has(String(c.email).trim().toLowerCase()) ? (
+                      <div className="crm-muted">Possible duplicate</div>
+                    ) : null}
+                  </td>
                   <td>{c.company_name || '—'}</td>
                   <td>
                     {(c.tags || []).map((t) => (

@@ -50,7 +50,8 @@ export default function DealInboxView({
   buyBoxSwitching = false,
   lookupCrmMeta = null,
   ensureDealSaved = null,
-  onCrmStageSynced = null
+  onCrmStageSynced = null,
+  onIOISent = null
 }) {
   const [selectedId, setSelectedId] = useState(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -276,8 +277,8 @@ export default function DealInboxView({
               <div className="deal-inbox__gmail-top">
                 <span className="deal-inbox__gmail-title">{deal.name || 'Unnamed Business'}</span>
                 <span
-                  className={`deal-inbox__date ${getListingAgeClass(deal.discoveredAt)}`}
-                  title={listingAgeTitle(deal.discoveredAt)}
+                  className={`deal-inbox__date ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`}
+                  title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}
                 >
                   {formatDealDate(deal.discoveredAt)}
                 </span>
@@ -332,8 +333,8 @@ export default function DealInboxView({
             <div className="deal-inbox__gmail-top">
               <span className="deal-inbox__gmail-title">{deal.name || 'Unnamed Business'}</span>
               <span
-                className={`deal-inbox__date ${getListingAgeClass(deal.discoveredAt)}`}
-                title={listingAgeTitle(deal.discoveredAt)}
+                className={`deal-inbox__date ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`}
+                title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}
               >
                 {formatDealDate(deal.discoveredAt)}
               </span>
@@ -399,6 +400,7 @@ export default function DealInboxView({
       entitlements={entitlements}
       requireSignup={requireSignup}
       headerProgressControl={headerProgressControl}
+      onIOISent={(text) => onIOISent?.(text, selectedDeal)}
     />
   ) : null;
 

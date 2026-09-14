@@ -88,6 +88,8 @@ export function getSavedDealCalculatorSummary(deal, calculatorDefaults = {}) {
   return {
     qualityScore: analysis.qualityScore,
     cocReturn: analysis.coc,
+    dscr: analysis.actualDSCR,
+    paybackYears: analysis.payback,
     askingPrice: analysis.askingPrice > 0 ? analysis.askingPrice : null,
     ebitda: analysis.ebitda > 0 ? analysis.ebitda : null
   };

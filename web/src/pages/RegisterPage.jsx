@@ -91,7 +91,10 @@ export default function RegisterPage() {
           </div>
           <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Creating account...' : 'Sign Up'}</button>
           <p className="auth-footer">Already have an account? <Link to={`/login${location.search}`}>Sign in</Link></p>
-          <p className="auth-footer"><Link to="/dashboard">Browse without signing in</Link></p>
+          <p className="auth-footer"><Link to="/dashboard">Browse without signing in</Link>
+            {' · '}
+            <Link to="/">What is Vettr?</Link>
+          </p>
         </form>
       </div>
     </div>

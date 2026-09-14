@@ -12,6 +12,7 @@ import CrmCommandMenu from './CrmCommandMenu';
 import CrmTaskList from './CrmTaskList';
 import CrmContactList from './CrmContactList';
 import CrmAnalytics from './CrmAnalytics';
+import CrmCompareDeals from './CrmCompareDeals';
 import CrmCalendar from './CrmCalendar';
 import SuggestedTaskPrompt from './SuggestedTaskPrompt';
 import CrmActionStrip, {
@@ -24,7 +25,7 @@ import CrmCsvImportModal from './CrmCsvImportModal';
 import SavedDeals from '../SavedDeals';
 import { useAuth } from '../../context/AuthContext';
 
-const VALID_VIEWS = new Set(['home', 'cards', 'list', 'tasks', 'contacts', 'calendar', 'analytics']);
+const VALID_VIEWS = new Set(['home', 'cards', 'list', 'tasks', 'contacts', 'calendar', 'analytics', 'compare']);
 
 function normalizeCrmView(view) {
   if (!view) return 'cards';
@@ -79,6 +80,7 @@ export default function CrmDashboard({
   const [fetchingDealId, setFetchingDealId] = useState(null);
   const [fetchDealError, setFetchDealError] = useState(null);
   const [locallySeenDealIds, setLocallySeenDealIds] = useState(() => new Set());
+  const [boardEpoch, setBoardEpoch] = useState(0);
 
   const loadToday = useCallback(async () => {
     setLoading(true);
@@ -337,10 +339,12 @@ export default function CrmDashboard({
 
   const handleRefresh = async () => {
     await loadToday();
+    setBoardEpoch((n) => n + 1);
     onRefresh?.();
   };
 
   const handleStageChanged = (result, dealName) => {
+    setBoardEpoch((n) => n + 1);
     if (!result || result.unchanged) return;
     const stage = result.progressStage;
     if (stage === 'Starting Due Diligence') {
@@ -602,6 +606,7 @@ export default function CrmDashboard({
               onSelectDeal={handleSelectDeal}
               onRefresh={handleRefresh}
               onStageChanged={handleStageChanged}
+              boardEpoch={boardEpoch}
               onBlankUnderwriting={handleBlankUnderwriting}
               highlightDealIds={highlightDealIds}
               nextActionByDealId={nextActionByDealId}
@@ -659,6 +664,14 @@ export default function CrmDashboard({
       {crmView === 'calendar' && <CrmCalendar onOpenDeal={handleSelectDeal} />}
 
       {crmView === 'analytics' && <CrmAnalytics />}
+
+      {crmView === 'compare' && (
+        <CrmCompareDeals
+          deals={filteredDeals}
+          settings={settings}
+          onSelectDeal={handleSelectDeal}
+        />
+      )}
     </>
   );
 

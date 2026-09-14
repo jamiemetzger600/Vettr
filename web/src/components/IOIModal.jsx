@@ -4,6 +4,15 @@ import { crmAPI, userAPI } from '../utils/api';
 import { generateIOIText, generateIOISubject, getBrokerEmailFromDeal } from '../utils/ioiGenerator';
 import { scenarioDisplayName } from '../utils/dealCalculatorMath';
 import { loadIoiDraft, saveIoiDraft } from '../utils/ioiDraftStorage';
+import {
+  IOI_IMAGE_ACCEPT,
+  IOI_IMAGE_MAX_BYTES,
+  IOI_IMAGE_MAX_COUNT,
+  IOI_IMAGE_MAX_TOTAL_BYTES,
+  attachmentsForGmailApi,
+  filterIoiImageFiles,
+  readIoiImageFile
+} from '../utils/ioiImageAttachments';
 
 const DEFAULT_TIMELINE = '30-45 days from accepted offer';
 
@@ -89,6 +98,11 @@ export default function IOIModal({
   const [sendingGmail, setSendingGmail] = useState(false);
   const [gmailError, setGmailError] = useState(null);
   const [gmailSent, setGmailSent] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [images, setImages] = useState([]);
+  const [imageError, setImageError] = useState(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,24 +381,110 @@ export default function IOIModal({
   const canSendGmail = canSend && Boolean(brokerEmail.trim());
   const gmailReady = Boolean(gmailStatus?.gmail);
 
+  const handleAddImages = useCallback(async (fileList) => {
+    const picked = Array.isArray(fileList) ? fileList : Array.from(fileList || []);
+    console.log('[IOI] files picked', {
+      count: picked.length,
+      names: picked.map((f) => f.name),
+      types: picked.map((f) => f.type)
+    });
+    setImageError(null);
+    if (!picked.length) {
+      setImageError('No image was selected. Choose a PNG or JPG.');
+      return;
+    }
+    const existingBytes = images.reduce((n, img) => n + (Number(img.size) || 0), 0);
+    const { accepted, error } = filterIoiImageFiles(picked, images.length, existingBytes);
+    if (error) {
+      console.warn('[IOI] image validation', error);
+      setImageError(error);
+    }
+    if (!accepted.length) return;
+
+    setImageBusy(true);
+    try {
+      const next = [];
+      for (const file of accepted) {
+        try {
+          next.push(await readIoiImageFile(file));
+        } catch (err) {
+          console.warn('[IOI] image read failed', err);
+          setImageError(err.message || 'Could not read that image');
+          break;
+        }
+      }
+      if (next.length) {
+        setImages((prev) => [...prev, ...next].slice(0, IOI_IMAGE_MAX_COUNT));
+        if (!error) setImageError(null);
+        console.log('[IOI] images attached', { added: next.length, total: images.length + next.length });
+        requestAnimationFrame(() => {
+          document.getElementById('ioi-attached-images')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        });
+      }
+    } finally {
+      setImageBusy(false);
+    }
+  }, [images]);
+
+  const removeImage = useCallback((id) => {
+    setImages((prev) => prev.filter((img) => img.id !== id));
+    setImageError(null);
+    console.log('[IOI] image removed', { id });
+  }, []);
+
   const handleSendFromGmail = async () => {
     if (!canSendGmail) return;
     setGmailError(null);
     setSendingGmail(true);
     await persistIoiInputsNow();
     try {
-      await crmAPI.sendGmail({
+      const payload = {
         to: brokerEmail.trim(),
         subject: generateIOISubject(deal),
         text: previewText
+      };
+      if (images.length) {
+        payload.attachments = attachmentsForGmailApi(images);
+      }
+      const result = await crmAPI.sendGmail(payload);
+      console.log('[IOI] Gmail send ok', {
+        id: result?.id,
+        attachmentCount: result?.attachmentCount ?? images.length
       });
       setGmailSent(true);
       recordIOI(previewText);
     } catch (err) {
-      console.error('[IOI] Gmail send failed', err);
-      setGmailError(err.message || 'Gmail send failed');
+      console.error('[IOI] Gmail send failed', {
+        status: err.status,
+        code: err.code,
+        message: err.message
+      });
+      const needsReconnect = err.code === 'reconnect_google' || err.code === 'google_not_connected';
+      setGmailError(
+        needsReconnect
+          ? (err.message || 'Reconnect Google to send from Gmail.')
+          : (err.message || `Gmail send failed (${err.status || 'error'})`)
+      );
+      if (needsReconnect) {
+        setGmailStatus((prev) => ({ ...(prev || {}), gmail: false, connected: prev?.connected || false }));
+      }
     } finally {
       setSendingGmail(false);
+    }
+  };
+
+  const handleReconnectGoogle = async () => {
+    setReconnecting(true);
+    setGmailError(null);
+    await persistIoiInputsNow();
+    try {
+      const { url } = await crmAPI.startCalendarOAuth('settings');
+      console.log('[IOI] starting Google OAuth from modal');
+      window.location.href = url;
+    } catch (err) {
+      console.error('[IOI] OAuth start failed', err.status, err.code, err.message);
+      setGmailError(err.message || 'Could not start Google sign-in');
+      setReconnecting(false);
     }
   };
 
@@ -493,6 +593,78 @@ export default function IOIModal({
             />
           </div>
 
+          <div className="ioi-section">
+            <label className="ioi-section-label" htmlFor="ioi-images">
+              Attach Images (optional)
+            </label>
+            <div className="ioi-attach-wrap">
+              <button
+                type="button"
+                className="btn-secondary ioi-attach-btn"
+                disabled={imageBusy || images.length >= IOI_IMAGE_MAX_COUNT}
+                tabIndex={-1}
+                aria-hidden="true"
+              >
+                {imageBusy ? 'Adding…' : images.length ? 'Add more images' : 'Add PNG or JPG'}
+              </button>
+              <input
+                ref={imageInputRef}
+                id="ioi-images"
+                type="file"
+                className="ioi-file-input"
+                accept={IOI_IMAGE_ACCEPT}
+                multiple
+                disabled={imageBusy || images.length >= IOI_IMAGE_MAX_COUNT}
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files || []);
+                  e.target.value = '';
+                  void handleAddImages(picked);
+                }}
+              />
+            </div>
+            <p className="ioi-hint">
+              Up to {IOI_IMAGE_MAX_COUNT} PNG/JPG images, {Math.round(IOI_IMAGE_MAX_BYTES / 1024 / 1024)}MB each
+              ({Math.round(IOI_IMAGE_MAX_TOTAL_BYTES / 1024 / 1024)}MB total). Attached when you Send from Gmail
+              (not via Open in Gmail / mail app / clipboard).
+            </p>
+            {imageBusy ? <p className="ioi-hint">Adding images…</p> : null}
+            {images.length > 0 ? (
+              <p className="ioi-success" role="status" id="ioi-attached-images">
+                {images.length} image{images.length === 1 ? '' : 's'} ready — they will attach on Send from Gmail.
+              </p>
+            ) : null}
+            {imageError && <p className="ioi-warn" role="alert">{imageError}</p>}
+            {images.length > 0 && (
+              <ul className="ioi-image-list" aria-label="Attached images">
+                {images.map((img) => (
+                  <li key={img.id} className="ioi-image-item">
+                    <img
+                      className="ioi-image-thumb"
+                      src={img.previewUrl}
+                      alt={img.filename}
+                    />
+                    <div className="ioi-image-meta">
+                      <span className="ioi-image-name" title={img.filename}>{img.filename}</span>
+                      <span className="ioi-image-size">
+                        {img.size >= 1024 * 1024
+                          ? `${(img.size / (1024 * 1024)).toFixed(1)} MB`
+                          : `${Math.max(1, Math.round(img.size / 1024))} KB`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="ioi-image-remove"
+                      aria-label={`Remove ${img.filename}`}
+                      onClick={() => removeImage(img.id)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {/* Preview */}
           <div className="ioi-section">
             <label className="ioi-section-label">Email Preview</label>
@@ -513,13 +685,26 @@ export default function IOIModal({
         </div>
 
         <div className="ioi-modal-footer">
-          {gmailSent && <span className="ioi-success">Sent from Gmail.</span>}
+          {gmailSent && (
+            <span className="ioi-success">
+              Sent from Gmail{images.length ? ` with ${images.length} image${images.length === 1 ? '' : 's'}.` : '.'}
+            </span>
+          )}
           {sent && <span className="ioi-success">Opened — check for a new tab (Gmail) or your mail app.</span>}
           {copied && <span className="ioi-success">Copied to clipboard</span>}
           {gmailError && <span className="ioi-warn">{gmailError}</span>}
           {!gmailReady && gmailStatus && (
             <p className="ioi-hint ioi-gmail-connect">
-              <Link to="/settings">Connect Google in Settings</Link> to send this IOI from your Gmail without a compose tab.
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleReconnectGoogle}
+                disabled={reconnecting}
+              >
+                {reconnecting ? 'Redirecting…' : (gmailStatus.connected ? 'Reconnect Google' : 'Connect Google')}
+              </button>
+              {' '}to send this IOI from your Gmail without a compose tab.
+              {' '}<Link to="/settings">Open Settings</Link>
             </p>
           )}
           {gmailReady && !brokerEmail.trim() && canSend && (

@@ -152,6 +152,18 @@ export async function createContact(userId, payload) {
     companyId = co.id;
   }
 
+  if (email) {
+    const existing = await pool.query(
+      `SELECT * FROM contacts WHERE user_id = $1 AND lower(email) = $2 LIMIT 1`,
+      [userId, email]
+    );
+    if (existing.rows[0]) {
+      const row = existing.rows[0];
+      console.log('[crmContact] reused existing contact', row.id, email);
+      return row;
+    }
+  }
+
   const result = await pool.query(
     `INSERT INTO contacts (user_id, company_id, name, email, phone, title, notes, tags, team_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

@@ -69,13 +69,14 @@ export default function BillingPage() {
             <div className="plan-card featured">
               <h3>Vettr Pro</h3>
               <p className="billing-beta-note">
-                Beta testers already have full access on the Free plan. You do not need to subscribe to save deals, use CRM, or underwrite.
+                Free accounts already include CRM, calculator, IOI, underwriting, and a daily
+                buy-box match email. Pro is for instant alerts.
               </p>
               <p className="price">$19.99<span>/month</span></p>
               <ul>
-                <li>Instant notifications</li>
-                <li>Unlimited saved deals</li>
-                <li>Advanced filters</li>
+                <li>Instant match alerts (email + push)</li>
+                <li>Same CRM, IOI, and calculator as Free</li>
+                <li>Daily digest still included</li>
               </ul>
               <button onClick={() => handleUpgrade('monthly')} className="btn-primary" disabled={upgrading}>
                 {upgrading ? 'Loading...' : 'Subscribe — $19.99/month'}

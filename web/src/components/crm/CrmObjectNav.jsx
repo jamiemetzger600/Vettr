@@ -5,7 +5,8 @@ const NAV_ITEMS = [
   { id: 'list', label: 'Archive', badgeKey: 'deals' },
   { id: 'contacts', label: 'Contacts' },
   { id: 'calendar', label: 'Calendar' },
-  { id: 'analytics', label: 'Analytics' }
+  { id: 'analytics', label: 'Analytics' },
+  { id: 'compare', label: 'Compare' }
 ];
 
 /**

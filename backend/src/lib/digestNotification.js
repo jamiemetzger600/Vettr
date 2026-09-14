@@ -43,7 +43,7 @@ function stripAppName(title) {
  * Pick a specific PWA/desktop notification for a digest — never a generic "Vettr summary".
  * Click URL matches the headline item (deal, task, mention, or CRM card).
  */
-export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
+export function buildDigestNotification({ grouped, team, crmItems = [], frequency = 'daily' } = {}) {
   const matches = Number(grouped?.total) || 0;
   const mention = team?.mentions?.[0];
   const added = team?.added?.[0];
@@ -96,8 +96,8 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     };
   } else if (matches === 1 && firstDeal) {
     primary = {
-      title: firstDeal.name || 'New buy-box match',
-      body: [firstDeal.location, grouped.groups?.[0]?.name].filter(Boolean).join(' · '),
+      title: frequency === 'instant' ? (firstDeal.name || 'New buy-box match') : '1 new match overnight',
+      body: [firstDeal.name, firstDeal.location, grouped.groups?.[0]?.name].filter(Boolean).join(' · '),
       alertType: 'deal_match',
       dealDbId: firstDeal.id,
       dealDbIds,
@@ -105,7 +105,9 @@ export function buildDigestNotification({ grouped, team, crmItems = [] } = {}) {
     };
   } else if (matches > 1) {
     primary = {
-      title: `${matches} new deals match your buy box`,
+      title: frequency === 'instant'
+        ? `${matches} new deals match your buy box`
+        : `${matches} new matches overnight`,
       body: listedDeals.map((d) => d.name).filter(Boolean).join(' · '),
       alertType: 'deal_match',
       dealDbIds,

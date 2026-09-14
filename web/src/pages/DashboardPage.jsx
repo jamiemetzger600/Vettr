@@ -17,7 +17,7 @@ import QuickDealCalculatorModal from '../components/QuickDealCalculatorModal';
 import ScrapeActivityToast from '../components/ScrapeActivityToast';
 import GuestOnboardingTour from '../components/GuestOnboardingTour';
 import GuestFirstVisitSheet from '../components/GuestFirstVisitSheet';
-import GuestMyDealsEmpty from '../components/GuestMyDealsEmpty';
+import GuestCrmPreview from '../components/crm/GuestCrmPreview';
 import { loadGuestSettings, persistGuestSettings } from '../utils/guestSettings';
 import { useGuestAccess } from '../hooks/useGuestAccess';
 import { logGuestEvent } from '../utils/guestAnalytics';
@@ -660,7 +660,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
 
         {activeTab === 'crm' && isGuest && (
           <div className="dashboard-tab-pane dashboard-tab-pane--active">
-          <GuestMyDealsEmpty
+          <GuestCrmPreview
             onRequireSignup={requireSignup}
             onBackToAggregator={() => setActiveTab('aggregator')}
           />

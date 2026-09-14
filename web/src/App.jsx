@@ -7,6 +7,8 @@ import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
+import LandingPage from './pages/LandingPage';
+import SubmitDealPage from './pages/SubmitDealPage';
 import BillingPage from './pages/BillingPage';
 import SettingsPage from './pages/SettingsPage';
 import DdPortalPage from './pages/DdPortalPage';
@@ -150,7 +152,8 @@ function AppRoutes() {
             </ProtectedRoute>
           )}
         />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/submit-deal" element={<SubmitDealPage />} />
       </Routes>
     </FeedbackShell>
   );

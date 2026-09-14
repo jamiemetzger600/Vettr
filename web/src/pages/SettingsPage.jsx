@@ -373,7 +373,7 @@ export default function SettingsPage() {
       <div className="settings-page dashboard-content">
         <h1>Settings</h1>
         <div className="settings-page-actions">
-          <Link to="/" className="btn-secondary">Back to Dashboard</Link>
+          <Link to="/dashboard" className="btn-secondary">Back to Dashboard</Link>
         </div>
 
         <div className="settings-section" id="get-the-app">

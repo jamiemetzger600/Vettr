@@ -313,9 +313,15 @@ export async function sendUserDigest(userRow, {
   }
 
   const html = buildDigestHtml({ grouped, team, crmItems });
-  const push = buildDigestNotification({ grouped, team, crmItems });
+  const push = buildDigestNotification({ grouped, team, crmItems, frequency });
   const subjectParts = [];
-  if (grouped.total) subjectParts.push(`${grouped.total} matching deal${grouped.total === 1 ? '' : 's'}`);
+  if (grouped.total) {
+    subjectParts.push(
+      frequency === 'instant'
+        ? `${grouped.total} matching deal${grouped.total === 1 ? '' : 's'}`
+        : (grouped.total === 1 ? '1 new match overnight' : `${grouped.total} new matches overnight`)
+    );
+  }
   if (team.added?.[0]) {
     const a = team.added[0];
     subjectParts.push(`${a.label} added ${a.count} new deal${a.count === 1 ? '' : 's'}`);
@@ -399,7 +405,9 @@ export async function sendUserDigest(userRow, {
       await createUserAlert({
         userId,
         alertType: 'deal_match',
-        title: push.alertType === 'deal_match' ? push.title : `${grouped.total} new deals match your buy box`,
+        title: push.alertType === 'deal_match' ? push.title : (
+          grouped.total === 1 ? '1 new match overnight' : `${grouped.total} new deals match your buy box`
+        ),
         body: push.alertType === 'deal_match' ? push.body : summarizeMatchGroups(grouped),
         metadata: {
           total: grouped.total,

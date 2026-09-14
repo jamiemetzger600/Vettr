@@ -27,6 +27,7 @@ import DealAgeLegend from './DealAgeLegend';
 import DealDetailsPanel from './DealDetailsPanel';
 import DealInboxView from './DealInboxView';
 import { useCrmStageControl } from '../hooks/useCrmStageControl';
+import { recordIoiSent } from '../utils/recordIoiSent';
 import DealSwipeDeck from './DealSwipeDeck';
 import MobileFeedToolbar from './MobileFeedToolbar';
 import GatedPreviewText from './GatedPreviewText';
@@ -424,10 +425,10 @@ function AggregatorDeedCardBody({
       <div className="deal-card__rows">
         <div
           className="deal-card__row"
-          title={listingAgeTitle(deal.discoveredAt)}
+          title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}
         >
           <span>Date added</span>
-          <span className={`deal-date-age ${getListingAgeClass(deal.discoveredAt)}`}>
+          <span className={`deal-date-age ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`}>
             {formatDealDate(deal.discoveredAt)}
           </span>
         </div>
@@ -1490,6 +1491,20 @@ export default function DealAggregator({
   const handleCrmStageSynced = useCallback(async () => {
     if (typeof onSaveDeal === 'function') await onSaveDeal();
   }, [onSaveDeal]);
+  const handleIOISent = useCallback(async (text, dealOverride = null) => {
+    const target = dealOverride || selectedDeal;
+    if (!target) return;
+    try {
+      const savedId = await ensureDealSavedForCrm(target);
+      if (savedId == null) throw new Error('Could not save deal to CRM');
+      await recordIoiSent(savedId, { ioiText: text });
+      console.log('[DealAggregator] IOI sent → Send IOI', { dealId: target.id, savedId });
+      if (typeof onSaveDeal === 'function') await onSaveDeal();
+    } catch (err) {
+      console.error('[DealAggregator] IOI stage update failed', err);
+      alert('IOI sent but failed to update pipeline: ' + (err.message || 'error'));
+    }
+  }, [selectedDeal, ensureDealSavedForCrm, onSaveDeal]);
   const headerProgressControl = useCrmStageControl({
     deal: selectedDeal,
     crmMeta: selectedCrmMeta,
@@ -3040,6 +3055,7 @@ export default function DealAggregator({
                 lookupCrmMeta={lookupCrmMeta}
                 ensureDealSaved={ensureDealSavedForCrm}
                 onCrmStageSynced={handleCrmStageSynced}
+                onIOISent={handleIOISent}
                 buyBoxes={buyBoxesUiState.buyBoxes}
                 activeBuyBoxIndex={buyBoxesUiState.activeBuyBoxIndex}
                 onSelectBuyBox={handleBuyBoxSlotClick}
@@ -3175,6 +3191,7 @@ export default function DealAggregator({
         entitlements={entitlements}
         requireSignup={requireSignup}
         headerProgressControl={headerProgressControl}
+        onIOISent={handleIOISent}
       />
       {saveToast && createPortal(
         <div className="save-toast save-toast--with-action" role="status" aria-live="polite">
@@ -3322,7 +3339,7 @@ function renderDealCell(columnId, deal, ctx) {
     case 'date':
       return (
         <td key={columnId} data-col="date">
-          <span className={`deal-date-age ${getListingAgeClass(deal.discoveredAt)}`} title={listingAgeTitle(deal.discoveredAt)}>
+          <span className={`deal-date-age ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`} title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}>
             {formatDealDate(deal.discoveredAt)}
           </span>
         </td>

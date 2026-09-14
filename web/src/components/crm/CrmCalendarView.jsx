@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { crmAPI } from '../../utils/api';
 import {
   addDays,
+  allDayFormValues,
+  allDayIsoRange,
   eventOnDay,
+  formatAllDayLabel,
   formatDayLabel,
   formatTime,
   HOURS,
@@ -19,9 +22,9 @@ const VIEWS = ['month', 'week', 'day'];
 const HOVER_TIP_MS = 500;
 
 function formatEventWhen({ startsAt, endsAt, allDay }) {
+  if (allDay) return formatAllDayLabel(startsAt);
   const start = new Date(startsAt);
   const datePart = start.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-  if (allDay) return datePart;
   return `${datePart} · ${formatTime(startsAt)} – ${formatTime(endsAt)}`;
 }
 
@@ -178,15 +181,23 @@ export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDea
       id: event.id,
       source: event.source,
       taskId: event.taskId,
-      savedDealId: event.savedDealId
+      savedDealId: event.savedDealId,
+      allDay: event.allDay,
+      startsAt: event.startsAt
     });
+    const times = event.allDay
+      ? allDayFormValues(event.startsAt, event.endsAt)
+      : {
+          startsAt: toDatetimeLocalValue(event.startsAt),
+          endsAt: toDatetimeLocalValue(event.endsAt)
+        };
     setModal({
       mode: 'view',
       id: event.id,
       title: event.title,
       description: event.description || '',
-      startsAt: toDatetimeLocalValue(event.startsAt),
-      endsAt: toDatetimeLocalValue(event.endsAt),
+      startsAt: times.startsAt,
+      endsAt: times.endsAt,
       allDay: event.allDay,
       source: event.source,
       taskId: event.taskId || null,
@@ -201,13 +212,26 @@ export default function CrmCalendarView({ onDisconnect, disconnecting, onOpenDea
     setSaving(true);
     setError(null);
     try {
+      const times = modal.allDay
+        ? allDayIsoRange(modal.startsAt, modal.endsAt)
+        : {
+            startsAt: new Date(modal.startsAt).toISOString(),
+            endsAt: new Date(modal.endsAt).toISOString()
+          };
       const payload = {
         title: modal.title.trim(),
         description: modal.description,
-        startsAt: new Date(modal.startsAt).toISOString(),
-        endsAt: new Date(modal.endsAt).toISOString(),
+        startsAt: times.startsAt,
+        endsAt: times.endsAt,
         allDay: modal.allDay
       };
+      console.debug('[CrmCalendar] save event', {
+        allDay: modal.allDay,
+        localStarts: modal.startsAt,
+        localEnds: modal.endsAt,
+        payloadStarts: payload.startsAt,
+        payloadEnds: payload.endsAt
+      });
       if (modal.mode === 'create') {
         await crmAPI.createCalendarEvent(payload);
       } else if (modal.mode === 'edit' && modal.id) {

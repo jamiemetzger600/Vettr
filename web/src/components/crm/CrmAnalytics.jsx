@@ -48,8 +48,8 @@ export default function CrmAnalytics() {
           <span className="crm-today-stat__label">Active DD</span>
         </div>
         <div className="crm-today-stat">
-          <span className="crm-today-stat__value">{data.unstaged}</span>
-          <span className="crm-today-stat__label">Inbox (unstaged)</span>
+          <span className="crm-today-stat__value">{data.stalled ?? 0}</span>
+          <span className="crm-today-stat__label">Quiet 14d+</span>
         </div>
       </div>
 
