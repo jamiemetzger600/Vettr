@@ -2,7 +2,7 @@ const NAV_ITEMS = [
   { id: 'cards', label: 'Cards', badgeKey: 'cards' },
   { id: 'tasks', label: 'Tasks', badgeKey: 'tasks' },
   { id: 'home', label: 'Pipeline', badgeKey: 'badge' },
-  { id: 'list', label: 'List', badgeKey: 'deals' },
+  { id: 'list', label: 'Archive', badgeKey: 'deals' },
   { id: 'contacts', label: 'Contacts' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'analytics', label: 'Analytics' }
