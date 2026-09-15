@@ -70,6 +70,7 @@ export function patchDashboardSearchParams(searchParams, { tab, crmSubview = nul
     next.delete('matchIds');
     next.delete('newToday');
     next.delete('dealDbId');
+    if (crmSubview !== 'compare') next.delete('compareIds');
     if (crmSubview === 'tasks') {
       next.delete('crmDeal');
       next.delete('section');

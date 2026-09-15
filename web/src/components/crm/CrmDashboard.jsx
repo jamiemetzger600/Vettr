@@ -24,6 +24,7 @@ import CrmQuickAdd from './CrmQuickAdd';
 import CrmCsvImportModal from './CrmCsvImportModal';
 import SavedDeals from '../SavedDeals';
 import { useAuth } from '../../context/AuthContext';
+import { parseCompareIds, serializeCompareIds } from '../../utils/dealCompare';
 
 const VALID_VIEWS = new Set(['home', 'cards', 'list', 'tasks', 'contacts', 'calendar', 'analytics', 'compare']);
 
@@ -57,7 +58,9 @@ export default function CrmDashboard({
   dealOpenSignal = 0,
   onBackToInbox = null,
   onCrmViewChange = null,
-  onLiveDealsRefresh = null
+  onLiveDealsRefresh = null,
+  initialCompareIds = [],
+  onCompareIdsChange = null
 }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -81,6 +84,7 @@ export default function CrmDashboard({
   const [fetchDealError, setFetchDealError] = useState(null);
   const [locallySeenDealIds, setLocallySeenDealIds] = useState(() => new Set());
   const [boardEpoch, setBoardEpoch] = useState(0);
+  const [compareIds, setCompareIds] = useState(() => parseCompareIds(initialCompareIds));
 
   const loadToday = useCallback(async () => {
     setLoading(true);
@@ -105,6 +109,23 @@ export default function CrmDashboard({
       setCrmView(normalizeCrmView(initialCrmView));
     }
   }, [initialCrmView]);
+
+  useEffect(() => {
+    const next = parseCompareIds(initialCompareIds);
+    setCompareIds((prev) => (serializeCompareIds(prev) === serializeCompareIds(next) ? prev : next));
+  }, [initialCompareIds]);
+
+  const commitCompareIds = useCallback((ids) => {
+    const next = parseCompareIds(Array.isArray(ids) ? ids.join(',') : ids);
+    setCompareIds(next);
+    onCompareIdsChange?.(next);
+  }, [onCompareIdsChange]);
+
+  const handleCompareFromCards = useCallback((ids) => {
+    commitCompareIds(ids);
+    setCrmView('compare');
+    console.log('[CrmDashboard] compare from cards', ids);
+  }, [commitCompareIds]);
 
   useEffect(() => {
     onCrmViewChange?.(crmView);
@@ -237,10 +258,26 @@ export default function CrmDashboard({
     return list;
   }, [dealList, activeView, tagFilter, user]);
 
-  const filteredDealIds = useMemo(
-    () => filteredDeals.map((d) => d.vettrId ?? d.id).filter((id) => id != null),
+  const savedNavDeals = useMemo(
+    () =>
+      filteredDeals.filter((d) => {
+        const n = normalizeDeal(d);
+        return n?.id && !isPassedOnDeal(n);
+      }),
     [filteredDeals]
   );
+
+  const filteredDealIds = useMemo(
+    () => savedNavDeals.map((d) => d.id).filter((id) => id != null),
+    [savedNavDeals]
+  );
+
+  useEffect(() => {
+    console.log('[CrmDashboard] record nav ids', {
+      saved: filteredDealIds.length,
+      includingArchived: filteredDeals.length
+    });
+  }, [filteredDealIds, filteredDeals.length]);
 
   const markDealSeenLocally = useCallback((id) => {
     if (id == null) return;
@@ -625,6 +662,7 @@ export default function CrmDashboard({
           locallySeenDealIds={locallySeenDealIds}
           onAddDeal={onAddDeal}
           onLiveDealsRefresh={onLiveDealsRefresh}
+          onCompareDeals={handleCompareFromCards}
         />
       )}
 
@@ -667,6 +705,8 @@ export default function CrmDashboard({
           deals={filteredDeals}
           settings={settings}
           onSelectDeal={handleSelectDeal}
+          initialCompareIds={compareIds}
+          onCompareIdsChange={commitCompareIds}
         />
       )}
     </>

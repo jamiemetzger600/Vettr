@@ -51,6 +51,8 @@ export default function CrmDeedCard({
   pinned = false,
   unseen = false,
   selected = false,
+  compareIndex = null,
+  comparePicking = false,
   dragging = false,
   dropTarget = false,
   writeEnabled = true,
@@ -59,6 +61,7 @@ export default function CrmDeedCard({
   onOpenField,
   onPin,
   onArchive,
+  onCompare,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -95,6 +98,7 @@ export default function CrmDeedCard({
       className={[
         'crm-deed-card',
         selected ? 'crm-deed-card--selected' : '',
+        compareIndex ? 'crm-deed-card--compare-pick' : '',
         dragging ? 'crm-deed-card--dragging' : '',
         dropTarget ? 'crm-deed-card--drop' : '',
         pinned ? 'crm-deed-card--pinned' : '',
@@ -144,6 +148,11 @@ export default function CrmDeedCard({
       <div className="crm-deed-card__inner">
         <header className="crm-deed-card__header">
           <h3 className="crm-deed-card__name">{deal.name || 'Untitled deal'}</h3>
+          {compareIndex ? (
+            <span className="crm-deed-card__compare-n" aria-label={`Compare pick ${compareIndex}`}>
+              {compareIndex}
+            </span>
+          ) : null}
         </header>
 
         <button
@@ -264,6 +273,17 @@ export default function CrmDeedCard({
           {writeEnabled ? (
             <button type="button" onClick={() => onPin?.()}>
               {pinned ? 'Unpin' : 'Pin'}
+            </button>
+          ) : null}
+          {!isPassedOnDeal(deal) && typeof onCompare === 'function' ? (
+            <button
+              type="button"
+              onClick={() => {
+                console.log('[CrmDeedCard] compare', deal.id);
+                onCompare();
+              }}
+            >
+              {compareIndex ? `Compare ${compareIndex}` : comparePicking ? 'Add' : 'Compare'}
             </button>
           ) : null}
           <button type="button" onClick={() => onOpenField?.('color')}>

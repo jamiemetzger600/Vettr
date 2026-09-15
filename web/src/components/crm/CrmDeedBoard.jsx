@@ -56,7 +56,8 @@ export default function CrmDeedBoard({
   overdueDealIds = null,
   locallySeenDealIds = null,
   onAddDeal = null,
-  onLiveDealsRefresh = null
+  onLiveDealsRefresh = null,
+  onCompareDeals = null
 }) {
   const { isTeamMode, activeTeam, activeTeamId } = useTeam();
   const writeEnabled = !isTeamMode || activeTeam?.role !== 'viewer';
@@ -82,6 +83,7 @@ export default function CrmDeedBoard({
   const [stageFilter, setStageFilter] = useState('');
   const [waitingFilter, setWaitingFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [comparePickIds, setComparePickIds] = useState([]);
 
   const calculatorDefaults = useMemo(
     () => getCalculatorDefaultsFromSettings(settings),
@@ -281,6 +283,42 @@ export default function CrmDeedBoard({
     onSelectDeal?.(dealId, { openRecord: true, ...opts });
   }, [onSelectDeal]);
 
+  const comparePicking = comparePickIds.length > 0;
+
+  const startOrAddCompare = useCallback((deal) => {
+    if (!deal?.id || isPassedOnDeal(deal)) return;
+    if (showArchived) setShowArchived(false);
+    setComparePickIds((prev) => {
+      if (prev.some((id) => String(id) === String(deal.id))) return prev;
+      if (prev.length >= 3) return prev;
+      const next = [...prev, deal.id];
+      console.log('[CrmDeedBoard] compare pick', next);
+      return next;
+    });
+  }, [showArchived]);
+
+  const toggleComparePick = useCallback((dealId) => {
+    setComparePickIds((prev) => {
+      if (prev.some((id) => String(id) === String(dealId))) {
+        return prev.filter((id) => String(id) !== String(dealId));
+      }
+      if (prev.length >= 3) return prev;
+      return [...prev, dealId];
+    });
+  }, []);
+
+  const cancelComparePick = useCallback(() => {
+    setComparePickIds([]);
+    console.log('[CrmDeedBoard] compare pick cancelled');
+  }, []);
+
+  const finishComparePick = useCallback(() => {
+    if (comparePickIds.length < 2) return;
+    console.log('[CrmDeedBoard] compare now', comparePickIds);
+    onCompareDeals?.(comparePickIds);
+    setComparePickIds([]);
+  }, [comparePickIds, onCompareDeals]);
+
   const handleContextMenu = useCallback((e, deal) => {
     if (!deal?.id) return;
     console.log('[CrmDeedBoard] context menu', deal.id, deal.name);
@@ -434,6 +472,11 @@ export default function CrmDeedBoard({
     if (!deal) return [];
     const items = [
       { id: 'open', label: 'Open', onSelect: () => openRecord(deal.id) },
+      {
+        id: 'compare',
+        label: comparePicking ? 'Add to compare' : 'Compare',
+        onSelect: () => startOrAddCompare(deal)
+      },
       { id: 'status', label: 'Status', onSelect: () => openField(deal, 'status') },
       { id: 'next', label: 'Next step', onSelect: () => openField(deal, 'next') },
       { id: 'metrics', label: 'Metrics', onSelect: () => openField(deal, 'metrics') },
@@ -484,7 +527,7 @@ export default function CrmDeedBoard({
       });
     }
     return items;
-  }, [cardMenu, handleArchiveDeal, handleDeleteDeal, handlePin, openField, openRecord, prefs.pins, writeEnabled]);
+  }, [cardMenu, comparePicking, handleArchiveDeal, handleDeleteDeal, handlePin, openField, openRecord, prefs.pins, startOrAddCompare, writeEnabled]);
 
   const handleDragStart = (e, dealId) => {
     dragDealIdRef.current = dealId;
@@ -583,6 +626,7 @@ export default function CrmDeedBoard({
         : null;
     const colorId = prefs.colors?.[String(id)] || null;
     const hovering = dropAt?.zone === zone && String(dropAt.anchorId) === String(id);
+    const compareIndex = comparePickIds.findIndex((pick) => String(pick) === String(id));
     return (
       <CrmDeedCard
         key={id}
@@ -595,14 +639,23 @@ export default function CrmDeedBoard({
         pinned={Boolean(prefs.pins?.[String(id)])}
         unseen={Boolean(deal.unseenFromTeam) && !locallySeenDealIds?.has(String(id))}
         selected={selectedDealId != null && String(selectedDealId) === String(id)}
+        compareIndex={compareIndex >= 0 ? compareIndex + 1 : null}
+        comparePicking={comparePicking}
         dragging={String(dragDealId) === String(id)}
         dropTarget={hovering}
-        writeEnabled={writeEnabled}
-        onOpen={openRecord}
+        writeEnabled={writeEnabled && !comparePicking}
+        onOpen={(openId, opts) => {
+          if (comparePicking) {
+            toggleComparePick(openId);
+            return;
+          }
+          openRecord(openId, opts);
+        }}
         onContextMenu={handleContextMenu}
         onOpenField={(type) => openField(deal, type)}
         onPin={() => handlePin(deal)}
         onArchive={() => handleArchiveDeal(deal)}
+        onCompare={() => startOrAddCompare(deal)}
         onDragStart={(e) => handleDragStart(e, id)}
         onDragEnd={handleDragEnd}
         onDragOver={(e) => handleCardDragOver(e, id, zone)}
@@ -693,6 +746,29 @@ export default function CrmDeedBoard({
           {bannerViewer}
         </p>
       </details>
+
+      {comparePicking ? (
+        <div className="crm-deed-board__compare-bar" role="status">
+          <span>
+            {comparePickIds.length === 1
+              ? 'Pick 2 more cards to compare'
+              : comparePickIds.length === 2
+                ? 'Pick 1 more card, or compare these two'
+                : '3 deals selected'}
+          </span>
+          <button type="button" className="btn-secondary" onClick={cancelComparePick}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={comparePickIds.length < 2}
+            onClick={finishComparePick}
+          >
+            Compare {comparePickIds.length}
+          </button>
+        </div>
+      ) : null}
 
       <div className="crm-deed-board__toolbar">
         <label className="crm-deed-board__search">

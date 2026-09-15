@@ -654,7 +654,7 @@ export default function CrmDealWorkspace({
               ← Back
             </button>
           ) : null}
-          {typeof onNavigateDeal === 'function' && Array.isArray(dealIds) && dealIds.length > 1 ? (
+          {typeof onNavigateDeal === 'function' && Array.isArray(dealIds) && dealIds.length > 1 && navIndex >= 0 ? (
             <div className="crm-record-chrome__nav">
               <button
                 type="button"
