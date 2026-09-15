@@ -14,6 +14,22 @@ const WEB_APP_URL = (
   'http://localhost:5173'
 ).replace(/\/$/, '');
 
+export const FOLLOW_UP_SOURCES = ['follow_up_chip', 'follow_up_custom'];
+
+export function isFollowUpSource(source) {
+  return FOLLOW_UP_SOURCES.includes(String(source || ''));
+}
+
+/** Dated follow-ups, or dated tasks on a deal that has started DD. */
+const ATTENTION_TASK_SQL = `
+  t.parent_task_id IS NULL
+  AND t.due_at IS NOT NULL
+  AND (
+    t.source IN ('follow_up_chip', 'follow_up_custom')
+    OR EXISTS (SELECT 1 FROM dd_checklists c WHERE c.saved_deal_id = t.saved_deal_id)
+  )
+`;
+
 const FOLLOW_UP_PRESETS = {
   tomorrow: 1,
   '3days': 3,
@@ -208,6 +224,8 @@ export async function listAllTasks(userId, { status = 'open', assignee = null, p
      JOIN saved_deals sd ON sd.id = t.saved_deal_id
      LEFT JOIN users ua ON ua.id = t.assignee_user_id
      WHERE ${VISIBLE_DEALS_SQL} ${statusClause} ${assigneeClause} ${parentClause}
+       AND EXISTS (SELECT 1 FROM dd_checklists c WHERE c.saved_deal_id = t.saved_deal_id)
+       AND COALESCE(t.source, '') NOT IN ('follow_up_chip', 'follow_up_custom')
      ORDER BY
        CASE WHEN t.status = 'open' THEN 0 ELSE 1 END,
        t.priority ASC,
@@ -216,6 +234,17 @@ export async function listAllTasks(userId, { status = 'open', assignee = null, p
     params
   );
   return result.rows;
+}
+
+export async function listDdDealIds(userId) {
+  const result = await pool.query(
+    `SELECT c.saved_deal_id
+     FROM dd_checklists c
+     JOIN saved_deals sd ON sd.id = c.saved_deal_id
+     WHERE ${VISIBLE_DEALS_SQL}`,
+    [userId]
+  );
+  return result.rows.map((row) => row.saved_deal_id);
 }
 
 export async function listDealTasks(userId, savedDealId) {
@@ -254,6 +283,20 @@ export async function createTask(
     const err = new Error('Task title is required');
     err.status = 400;
     throw err;
+  }
+
+  if (!isFollowUpSource(source) && !parentTaskId) {
+    const dd = await pool.query(
+      'SELECT 1 FROM dd_checklists WHERE saved_deal_id = $1 LIMIT 1',
+      [savedDealId]
+    );
+    if (!dd.rows.length) {
+      const err = new Error(
+        'Start a due diligence list on this deal before adding tasks. Use a follow-up when you are waiting on a broker, seller, or bank.'
+      );
+      err.status = 400;
+      throw err;
+    }
   }
 
   if (parentTaskId) {
@@ -611,7 +654,9 @@ export async function getTodayTaskSummary(userId) {
      FROM tasks t
      JOIN saved_deals sd ON sd.id = t.saved_deal_id
      LEFT JOIN users ua ON ua.id = t.assignee_user_id
-     WHERE ${VISIBLE_DEALS_SQL} AND t.status = 'open' AND t.parent_task_id IS NULL
+     WHERE ${VISIBLE_DEALS_SQL}
+       AND t.status = 'open'
+       AND ${ATTENTION_TASK_SQL}
      ORDER BY t.priority ASC, t.due_at ASC NULLS LAST, t.created_at DESC`,
     [userId]
   );
@@ -624,12 +669,6 @@ export async function getTodayTaskSummary(userId) {
   for (const task of open) {
     const assignedToMe =
       Number(task.assignee_user_id || task.user_id) === Number(userId);
-    if (!task.due_at) {
-      // Undated work assigned to me → Today
-      if (assignedToMe) dueToday.push(task);
-      else upcoming.push(task);
-      continue;
-    }
     const due = new Date(task.due_at);
     if (due < startOfDay) {
       if (assignedToMe) overdue.push(task);

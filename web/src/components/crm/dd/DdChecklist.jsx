@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { crmAPI } from '../../../utils/api';
 import { formatDate } from '../../../utils/normalizeDeal';
 
+const DEFAULT_MILESTONES = [
+  { title: 'Request data room / remaining docs', dueAt: '' },
+  { title: 'First diligence review', dueAt: '' },
+  { title: 'Go / no-go decision', dueAt: '' }
+];
+
 const DD_STATUSES = [
   { value: 'not_started', label: 'Not started' },
   { value: 'in_progress', label: 'In progress' },
@@ -38,6 +44,8 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
   const [error, setError] = useState(null);
   const [templateOptions, setTemplateOptions] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [targetDate, setTargetDate] = useState('');
+  const [milestones, setMilestones] = useState(DEFAULT_MILESTONES);
   const [suggestedLabel, setSuggestedLabel] = useState('');
   const [dealIndustry, setDealIndustry] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
@@ -104,7 +112,11 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     if (!dealId || starting) return;
     setStarting(true);
     try {
-      const payload = selectedTemplateId ? { templateId: Number(selectedTemplateId) } : {};
+      const payload = {
+        ...(selectedTemplateId ? { templateId: Number(selectedTemplateId) } : {}),
+        ...(targetDate ? { targetDate } : {}),
+        milestones: milestones.filter((m) => m.title.trim() && m.dueAt)
+      };
       console.log('[DdChecklist] starting DD', { dealId, ...payload });
       const data = await crmAPI.startDealDd(dealId, payload);
       setChecklist(data.checklist);
@@ -354,6 +366,45 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
             .
           </p>
         ) : null}
+        <label className="dd-start-prompt__template">
+          <span>Target diligence date (optional)</span>
+          <input
+            type="date"
+            className="modal-input"
+            value={targetDate}
+            disabled={!canWrite || starting}
+            onChange={(e) => setTargetDate(e.target.value)}
+          />
+        </label>
+        <div className="dd-start-milestones">
+          <p className="dd-start-milestones__label">Milestones — add a date to create a task</p>
+          {milestones.map((row, index) => (
+            <div key={index} className="dd-start-milestones__row">
+              <input
+                type="text"
+                className="modal-input"
+                value={row.title}
+                disabled={!canWrite || starting}
+                onChange={(e) => {
+                  const next = milestones.map((m, i) => (i === index ? { ...m, title: e.target.value } : m));
+                  setMilestones(next);
+                }}
+                aria-label={`Milestone ${index + 1} title`}
+              />
+              <input
+                type="date"
+                className="modal-input"
+                value={row.dueAt}
+                disabled={!canWrite || starting}
+                onChange={(e) => {
+                  const next = milestones.map((m, i) => (i === index ? { ...m, dueAt: e.target.value } : m));
+                  setMilestones(next);
+                }}
+                aria-label={`Milestone ${index + 1} date`}
+              />
+            </div>
+          ))}
+        </div>
         <button
           type="button"
           className="btn-primary"
@@ -377,7 +428,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
           <p className="dd-checklist__progress">
             {progress.percent ?? 0}% complete
             {progress.overdueItems ? ` · ${progress.overdueItems} overdue` : ''}
-            {checklist.template_name ? ` · ${checklist.template_name}` : ''}
+            {checklist.target_date ? ` · target ${formatDate(checklist.target_date)}` : ''}
           </p>
         </div>
         <div className="dd-checklist__actions">

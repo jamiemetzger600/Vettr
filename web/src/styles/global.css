@@ -9866,6 +9866,10 @@ button.aggregator-welcome__buybox {
   color: var(--text-secondary);
 }
 
+.crm-task-list__intro {
+  margin: 0 0 12px;
+}
+
 .dd-start-prompt {
   padding: 12px 0;
   display: flex;
@@ -9884,6 +9888,21 @@ button.aggregator-welcome__buybox {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
+}
+.dd-start-milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dd-start-milestones__label {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.dd-start-milestones__row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 8px;
 }
 
 .dd-portal {

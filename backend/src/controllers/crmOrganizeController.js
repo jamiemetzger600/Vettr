@@ -23,6 +23,7 @@ import {
 } from '../services/crmViewsService.js';
 import {
   listAllTasks,
+  listDdDealIds,
   createTask,
   listTaskComments,
   addTaskComment
@@ -354,8 +355,11 @@ export const getCrmTasksFiltered = async (req, res) => {
   try {
     const status = ['open', 'done', 'all'].includes(req.query.status) ? req.query.status : 'open';
     const assignee = req.query.assignee || null;
-    const tasks = await listAllTasks(req.user.userId, { status, assignee });
-    res.json({ tasks });
+    const [tasks, ddDealIds] = await Promise.all([
+      listAllTasks(req.user.userId, { status, assignee }),
+      listDdDealIds(req.user.userId)
+    ]);
+    res.json({ tasks, ddDealIds });
   } catch (error) {
     console.error('[crmOrganize] getTasksFiltered', error);
     res.status(500).json({ error: 'Server error' });

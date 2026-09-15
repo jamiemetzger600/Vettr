@@ -162,6 +162,11 @@ async function pushOpenTasksToGoogle(userId, startIso, endIso) {
      WHERE ${VISIBLE_DEALS_SQL}
        AND t.status = 'open'
        AND t.due_at IS NOT NULL
+       AND t.parent_task_id IS NULL
+       AND (
+         t.source IN ('follow_up_chip', 'follow_up_custom')
+         OR EXISTS (SELECT 1 FROM dd_checklists c WHERE c.saved_deal_id = t.saved_deal_id)
+       )
        AND t.due_at >= $2::timestamptz
        AND t.due_at <= $3::timestamptz`,
     [userId, startIso, endIso]

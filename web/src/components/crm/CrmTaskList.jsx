@@ -63,6 +63,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
   const [groupMode, setGroupMode] = useState('time');
   const [query, setQuery] = useState('');
   const [tasks, setTasks] = useState([]);
+  const [ddDealIds, setDdDealIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -80,6 +81,10 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
   const writableDeals = useMemo(
     () => (deals || []).filter((d) => canWriteDeal(d, teams)),
     [deals, teams]
+  );
+  const ddWritableDeals = useMemo(
+    () => writableDeals.filter((d) => ddDealIds.has(String(d.vettrId ?? d.id))),
+    [writableDeals, ddDealIds]
   );
 
   const [teamMembers, setTeamMembers] = useState([]);
@@ -111,7 +116,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
     return [];
   }, [teamMembers, user]);
 
-  const canCreate = writableDeals.length > 0;
+  const canCreate = ddWritableDeals.length > 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +125,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
       const assignee = scope === 'all' ? null : scope;
       const data = await crmAPI.getTasks(filter, { assignee });
       setTasks(data.tasks || []);
+      setDdDealIds(new Set((data.ddDealIds || []).map((id) => String(id))));
     } catch (err) {
       setError(err.message || 'Failed to load tasks');
       setTasks([]);
@@ -133,11 +139,11 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
   }, [load]);
 
   useEffect(() => {
-    if (!dealId && writableDeals.length === 1) {
-      const id = writableDeals[0].vettrId ?? writableDeals[0].id;
+    if (!dealId && ddWritableDeals.length === 1) {
+      const id = ddWritableDeals[0].vettrId ?? ddWritableDeals[0].id;
       setDealId(id != null ? String(id) : '');
     }
-  }, [writableDeals, dealId]);
+  }, [ddWritableDeals, dealId]);
 
   const visibleTasks = useMemo(
     () => tasks.filter((t) => matchesTaskQuery(t, query)),
@@ -169,8 +175,8 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
     setRecurrence('');
     setAssigneeUserId('');
     setFormError('');
-    if (writableDeals.length === 1) {
-      const id = writableDeals[0].vettrId ?? writableDeals[0].id;
+    if (ddWritableDeals.length === 1) {
+      const id = ddWritableDeals[0].vettrId ?? ddWritableDeals[0].id;
       setDealId(id != null ? String(id) : '');
     } else {
       setDealId('');
@@ -187,6 +193,10 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
     }
     if (!dealId) {
       setFormError('Pick a deal for this task.');
+      return;
+    }
+    if (!dueDate) {
+      setFormError('Pick a due date.');
       return;
     }
     setCreating(true);
@@ -233,7 +243,12 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
 
   return (
     <div className="crm-task-list">
-      <CrmQuickAdd deals={writableDeals} onCreated={() => { load(); onRefresh?.(); }} />
+      <p className="crm-muted crm-task-list__intro">
+        Diligence tasks for deals with a DD list. Waiting on a broker, seller, or bank? Set a follow-up on the deal instead.
+      </p>
+      {ddWritableDeals.length > 0 ? (
+        <CrmQuickAdd deals={ddWritableDeals} onCreated={() => { load(); onRefresh?.(); }} />
+      ) : null}
 
       <div className="crm-task-list__toolbar">
         <div className="crm-task-list__filters">
@@ -331,7 +346,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
               <span>Deal</span>
               <select className="modal-input" value={dealId} onChange={(e) => setDealId(e.target.value)} required>
                 <option value="">Select deal…</option>
-                {writableDeals.map((d) => {
+                {ddWritableDeals.map((d) => {
                   const id = d.vettrId ?? d.id;
                   return <option key={id} value={id}>{d.name || `Deal ${id}`}</option>;
                 })}
@@ -339,7 +354,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
             </label>
             <label className="crm-task-create__field">
               <span>Due date</span>
-              <input type="date" className="modal-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <input type="date" className="modal-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
             </label>
           </div>
           <div className="crm-task-create__row crm-task-create__row--split">
@@ -400,7 +415,7 @@ export default function CrmTaskList({ deals = [], onSelectDeal, onRefresh }) {
               ? 'No tasks match that filter.'
               : filter === 'done'
                 ? 'No completed tasks yet.'
-                : 'No open tasks — add one above, or open a deal and set the next step.'}
+                : 'Tasks show up after you start a due diligence list. Until then, set a follow-up on the deal when you are waiting on a broker, seller, or bank.'}
           </p>
         </div>
       ) : null}

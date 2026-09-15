@@ -35,7 +35,7 @@ import {
 import { getDealAccess, assertCanRead, assertCanWrite, getMembership, VISIBLE_DEALS_SQL } from '../lib/teamAcl.js';
 import { getUnreadCounts, getUnreadMentions } from '../services/dealThreadService.js';
 import { countUnreadAlerts } from '../services/userAlertService.js';
-import { findDormantDeals, getLastActivityByDealIds } from '../services/crmPresenceService.js';
+import { findDormantDeals, findNearingDdDeals, getLastActivityByDealIds } from '../services/crmPresenceService.js';
 import { listNudgeQueue, completeNudge } from '../services/crmNudgeService.js';
 
   const KANBAN_DEAL_FIELDS = `
@@ -242,8 +242,12 @@ export const getCrmToday = async (req, res) => {
       console.warn('[crm] countUnreadAlerts skipped:', err.message);
       return 0;
     });
-    const dormantDeals = await findDormantDeals(userId, { days: 14, limit: 15 }).catch((err) => {
+    const dormantDeals = await findDormantDeals(userId, { days: 14, limit: 8 }).catch((err) => {
       console.warn('[crm] findDormantDeals skipped:', err.message);
+      return [];
+    });
+    const nearingDd = await findNearingDdDeals(userId, { limit: 8 }).catch((err) => {
+      console.warn('[crm] findNearingDdDeals skipped:', err.message);
       return [];
     });
     const nudges = await listNudgeQueue(userId).catch((err) => {
@@ -268,6 +272,7 @@ export const getCrmToday = async (req, res) => {
       deals: dealsResult.rows,
       recentActivities: recentActivities.rows,
       dormantDeals,
+      nearingDd,
       nudges,
       tasks: taskSummary,
       staleListings,
@@ -278,13 +283,9 @@ export const getCrmToday = async (req, res) => {
       unreadAlertCount,
       badgeCount:
         taskSummary.badgeCount
-        + staleListings.length
         + ddOverdue.length
         + portalComments.length
         + approvals.rows.length
-        + dormantDeals.length
-        + nudges.length
-        // Prefer durable alert count for Talk pings; fall back to mention rows
         + Math.max(unreadAlertCount, unreadMentions.length)
     });
   } catch (error) {

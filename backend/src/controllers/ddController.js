@@ -65,9 +65,11 @@ export const getDealDdTemplates = async (req, res) => {
 
 export const startDealDd = async (req, res) => {
   try {
-    const { templateId } = req.body || {};
+    const { templateId, targetDate, milestones } = req.body || {};
     const checklist = await startChecklistFromTemplate(req.user.userId, req.params.id, {
-      templateId
+      templateId,
+      targetDate,
+      milestones
     });
     res.status(201).json({ checklist });
   } catch (error) {

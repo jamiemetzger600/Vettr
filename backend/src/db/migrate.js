@@ -1241,6 +1241,21 @@ const migrations = [
       WHERE calculator_state IS NOT NULL
         AND jsonb_typeof(calculator_state->'scenarios') = 'array';
     `
+  },
+  {
+    name: 'dd_target_date_and_quiet_auto_tasks_v5_130',
+    up: `
+      ALTER TABLE dd_checklists ADD COLUMN IF NOT EXISTS target_date DATE;
+
+      UPDATE tasks
+      SET status = 'done',
+          completed_at = COALESCE(completed_at, NOW())
+      WHERE status = 'open'
+        AND source IN ('intake_nudge', 'stage_nudge', 'stage_suggestion')
+        AND NOT EXISTS (
+          SELECT 1 FROM dd_checklists c WHERE c.saved_deal_id = tasks.saved_deal_id
+        );
+    `
   }
 ];
 

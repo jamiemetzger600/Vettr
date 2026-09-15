@@ -44,7 +44,7 @@ export default function CrmToday({ today, onSelectDeal, onRefresh }) {
   const portalComments = today?.portalComments || [];
   const pendingApprovals = today?.pendingApprovals || [];
   const unreadMentions = today?.unreadMentions || [];
-  const dormantDeals = today?.dormantDeals || [];
+  const nearingDd = today?.nearingDd || [];
   const recentActivities = today?.recentActivities || [];
 
   const handleCompleteTask = async (taskId) => {
@@ -79,7 +79,7 @@ export default function CrmToday({ today, onSelectDeal, onRefresh }) {
     portalComments.length > 0 ||
     pendingApprovals.length > 0 ||
     unreadMentions.length > 0 ||
-    dormantDeals.length > 0 ||
+    nearingDd.length > 0 ||
     recentActivities.length > 0;
 
   if (!hasWork) {
@@ -165,8 +165,9 @@ export default function CrmToday({ today, onSelectDeal, onRefresh }) {
       {overdue.length > 0 ? (
         <section className="crm-today-section">
           <h3 className="crm-today-section__title crm-today-section__title--warn">
-            Overdue ({overdue.length})
+            Waiting on a reply ({overdue.length})
           </h3>
+        <p className="crm-today-hint">Follow-ups and diligence dates you set.</p>
           <ul className="crm-today-task-list">
             {overdue.map((t) => (
               <TaskRow
@@ -268,30 +269,24 @@ export default function CrmToday({ today, onSelectDeal, onRefresh }) {
         </section>
       ) : null}
 
-      {dormantDeals.length > 0 ? (
+      {nearingDd.length > 0 ? (
         <section className="crm-today-section">
           <h3 className="crm-today-section__title">
-            Quiet deals ({dormantDeals.length})
+            Nearing diligence ({nearingDd.length})
           </h3>
-          <p className="crm-today-hint">No CRM activity in 14+ days — consider a nudge or follow-up.</p>
+          <p className="crm-today-hint">IOI / LOI deals that do not have a DD list yet. Set a follow-up if you are waiting on someone.</p>
           <ul className="crm-today-task-list">
-            {dormantDeals.map((d) => (
+            {nearingDd.map((d) => (
               <li key={d.saved_deal_id} className="crm-today-task">
                 <div className="crm-today-task__body">
                   <button
                     type="button"
                     className="crm-today-task__deal"
-                    onClick={() => onSelectDeal?.(d.saved_deal_id)}
+                    onClick={() => onSelectDeal?.(d.saved_deal_id, { focusSection: 'crm-followup' })}
                   >
                     {d.deal_name || 'Deal'}
                   </button>
-                  <span className="crm-today-task__title">
-                    {d.days_idle} days idle
-                    {d.progress_stage ? ` · ${d.progress_stage}` : ''}
-                  </span>
-                  <span className="crm-today-task__due">
-                    Last touch {formatDate(d.last_activity_at)}
-                  </span>
+                  <span className="crm-today-task__title">{d.progress_stage || 'Near diligence'}</span>
                 </div>
               </li>
             ))}

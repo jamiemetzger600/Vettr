@@ -374,14 +374,9 @@ export default function CrmDashboard({
 
   const handleStartDdFromPrompt = async () => {
     if (!stagePrompt?.dealId) return;
-    try {
-      await crmAPI.startDealDd(stagePrompt.dealId);
-      setStagePrompt(null);
-      openRecord(stagePrompt.dealId, { focusSection: 'crm-dd' });
-      await handleRefresh();
-    } catch (err) {
-      alert('Failed to start DD: ' + err.message);
-    }
+    const dealId = stagePrompt.dealId;
+    setStagePrompt(null);
+    openRecord(dealId, { focusSection: 'crm-dd' });
   };
 
   const handleBlankUnderwriting =

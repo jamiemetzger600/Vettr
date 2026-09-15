@@ -9,6 +9,7 @@ import {
 } from '../data/ddIndustryTemplates.js';
 import { matchIndustryKey, isFranchiseTagged, INDUSTRY_LABELS } from '../lib/industryMatcher.js';
 import { sendEmail } from './emailService.js';
+import { createTask } from './crmTaskService.js';
 import {
   getDealAccess,
   assertCanRead,
@@ -250,7 +251,7 @@ async function assertDealOwned(userId, savedDealId, { write = true } = {}) {
 export async function getChecklistForDeal(userId, savedDealId) {
   await assertDealOwned(userId, savedDealId, { write: false });
   const cl = await pool.query(
-    `SELECT c.id, c.template_id, c.started_at, c.completed_at, t.name AS template_name
+    `SELECT c.id, c.template_id, c.started_at, c.completed_at, c.target_date, t.name AS template_name
      FROM dd_checklists c
      LEFT JOIN dd_templates t ON t.id = c.template_id
      WHERE c.saved_deal_id = $1`,
@@ -386,7 +387,11 @@ export async function getChecklistForDeal(userId, savedDealId) {
   };
 }
 
-export async function startChecklistFromTemplate(userId, savedDealId, { templateId: requestedTemplateId } = {}) {
+export async function startChecklistFromTemplate(userId, savedDealId, {
+  templateId: requestedTemplateId,
+  targetDate = null,
+  milestones = []
+} = {}) {
   const deal = await assertDealOwned(userId, savedDealId);
   const existing = await pool.query(
     'SELECT id FROM dd_checklists WHERE saved_deal_id = $1',
@@ -426,9 +431,11 @@ export async function startChecklistFromTemplate(userId, savedDealId, { template
   const templateName = tplMeta.rows[0]?.name || 'DD';
   const industryKey = tplMeta.rows[0]?.industry_key || 'generic';
 
+  const parsedTarget = targetDate ? String(targetDate).slice(0, 10) : null;
   const clRes = await pool.query(
-    `INSERT INTO dd_checklists (saved_deal_id, template_id) VALUES ($1, $2) RETURNING id`,
-    [savedDealId, templateId]
+    `INSERT INTO dd_checklists (saved_deal_id, template_id, target_date)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [savedDealId, templateId, parsedTarget || null]
   );
   const checklistId = clRes.rows[0].id;
 
@@ -469,12 +476,28 @@ export async function startChecklistFromTemplate(userId, savedDealId, { template
       userId,
       savedDealId,
       `Started due diligence (${templateName}) for ${deal.name}`,
-      JSON.stringify({ templateId, industryKey, templateName })
+      JSON.stringify({ templateId, industryKey, templateName, targetDate: parsedTarget })
     ]
   );
 
+  const milestoneRows = Array.isArray(milestones) ? milestones.slice(0, 6) : [];
+  for (const row of milestoneRows) {
+    const title = String(row?.title || '').trim();
+    const dueRaw = row?.dueAt || row?.due_at || '';
+    if (!title || !dueRaw) continue;
+    const due = new Date(`${String(dueRaw).slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(due.getTime())) continue;
+    await createTask(userId, savedDealId, {
+      title,
+      dueAt: due.toISOString(),
+      source: 'dd_milestone',
+      priority: 2,
+      notifyRecipients: [{ type: 'self' }]
+    });
+  }
+
   console.log(
-    `[dd] checklist=${checklistId} started deal=${savedDealId} template=${templateId} industry=${industryKey}`
+    `[dd] checklist=${checklistId} started deal=${savedDealId} template=${templateId} industry=${industryKey} milestones=${milestoneRows.length}`
   );
   return getChecklistForDeal(userId, savedDealId);
 }

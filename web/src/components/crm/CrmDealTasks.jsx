@@ -6,6 +6,7 @@ import CrmQuickAdd from './CrmQuickAdd';
 import CrmTaskRow from './CrmTaskRow';
 import QuickFollowUp from './QuickFollowUp';
 import { TIME_SECTIONS, groupTasksByTime } from '../../utils/taskTime';
+import { isFollowUpTask } from '../../utils/crmTaskKinds';
 
 export default function CrmDealTasks({
   dealId,
@@ -20,6 +21,7 @@ export default function CrmDealTasks({
   const { activeTeamId } = useTeam();
   const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
+  const [ddReady, setDdReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -35,9 +37,13 @@ export default function CrmDealTasks({
     setLoading(true);
     setError(null);
     try {
-      const data = await crmAPI.getDealTasks(dealId);
+      const [data, dd] = await Promise.all([
+        crmAPI.getDealTasks(dealId),
+        crmAPI.getDealDd(dealId).catch(() => ({ checklist: null }))
+      ]);
       const rows = (data.tasks || []).filter((t) => !t.parent_task_id);
       setTasks(rows);
+      setDdReady(Boolean(dd?.checklist));
     } catch (err) {
       console.error('[CrmDealTasks] load failed', err);
       setError(err.message || 'Failed to load tasks');
@@ -74,7 +80,10 @@ export default function CrmDealTasks({
     onCreated?.();
   };
 
-  const openTasks = useMemo(() => tasks.filter((t) => t.status !== 'done'), [tasks]);
+  const openTasks = useMemo(
+    () => (ddReady ? tasks.filter((t) => t.status !== 'done' && !isFollowUpTask(t)) : []),
+    [tasks, ddReady]
+  );
   const timeGroups = useMemo(() => groupTasksByTime(openTasks), [openTasks]);
 
   const refreshAll = () => {
@@ -84,21 +93,27 @@ export default function CrmDealTasks({
 
   return (
     <div className="crm-deal-tasks">
-      {!disabled ? (
+      {ddReady && !disabled ? (
       <CrmQuickAdd
         deals={dealForQuickAdd}
         defaultDealId={dealId}
         onCreated={refreshAll}
       />
-      ) : (
+      ) : null}
+      {ddReady && disabled ? (
         <p className="crm-muted">Viewer role — tasks are read-only.</p>
-      )}
+      ) : null}
+      {!ddReady ? (
+        <p className="crm-muted">
+          Tasks unlock after you start a due diligence list. Use a follow-up below to remind yourself when you are waiting on a broker, seller, or bank.
+        </p>
+      ) : null}
 
       {loading ? <p className="crm-muted">Loading tasks…</p> : null}
       {error ? <p className="crm-task-create__error">{error}</p> : null}
 
-      {!loading && !error && openTasks.length === 0 ? (
-        <p className="crm-muted">No open tasks on this deal. Add one above or set a follow-up below.</p>
+      {!loading && !error && ddReady && openTasks.length === 0 ? (
+        <p className="crm-muted">No diligence tasks yet. Add one above with a date.</p>
       ) : null}
 
       {!loading && openTasks.length > 0 ? (
