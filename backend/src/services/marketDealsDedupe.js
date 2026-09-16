@@ -78,7 +78,7 @@ async function remountHiddenDealIds(client, remapSql, params = []) {
      )
      WHERE EXISTS (
        SELECT 1
-       FROM jsonb_array_elements_text(COALESCE(us.hidden_deal_ids, '[]'::jsonb)) t
+       FROM jsonb_array_elements_text(COALESCE(us.hidden_deal_ids, '[]'::jsonb)) AS t(token)
        JOIN remap r ON t.token = 'md:' || r.dup_id::text AND r.dup_id <> r.keep_id
      )`,
     params
