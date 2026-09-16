@@ -1,4 +1,4 @@
-import { notificationPath, parseMatchDealIds } from './notificationLinks.js';
+import { notificationOpenLabel, notificationPath, parseMatchDealIds } from './notificationLinks.js';
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -48,5 +48,10 @@ assert(!teamDeal.includes('crmSubview=cards'), `deal toast is not a generic card
 const teamEmpty = notificationPath({ alertType: 'team_activity' });
 assert(teamEmpty.includes('crmSubview=cards'), `fallback cards: ${teamEmpty}`);
 assert(!teamEmpty.includes('crmDeal='), `fallback has no deal: ${teamEmpty}`);
+
+const ddComplete = notificationPath({ alertType: 'dd_completed', savedDealId: 88 });
+assert(ddComplete.includes('crmDeal=88'), `DD completion opens deal: ${ddComplete}`);
+assert(ddComplete.includes('section=crm-dd'), `DD completion opens checklist: ${ddComplete}`);
+assert(notificationOpenLabel('dd_completed') === 'Open DD', 'DD completion button label');
 
 console.log('notificationLinks tests passed');

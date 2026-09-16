@@ -54,6 +54,14 @@ export function notificationPath({
     const q = new URLSearchParams({ tab: 'crm', crmSubview: 'tasks' });
     return `/dashboard?${q.toString()}`;
   }
+  if (type === 'dd_completed' && savedDealId) {
+    const q = new URLSearchParams({
+      tab: 'crm',
+      crmDeal: String(savedDealId),
+      section: 'crm-dd'
+    });
+    return `/dashboard?${q.toString()}`;
+  }
   if (type === 'crm_followup' && savedDealId) {
     const q = new URLSearchParams({
       tab: 'crm',
@@ -92,6 +100,7 @@ export function notificationOpenLabel(alertType, { savedDealId } = {}) {
   if (type === 'task_completed' || type === 'task_assigned' || type === 'task_due') {
     return 'Open Tasks';
   }
+  if (type === 'dd_completed') return 'Open DD';
   if (type === 'deal_match') return 'Open matches';
   if (type === 'team_activity' || type === 'crm_followup') {
     return savedDealId ? 'Open deal' : 'Open CRM';

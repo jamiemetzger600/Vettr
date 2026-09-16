@@ -8,8 +8,12 @@ import {
   WAVE2_INDUSTRY_KEYS
 } from '../data/ddIndustryTemplates.js';
 import { matchIndustryKey, isFranchiseTagged, INDUSTRY_LABELS } from '../lib/industryMatcher.js';
+import { notificationOpenLabel, notificationPath } from '../lib/notificationLinks.js';
+import { actorDisplayName } from '../lib/teamActivity.js';
 import { sendEmail } from './emailService.js';
 import { createTask } from './crmTaskService.js';
+import { sendPushToUser } from './pushService.js';
+import { createUserAlert } from './userAlertService.js';
 import {
   getDealAccess,
   assertCanRead,
@@ -18,6 +22,72 @@ import {
 } from '../lib/teamAcl.js';
 
 const WEB_APP_URL = process.env.WEB_APP_URL || 'http://localhost:5173';
+
+async function notifyTeamDdCompleted({
+  savedDealId,
+  itemId,
+  itemTitle,
+  actorUserId = null,
+  actorName = null,
+  actorEmail = null
+}) {
+  const dealResult = await pool.query(
+    'SELECT name, user_id, team_id FROM saved_deals WHERE id = $1',
+    [savedDealId]
+  );
+  const deal = dealResult.rows[0];
+  if (!deal) return;
+
+  let resolvedActorEmail = actorEmail;
+  if (!actorName && !resolvedActorEmail && actorUserId) {
+    const actorResult = await pool.query('SELECT email FROM users WHERE id = $1', [actorUserId]);
+    resolvedActorEmail = actorResult.rows[0]?.email || null;
+  }
+  const completedBy = actorName || actorDisplayName(resolvedActorEmail);
+
+  const recipientIds = new Set();
+  if (Number(deal.user_id) > 0) recipientIds.add(Number(deal.user_id));
+  if (deal.team_id) {
+    const members = await pool.query(
+      `SELECT user_id FROM team_members
+       WHERE team_id = $1 AND status = 'active'`,
+      [deal.team_id]
+    );
+    members.rows.forEach((member) => recipientIds.add(Number(member.user_id)));
+  }
+  if (actorUserId) recipientIds.delete(Number(actorUserId));
+  if (!recipientIds.size) return;
+
+  const title = `${completedBy} completed DD: ${String(itemTitle || '').slice(0, 64)}`;
+  const body = `On ${deal.name || 'a deal'}`;
+  const url = notificationPath({ alertType: 'dd_completed', savedDealId });
+
+  await Promise.all([...recipientIds].map(async (recipientId) => {
+    await createUserAlert({
+      userId: recipientId,
+      alertType: 'dd_completed',
+      title,
+      body,
+      savedDealId,
+      metadata: { ddItemId: itemId, completedBy, dealName: deal.name }
+    }).catch((err) => console.warn('[dd] completion alert failed:', err.message));
+
+    await sendPushToUser(recipientId, {
+      title,
+      body,
+      url,
+      tag: `dd-completed-${itemId}`,
+      actionTitle: notificationOpenLabel('dd_completed', { savedDealId })
+    }).catch((err) => console.warn('[dd] completion push failed:', err.message));
+  }));
+
+  console.log('[dd] completion alerts sent', {
+    savedDealId,
+    itemId,
+    recipients: recipientIds.size,
+    completedBy
+  });
+}
 
 async function loadCommentsForChecklist(checklistId) {
   const res = await pool.query(
@@ -502,7 +572,7 @@ export async function startChecklistFromTemplate(userId, savedDealId, {
   return getChecklistForDeal(userId, savedDealId);
 }
 
-export async function patchDdItem(userId, savedDealId, itemId, patch) {
+export async function patchDdItem(userId, savedDealId, itemId, patch, actor = {}) {
   await assertDealOwned(userId, savedDealId);
   const itemRow = await pool.query(
     `SELECT i.id, i.status, i.title, g.checklist_id, c.saved_deal_id
@@ -557,6 +627,17 @@ export async function patchDdItem(userId, savedDealId, itemId, patch) {
         console.warn('[dd] assignee notify failed:', err.message);
       });
     }
+  }
+
+  if (completedAt) {
+    await notifyTeamDdCompleted({
+      savedDealId,
+      itemId,
+      itemTitle: item.title,
+      actorUserId: Object.hasOwn(actor, 'actorUserId') ? actor.actorUserId : userId,
+      actorName: actor.actorName,
+      actorEmail: actor.actorEmail
+    }).catch((err) => console.warn('[dd] completion notification failed:', err.message));
   }
 
   return getChecklistForDeal(userId, savedDealId);
@@ -993,7 +1074,11 @@ export async function patchPublicDdItem(token, itemId, patch, meta = {}) {
   await assertItemInShareScope(row, itemId);
   const guest = guestFromRequest(meta);
   await logShareAccess(row.id, 'status_change', guest);
-  const checklist = await patchDdItem(row.user_id, row.saved_deal_id, itemId, patch);
+  const checklist = await patchDdItem(row.user_id, row.saved_deal_id, itemId, patch, {
+    actorUserId: null,
+    actorName: guest.guestName,
+    actorEmail: guest.guestEmail
+  });
   return filterChecklistByGroupIds(checklist, row.group_ids);
 }
 

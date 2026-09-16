@@ -1,4 +1,8 @@
-import { alertBannerPreview } from './notificationLinks.js';
+import {
+  alertBannerPreview,
+  notificationOpenLabel,
+  notificationPath
+} from './notificationLinks.js';
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -44,5 +48,10 @@ const singleNamed = alertBannerPreview({
   }
 });
 assert(singleNamed === '', `single deal already in title: ${singleNamed}`);
+
+const ddComplete = notificationPath({ alertType: 'dd_completed', savedDealId: 88 });
+assert(ddComplete.includes('crmDeal=88'), `DD completion opens deal: ${ddComplete}`);
+assert(ddComplete.includes('section=crm-dd'), `DD completion opens checklist: ${ddComplete}`);
+assert(notificationOpenLabel('dd_completed') === 'Open DD', 'DD completion button label');
 
 console.log('alertBannerPreview tests passed');
