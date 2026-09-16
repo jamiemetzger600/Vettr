@@ -21,13 +21,8 @@ import GuestCrmPreview from '../components/crm/GuestCrmPreview';
 import { loadGuestSettings, persistGuestSettings } from '../utils/guestSettings';
 import { useGuestAccess } from '../hooks/useGuestAccess';
 import { logGuestEvent } from '../utils/guestAnalytics';
-import {
-  persistDashboardLocation,
-  patchDashboardSearchParams,
-  readStoredDashboardLocation,
-  isValidCrmSubview,
-  isValidCrmFilter
-} from '../utils/dashboardLocation';
+import { persistDashboardLocation, patchDashboardSearchParams, readStoredDashboardLocation, isValidCrmSubview, isValidCrmFilter } from '../utils/dashboardLocation';
+import { serializeCompareIds } from '../utils/dealCompare';
 import { notificationPath, parseMatchDealIds, savedDealIdFromAlert } from '../utils/notificationLinks';
 import { pollWhenVisible } from '../utils/pollWhenVisible';
 
@@ -547,6 +542,17 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     setCrmInitialViewOverride(null);
   }, []);
 
+  const handleCompareIdsChange = useCallback((ids) => {
+    const serialized = serializeCompareIds(ids);
+    const next = new URLSearchParams(searchParamsRef.current);
+    const current = next.get('compareIds') || '';
+    if (serialized === current) return;
+    if (serialized) next.set('compareIds', serialized);
+    else next.delete('compareIds');
+    console.log('[Dashboard] compareIds', serialized);
+    setSearchParams(next, { replace: true });
+  }, [setSearchParams]);
+
   const backToInbox = useCallback(() => {
     console.log('[Dashboard] back to aggregator from CRM (keep last view)');
     setActiveTab('aggregator');
@@ -685,6 +691,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             onBackToInbox={backToInbox}
             onCrmViewChange={handleCrmViewChange}
             onLiveDealsRefresh={loadScopedSavedDeals}
+            initialCompareIds={searchParams.get('compareIds') || ''}
+            onCompareIdsChange={handleCompareIdsChange}
           />
           </div>
         )}

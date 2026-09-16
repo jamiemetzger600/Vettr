@@ -313,9 +313,13 @@ export default function CrmDeedBoard({
   }, []);
 
   const finishComparePick = useCallback(() => {
-    if (comparePickIds.length < 2) return;
-    console.log('[CrmDeedBoard] compare now', comparePickIds);
-    onCompareDeals?.(comparePickIds);
+    if (comparePickIds.length < 2) {
+      console.warn('[CrmDeedBoard] compare now ignored', comparePickIds);
+      return;
+    }
+    const ids = comparePickIds.slice();
+    console.log('[CrmDeedBoard] compare now', ids);
+    onCompareDeals?.(ids);
     setComparePickIds([]);
   }, [comparePickIds, onCompareDeals]);
 
@@ -762,8 +766,12 @@ export default function CrmDeedBoard({
           <button
             type="button"
             className="btn-primary"
-            disabled={comparePickIds.length < 2}
-            onClick={finishComparePick}
+            disabled={comparePickIds.length < 2 || typeof onCompareDeals !== 'function'}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              finishComparePick();
+            }}
           >
             Compare {comparePickIds.length}
           </button>

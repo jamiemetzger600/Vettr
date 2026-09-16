@@ -3733,6 +3733,165 @@ button.aggregator-welcome__buybox {
   color: #eab308;
 }
 .crm-compare { padding: 8px 0 24px; }
+.crm-compare__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.crm-compare__share {
+  position: relative;
+}
+.crm-compare__share-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.crm-compare__share-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.crm-compare__share-menu button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.crm-compare__share-status {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.crm-compare__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.crm-compare__search {
+  display: block;
+  margin: 12px 0 8px;
+  max-width: 320px;
+}
+.crm-compare__pick {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.crm-compare__pick:hover,
+.crm-compare__pick--on {
+  background: rgba(255, 255, 255, 0.06);
+}
+.crm-compare__capture {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+.crm-compare__capture-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.crm-compare .calc-coc-value[data-tier='excellent'],
+.crm-compare .calc-payback-value[data-tier='excellent'] { color: #27ae60; }
+.crm-compare .calc-coc-value[data-tier='very-good'],
+.crm-compare .calc-payback-value[data-tier='very-good'] { color: #2ecc71; }
+.crm-compare .calc-coc-value[data-tier='good'],
+.crm-compare .calc-payback-value[data-tier='good'] { color: #f39c12; }
+.crm-compare .calc-coc-value[data-tier='fair'],
+.crm-compare .calc-payback-value[data-tier='fair'] { color: #e67e22; }
+.crm-compare .calc-coc-value[data-tier='bad'],
+.crm-compare .calc-payback-value[data-tier='bad'] { color: #e74c3c; }
+.crm-compare-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1180;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+.crm-compare-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+.crm-compare-overlay__panel {
+  position: relative;
+  width: min(960px, 100vw);
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.45);
+  overflow: auto;
+  padding: 16px 18px 32px;
+}
+.crm-compare-overlay__chrome {
+  margin-bottom: 8px;
+}
+.crm-deed-board__compare-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.crm-deed-board__compare-bar span {
+  flex: 1 1 auto;
+}
+.crm-deed-card--compare-pick {
+  outline: 2px solid #34d399;
+  outline-offset: 3px;
+}
+.crm-deed-card__header {
+  position: relative;
+}
+.crm-deed-card__compare-n {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #34d399;
+  color: #0d1f14;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .crm-compare__picks {
   max-height: 220px;
   overflow: auto;

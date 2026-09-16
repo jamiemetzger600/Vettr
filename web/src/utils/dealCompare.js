@@ -3,7 +3,8 @@ export function parseCompareIds(raw) {
   if (raw == null || raw === '') return [];
   const seen = new Set();
   const ids = [];
-  for (const part of String(raw).split(',')) {
+  const text = Array.isArray(raw) ? raw.join(',') : String(raw);
+  for (const part of text.split(',')) {
     const n = Number(String(part).trim());
     if (!Number.isFinite(n) || n <= 0) continue;
     const key = String(n);
@@ -48,12 +49,15 @@ export function bestDealIndices(rows) {
   let maxCoc = -Infinity;
   for (const row of rows || []) {
     const coc = Number(row?.coc);
-    if (Number.isFinite(coc) && coc > maxCoc) maxCoc = coc;
+    if (row?.coc == null || !Number.isFinite(coc)) continue;
+    if (coc > maxCoc) maxCoc = coc;
   }
   if (!Number.isFinite(maxCoc)) return new Set();
   const best = new Set();
   (rows || []).forEach((row, index) => {
-    if (Number(row?.coc) === maxCoc) best.add(index);
+    const coc = Number(row?.coc);
+    if (row?.coc == null || !Number.isFinite(coc)) return;
+    if (coc === maxCoc) best.add(index);
   });
   return best;
 }

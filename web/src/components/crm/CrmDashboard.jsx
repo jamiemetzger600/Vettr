@@ -26,6 +26,7 @@ import SavedDeals from '../SavedDeals';
 import { useAuth } from '../../context/AuthContext';
 import { parseCompareIds, serializeCompareIds } from '../../utils/dealCompare';
 
+const EMPTY_COMPARE_IDS = [];
 const VALID_VIEWS = new Set(['home', 'cards', 'list', 'tasks', 'contacts', 'calendar', 'analytics', 'compare']);
 
 function normalizeCrmView(view) {
@@ -59,7 +60,7 @@ export default function CrmDashboard({
   onBackToInbox = null,
   onCrmViewChange = null,
   onLiveDealsRefresh = null,
-  initialCompareIds = [],
+  initialCompareIds = EMPTY_COMPARE_IDS,
   onCompareIdsChange = null
 }) {
   const isMobile = useIsMobile();
@@ -85,6 +86,7 @@ export default function CrmDashboard({
   const [locallySeenDealIds, setLocallySeenDealIds] = useState(() => new Set());
   const [boardEpoch, setBoardEpoch] = useState(0);
   const [compareIds, setCompareIds] = useState(() => parseCompareIds(initialCompareIds));
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
 
   const loadToday = useCallback(async () => {
     setLoading(true);
@@ -112,20 +114,40 @@ export default function CrmDashboard({
 
   useEffect(() => {
     const next = parseCompareIds(initialCompareIds);
+    if (!next.length) return;
     setCompareIds((prev) => (serializeCompareIds(prev) === serializeCompareIds(next) ? prev : next));
   }, [initialCompareIds]);
 
   const commitCompareIds = useCallback((ids) => {
-    const next = parseCompareIds(Array.isArray(ids) ? ids.join(',') : ids);
+    const next = parseCompareIds(ids);
     setCompareIds(next);
     onCompareIdsChange?.(next);
+    return next;
   }, [onCompareIdsChange]);
 
   const handleCompareFromCards = useCallback((ids) => {
-    commitCompareIds(ids);
-    setCrmView('compare');
-    console.log('[CrmDashboard] compare from cards', ids);
+    const next = commitCompareIds(ids);
+    console.log('[CrmDashboard] compare from cards', { ids, parsed: next });
+    if (next.length < 2) {
+      console.warn('[CrmDashboard] compare skipped — need 2 saved deals', ids);
+      return;
+    }
+    setCompareModalOpen(true);
   }, [commitCompareIds]);
+
+  const closeCompareModal = useCallback(() => {
+    setCompareModalOpen(false);
+    console.log('[CrmDashboard] compare modal closed');
+  }, []);
+
+  useEffect(() => {
+    if (!compareModalOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeCompareModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [compareModalOpen, closeCompareModal]);
 
   useEffect(() => {
     onCrmViewChange?.(crmView);
@@ -761,6 +783,41 @@ export default function CrmDashboard({
 
       {recordDrawer}
       {peekPanel}
+      {compareModalOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="crm-compare-overlay" role="presentation">
+              <button
+                type="button"
+                className="crm-compare-overlay__backdrop"
+                aria-label="Close compare"
+                onClick={closeCompareModal}
+              />
+              <aside
+                className="crm-compare-overlay__panel"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Compare saved deals"
+              >
+                <div className="crm-compare-overlay__chrome">
+                  <button type="button" className="btn-secondary btn-secondary--sm" onClick={closeCompareModal}>
+                    ← Cards
+                  </button>
+                </div>
+                <CrmCompareDeals
+                  deals={filteredDeals}
+                  settings={settings}
+                  onSelectDeal={(id) => {
+                    closeCompareModal();
+                    handleSelectDeal(id);
+                  }}
+                  initialCompareIds={compareIds}
+                  onCompareIdsChange={commitCompareIds}
+                />
+              </aside>
+            </div>,
+            document.body
+          )
+        : null}
 
       <CrmCommandMenu
         isOpen={cmdkOpen}

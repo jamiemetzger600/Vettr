@@ -21,8 +21,6 @@ import {
   nativeShare
 } from '../../utils/shareCapture';
 
-const MAX_COMPARE = 3;
-
 function formatPct(n) {
   return n != null && Number.isFinite(n) ? `${n.toFixed(1)}%` : '—';
 }
@@ -77,7 +75,6 @@ export default function CrmCompareDeals({
 }) {
   const defaults = useMemo(() => getCalculatorDefaultsFromSettings(settings), [settings]);
   const captureRef = useRef(null);
-  const [query, setQuery] = useState('');
   const picked = parseCompareIds(initialCompareIds);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState('');
@@ -92,10 +89,8 @@ export default function CrmCompareDeals({
     let next;
     if (picked.some((x) => String(x) === String(id))) {
       next = picked.filter((x) => String(x) !== String(id));
-    } else if (picked.length >= MAX_COMPARE) {
-      next = picked;
     } else {
-      next = [...picked, id];
+      next = picked;
     }
     console.log('[CrmCompareDeals] toggle', id, next);
     onCompareIdsChange?.(next);
@@ -107,11 +102,6 @@ export default function CrmCompareDeals({
     .map((d) => metric(d, defaults));
 
   const best = useMemo(() => bestDealIndices(rows), [rows]);
-  const q = query.trim().toLowerCase();
-  const chooser = activeDeals.filter((d) => {
-    if (!q) return true;
-    return String(d.name || '').toLowerCase().includes(q);
-  });
 
   const shareUrl = typeof window !== 'undefined'
     ? `${window.location.origin}${window.location.pathname}?tab=crm&crmSubview=compare&compareIds=${serializeCompareIds(picked)}`
@@ -180,7 +170,7 @@ export default function CrmCompareDeals({
         <div>
           <h2>Compare deals</h2>
           <p className="crm-muted">
-            Pick 2–3 saved deals. Archived (passed on) deals stay out. Best ROI is the highest cash-on-cash.
+            Best ROI is the highest cash-on-cash. Pick deals from Cards.
           </p>
         </div>
         {rows.length >= 2 ? (
@@ -232,40 +222,6 @@ export default function CrmCompareDeals({
           })}
         </ul>
       ) : null}
-
-      <label className="crm-compare__search">
-        <input
-          type="search"
-          className="modal-input"
-          placeholder="Search saved deals…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search saved deals to compare"
-        />
-      </label>
-      <ul className="crm-compare__picks">
-        {chooser.length === 0 ? (
-          <li className="crm-muted">No saved deals match. Archive is hidden from compare.</li>
-        ) : (
-          chooser.slice(0, 60).map((d) => {
-            const on = picked.some((id) => dealMatchesCompareId(d, id));
-            const full = !on && picked.length >= MAX_COMPARE;
-            return (
-              <li key={d.id}>
-                <button
-                  type="button"
-                  className={`crm-compare__pick${on ? ' crm-compare__pick--on' : ''}`}
-                  disabled={full}
-                  onClick={() => toggle(d.id)}
-                >
-                  <span>{d.name || 'Untitled'}</span>
-                  <span className="crm-muted">{formatMoney(d.askingPrice)}</span>
-                </button>
-              </li>
-            );
-          })
-        )}
-      </ul>
 
       {rows.length >= 2 ? (
         <div className="crm-compare__capture" ref={captureRef}>
@@ -392,7 +348,7 @@ export default function CrmCompareDeals({
           </div>
         </div>
       ) : (
-        <p className="crm-muted">Select at least two saved deals to compare.</p>
+        <p className="crm-muted">On Cards, tap Compare on a deal, then add 1–2 more.</p>
       )}
     </div>
   );

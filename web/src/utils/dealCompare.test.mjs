@@ -14,6 +14,7 @@ describe('parseCompareIds', () => {
     assert.deepEqual(parseCompareIds('12,34,56,78'), [12, 34, 56]);
     assert.deepEqual(parseCompareIds('12,12,34'), [12, 34]);
     assert.deepEqual(parseCompareIds('nope,,0,-1,9'), [9]);
+    assert.deepEqual(parseCompareIds([12, 34]), [12, 34]);
   });
 });
 
