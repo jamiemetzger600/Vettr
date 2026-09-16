@@ -89,3 +89,8 @@ workers/**/.wrangler/
 twenty-main/
 .claude/
 .playwright-mcp/
+
+# Scrape platform (Scrapling sidecar)
+scraper-py/.venv/
+scraper-py/__pycache__/
+backend/.env.staging

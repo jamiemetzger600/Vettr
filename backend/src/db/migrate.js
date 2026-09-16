@@ -1256,6 +1256,124 @@ const migrations = [
           SELECT 1 FROM dd_checklists c WHERE c.saved_deal_id = tasks.saved_deal_id
         );
     `
+  },
+  {
+    // Source Recipe Platform (scrape admin). Additive only; nothing here changes
+    // existing market_deals readers. Recipe output lands in market_deals_staging
+    // until a source is published.
+    name: 'scrape_platform_v5_133',
+    up: `
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS base_url TEXT;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS listings_url TEXT;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS entity_type VARCHAR(30) DEFAULT 'business';
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS recipe JSONB;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS fetch_mode VARCHAR(20) DEFAULT 'http';
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS rate_limit_ms INTEGER DEFAULT 3000;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'draft';
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS paused_reason TEXT;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS health JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS anti_bot_estimate VARCHAR(20);
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 100;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT FALSE;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS published_at TIMESTAMP;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS coverage TEXT;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS focus TEXT;
+      ALTER TABLE deal_sources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE deal_sources ALTER COLUMN source_key TYPE VARCHAR(80);
+      ALTER TABLE deal_sources ALTER COLUMN source_type TYPE VARCHAR(80);
+
+      -- Existing Airtable feed is live and published.
+      UPDATE deal_sources SET status = 'active', published = TRUE, published_at = COALESCE(published_at, NOW())
+      WHERE source_key = 'airtable_bizbuysell' AND (status IS NULL OR status = 'draft');
+
+      CREATE TABLE IF NOT EXISTS scrape_runs (
+        id SERIAL PRIMARY KEY,
+        source_key VARCHAR(80) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'queued',
+        trigger VARCHAR(20) NOT NULL DEFAULT 'manual',
+        options JSONB DEFAULT '{}'::jsonb,
+        queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        started_at TIMESTAMP,
+        finished_at TIMESTAMP,
+        discovered INTEGER DEFAULT 0,
+        fetched INTEGER DEFAULT 0,
+        extracted INTEGER DEFAULT 0,
+        valid INTEGER DEFAULT 0,
+        inserted INTEGER DEFAULT 0,
+        updated INTEGER DEFAULT 0,
+        unchanged INTEGER DEFAULT 0,
+        failed INTEGER DEFAULT 0,
+        blocked INTEGER DEFAULT 0,
+        relocated INTEGER DEFAULT 0,
+        field_coverage JSONB DEFAULT '{}'::jsonb,
+        http_status_histogram JSONB DEFAULT '{}'::jsonb,
+        health JSONB DEFAULT '{}'::jsonb,
+        error TEXT,
+        log TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_scrape_runs_source_queued ON scrape_runs(source_key, queued_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scrape_runs_status ON scrape_runs(status);
+
+      CREATE TABLE IF NOT EXISTS scrape_items (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES scrape_runs(id) ON DELETE CASCADE,
+        source_key VARCHAR(80) NOT NULL,
+        listing_url TEXT,
+        status VARCHAR(30) NOT NULL,
+        http_status INTEGER,
+        extracted JSONB,
+        normalized JSONB,
+        errors JSONB DEFAULT '[]'::jsonb,
+        strategies JSONB,
+        relocated BOOLEAN DEFAULT FALSE,
+        market_deal_id INTEGER,
+        content_hash VARCHAR(64),
+        elapsed_ms INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_scrape_items_run ON scrape_items(run_id);
+      CREATE INDEX IF NOT EXISTS idx_scrape_items_source_status ON scrape_items(source_key, status);
+
+      CREATE TABLE IF NOT EXISTS scrape_alerts (
+        id SERIAL PRIMARY KEY,
+        source_key VARCHAR(80),
+        run_id INTEGER,
+        kind VARCHAR(40) NOT NULL,
+        severity VARCHAR(10) NOT NULL DEFAULT 'warn',
+        message TEXT NOT NULL,
+        details JSONB DEFAULT '{}'::jsonb,
+        notified_at TIMESTAMP,
+        acknowledged_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_scrape_alerts_open ON scrape_alerts(acknowledged_at, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS recipe_proposals (
+        id SERIAL PRIMARY KEY,
+        source_key VARCHAR(80) NOT NULL,
+        run_id INTEGER,
+        field VARCHAR(60),
+        kind VARCHAR(30) NOT NULL DEFAULT 'repair',
+        current_rules JSONB,
+        proposed_rules JSONB NOT NULL,
+        evidence JSONB DEFAULT '{}'::jsonb,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        decided_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_recipe_proposals_pending ON recipe_proposals(status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS market_deals_staging (
+        LIKE market_deals INCLUDING DEFAULTS
+      );
+      ALTER TABLE market_deals_staging ADD COLUMN IF NOT EXISTS run_id INTEGER;
+      ALTER TABLE market_deals_staging ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64);
+      ALTER TABLE market_deals_staging ADD COLUMN IF NOT EXISTS published_at TIMESTAMP;
+      ALTER TABLE market_deals_staging ADD COLUMN IF NOT EXISTS raw JSONB;
+      CREATE UNIQUE INDEX IF NOT EXISTS ux_market_deals_staging_source_sid ON market_deals_staging(source, source_id);
+      CREATE INDEX IF NOT EXISTS idx_market_deals_staging_url ON market_deals_staging(lower(trim(split_part(listing_url, '#', 1))));
+    `
   }
 ];
 

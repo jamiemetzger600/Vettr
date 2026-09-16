@@ -34,7 +34,7 @@ app.use(compression());
 const webAppUrlRaw = process.env.WEB_APP_URL || 'http://localhost:5173';
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? webAppUrlRaw.split(',').map(s => s.trim()).filter(Boolean).map(url => url.replace(/\/+$/, ''))
-  : [webAppUrlRaw, 'http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'];
+  : [webAppUrlRaw, 'http://localhost:5173', 'http://localhost:5175', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5175', 'http://127.0.0.1:3000'];
 if (process.env.NODE_ENV === 'production') {
   console.log('[cors] Allowed origins:', allowedOrigins.length ? allowedOrigins : '(none – check WEB_APP_URL)', '+ vettr.pages.dev + *.vettr.pages.dev');
 }
@@ -66,7 +66,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.132' });
+  res.json({ status: 'ok', version: '5.0.133', scrapePlatform: process.env.SCRAPE_PLATFORM_ENABLED === 'true' });
 });
 
 // Routes
@@ -81,6 +81,13 @@ app.use('/api/underwriting/public', underwritingPublicRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/airtable-deals', airtableDealsRoutes);
 app.use('/api/market-deals', marketDealsRoutes);
+
+// Source Recipe Platform admin API (off unless SCRAPE_PLATFORM_ENABLED=true)
+if (process.env.SCRAPE_PLATFORM_ENABLED === 'true') {
+  const { default: adminScrapeRoutes } = await import('./routes/adminScrape.js');
+  app.use('/api/admin/scrape', adminScrapeRoutes);
+  console.log('🧪 Scrape platform admin API enabled at /api/admin/scrape');
+}
 
 // 404 handler
 app.use((req, res) => {

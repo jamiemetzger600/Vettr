@@ -4,6 +4,7 @@ import pkg from '../../package.json';
 import { useTeam } from '../context/TeamContext';
 import { useFeedbackUi } from './feedback/FeedbackShell';
 import { isStandaloneDisplay } from '../utils/pwaInstall';
+import { isScrapeAdminEmail } from '../utils/scrapeAdmin';
 
 export default function Navigation({
   user,
@@ -96,6 +97,11 @@ export default function Navigation({
       {feedbackUi.isAdmin ? (
         <Link to="/admin/feedback" className="header-link" onClick={() => setMenuOpen(false)}>
           Admin inbox
+        </Link>
+      ) : null}
+      {isScrapeAdminEmail(user?.email) ? (
+        <Link to="/admin/sources" className="header-link" onClick={() => setMenuOpen(false)}>
+          Sources
         </Link>
       ) : null}
     </>

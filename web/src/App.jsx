@@ -17,9 +17,15 @@ import UnderwritingHubPage from './pages/underwriting/UnderwritingHubPage';
 import UnderwritingAppPage from './pages/underwriting/UnderwritingAppPage';
 import TeamInviteAcceptPage from './pages/TeamInviteAcceptPage';
 import AdminFeedbackPage from './pages/AdminFeedbackPage';
+import SourcesPage from './pages/admin/SourcesPage';
+import SourceDetailPage from './pages/admin/SourceDetailPage';
+import RecipeTrainerPage from './pages/admin/RecipeTrainerPage';
+import ScrapeHealthPage from './pages/admin/ScrapeHealthPage';
+import CoveragePage from './pages/admin/CoveragePage';
 import FeedbackShell from './components/feedback/FeedbackShell';
 import { userAPI } from './utils/api';
 import { syncPushIfGranted } from './utils/webNotifications';
+import { isScrapeAdminEmail } from './utils/scrapeAdmin';
 
 function NotificationClickBridge() {
   const navigate = useNavigate();
@@ -81,6 +87,28 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
+function ScrapeAdminRoute({ children }) {
+  const { user, loading, wakingUp } = useAuth();
+  if (wakingUp) return <WakeUpSplash />;
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        fontSize: '18px',
+        color: 'var(--text-secondary, #a8a8a8)'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isScrapeAdminEmail(user.email)) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 function AppRoutes() {
   const { user } = useAuth();
 
@@ -133,6 +161,11 @@ function AppRoutes() {
             </ProtectedRoute>
           )}
         />
+        <Route path="/admin/sources" element={<ScrapeAdminRoute><SourcesPage /></ScrapeAdminRoute>} />
+        <Route path="/admin/sources/health" element={<ScrapeAdminRoute><ScrapeHealthPage /></ScrapeAdminRoute>} />
+        <Route path="/admin/sources/coverage" element={<ScrapeAdminRoute><CoveragePage /></ScrapeAdminRoute>} />
+        <Route path="/admin/sources/:key" element={<ScrapeAdminRoute><SourceDetailPage /></ScrapeAdminRoute>} />
+        <Route path="/admin/sources/:key/train" element={<ScrapeAdminRoute><RecipeTrainerPage /></ScrapeAdminRoute>} />
         <Route path="/teams/accept" element={<TeamInviteAcceptPage />} />
         <Route path="/dd/:token" element={<DdPortalPage />} />
         <Route path="/underwriting/:token" element={<UnderwritingPortalPage />} />

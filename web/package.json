@@ -1,10 +1,11 @@
 {
   "name": "vettr-web",
-  "version": "5.0.236",
+  "version": "5.0.237",
   "description": "Vettr mobile web app (PWA)",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:staging": "VITE_API_PROXY=http://localhost:3013 vite --port 5175",
     "build": "vite build",
     "preview": "vite preview"
   },

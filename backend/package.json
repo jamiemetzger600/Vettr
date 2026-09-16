@@ -1,12 +1,19 @@
 {
   "name": "vettr-backend",
-  "version": "5.0.132",
+  "version": "5.0.133",
   "description": "Backend API for Vettr mobile web and native apps",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "node --max-old-space-size=768 src/index.js",
     "dev": "NODE_ENV=development nodemon src/index.js",
+    "dev:staging": "NODE_ENV=development DOTENV_CONFIG_PATH=.env.staging nodemon -r dotenv/config src/index.js",
+    "worker": "node src/worker.js",
+    "worker:staging": "DOTENV_CONFIG_PATH=.env.staging node -r dotenv/config src/worker.js",
+    "seed:sources": "node scripts/seed-deal-sources.mjs",
+    "seed:sources:staging": "DOTENV_CONFIG_PATH=.env.staging node -r dotenv/config scripts/seed-deal-sources.mjs",
+    "migrate:staging": "DOTENV_CONFIG_PATH=.env.staging node -r dotenv/config src/db/migrate.js",
+    "test:scraper": "node --test src/scraper/*.test.mjs",
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
     "test:underwriting": "node scripts/test-underwriting-engine.mjs"
