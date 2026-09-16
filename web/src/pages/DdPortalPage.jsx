@@ -24,6 +24,14 @@ function newSessionId() {
   return `g_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function statusLabel(status) {
+  if (status === 'waiting_on_other') return 'Blocked / waiting';
+  if (status === 'in_progress') return 'In progress';
+  if (status === 'complete') return 'Complete';
+  if (status === 'na') return 'Not applicable';
+  return 'Not started';
+}
+
 export default function DdPortalPage() {
   const token = window.location.pathname.split('/dd/')[1]?.split('/')[0] || '';
   const storedGuest = token ? loadGuest(token) : null;
@@ -40,6 +48,8 @@ export default function DdPortalPage() {
   const [guestSessionId] = useState(storedGuest?.guestSessionId || newSessionId());
   const [commentDrafts, setCommentDrafts] = useState({});
   const [reloadKey, setReloadKey] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const guestHeaders = useMemo(
     () => ({
@@ -243,6 +253,20 @@ export default function DdPortalPage() {
   const checklist = data?.checklist;
   const progress = checklist?.progress || {};
   const groups = checklist?.groups || [];
+  const waitingCount = groups.reduce(
+    (total, group) => total + (group.items || []).filter((item) => item.status === 'waiting_on_other').length,
+    0
+  );
+  const visibleGroups = groups
+    .filter((group) => categoryFilter === 'all' || String(group.id) === categoryFilter)
+    .map((group) => ({
+      ...group,
+      items: (group.items || []).filter((item) => {
+        if (statusFilter === 'all') return true;
+        if (statusFilter === 'complete') return item.status === 'complete' || item.status === 'na';
+        return item.status === statusFilter;
+      })
+    }));
 
   return (
     <div className="dd-portal dd-portal--board">
@@ -262,8 +286,48 @@ export default function DdPortalPage() {
         ) : null}
       </header>
 
+      <div className="dd-portal-board-tools">
+        <label>
+          <span>Category</span>
+          <select
+            className="modal-input"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="all">All categories</option>
+            {groups.map((group) => (
+              <option key={group.id} value={String(group.id)}>{group.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select
+            className="modal-input"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            <option value="waiting_on_other">Blocked / waiting</option>
+            <option value="not_started">Not started</option>
+            <option value="in_progress">In progress</option>
+            <option value="complete">Complete / N/A</option>
+          </select>
+        </label>
+        {waitingCount > 0 ? (
+          <button
+            type="button"
+            className="dd-portal-blocked-summary"
+            onClick={() => setStatusFilter('waiting_on_other')}
+          >
+            <strong>{waitingCount} blocked / waiting</strong>
+            <span>Needs attention</span>
+          </button>
+        ) : null}
+      </div>
+
       <main className="dd-portal-board" aria-label="Due diligence checklist board">
-        {groups.map((group) => {
+        {visibleGroups.map((group) => {
           const items = group.items || [];
           const complete = items.filter((item) => item.status === 'complete').length;
           return (
@@ -283,6 +347,11 @@ export default function DdPortalPage() {
                       <strong>{item.title}</strong>
                       {item.requests_document ? <span className="dd-item__badge">Document</span> : null}
                     </div>
+                    {item.status === 'waiting_on_other' ? (
+                      <div className="dd-portal-card__blocked" role="status">
+                        Blocked / waiting — needs attention
+                      </div>
+                    ) : null}
                     {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
                     {data.mode === 'collaborative' ? (
                       <>
@@ -295,7 +364,7 @@ export default function DdPortalPage() {
                           <option value="not_started">Not started</option>
                           <option value="in_progress">In progress</option>
                           <option value="complete">Complete</option>
-                          <option value="waiting_on_other">Waiting</option>
+                          <option value="waiting_on_other">Blocked / waiting</option>
                         </select>
                         {item.requests_document ? (
                           <button type="button" className="btn-secondary" onClick={() => handleDocument(item.id)}>
@@ -332,7 +401,7 @@ export default function DdPortalPage() {
                       </>
                     ) : (
                       <>
-                        <span className="dd-item__status-readonly">{item.status.replace(/_/g, ' ')}</span>
+                        <span className="dd-item__status-readonly">{statusLabel(item.status)}</span>
                         {(item.comments || []).length > 0 ? (
                           <ul className="dd-item__comments">
                             {item.comments.map((comment) => (
@@ -354,6 +423,11 @@ export default function DdPortalPage() {
             </section>
           );
         })}
+        {visibleGroups.every((group) => group.items.length === 0) ? (
+          <div className="dd-portal-board__empty">
+            No checklist items match these filters.
+          </div>
+        ) : null}
       </main>
     </div>
   );
