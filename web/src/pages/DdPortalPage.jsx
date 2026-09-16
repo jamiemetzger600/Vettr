@@ -32,6 +32,12 @@ function statusLabel(status) {
   return 'Not started';
 }
 
+function shareLabelSuffix(mode, label) {
+  const modeLabel = mode === 'collaborative' ? 'Collaborate' : 'View only';
+  const value = String(label || '').trim();
+  return value && value.toLowerCase() !== modeLabel.toLowerCase() ? ` · ${value}` : '';
+}
+
 export default function DdPortalPage() {
   const token = window.location.pathname.split('/dd/')[1]?.split('/')[0] || '';
   const storedGuest = token ? loadGuest(token) : null;
@@ -217,7 +223,7 @@ export default function DdPortalPage() {
           <img src="/vettr-logo.png" alt="Vettr" className="dd-portal__logo" width={160} height={46} />
           <h1>{data.dealName}</h1>
           <p className="dd-portal__mode">
-            Collaborate{data.label ? ` · ${data.label}` : ''}
+            Collaborate{shareLabelSuffix('collaborative', data.label)}
           </p>
         </header>
         <form className="dd-portal-gate" onSubmit={handleIdentity}>
@@ -274,7 +280,7 @@ export default function DdPortalPage() {
         <h1>{data.dealName}</h1>
         <p className="dd-portal__mode">
           {data.mode === 'collaborative' ? 'Collaborate' : 'View only'}
-          {data.label ? ` · ${data.label}` : ''}
+          {shareLabelSuffix(data.mode, data.label)}
           {authorName ? ` · ${authorName}` : ''}
         </p>
         <p className="dd-portal__progress">{progress.percent ?? 0}% complete</p>
