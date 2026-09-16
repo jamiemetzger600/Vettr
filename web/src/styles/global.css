@@ -10094,7 +10094,7 @@ button.aggregator-welcome__buybox {
 
 .dd-portal-board-tools label {
   display: flex;
-  flex: 0 1 260px;
+  flex: 0 1 210px;
   flex-direction: column;
   gap: 5px;
   color: var(--text-secondary);
@@ -10190,8 +10190,12 @@ button.aggregator-welcome__buybox {
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
   border-radius: 9px;
-  background: var(--bg-secondary);
+  background: var(--dd-portal-card-bg, var(--bg-secondary));
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.dd-portal-card:nth-child(even) {
+  --dd-portal-card-bg: color-mix(in srgb, var(--bg-secondary) 92%, var(--text-primary));
 }
 
 .dd-portal-card[data-status='in_progress'] {

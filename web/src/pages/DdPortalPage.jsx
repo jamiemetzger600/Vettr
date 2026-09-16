@@ -38,6 +38,15 @@ function shareLabelSuffix(mode, label) {
   return value && value.toLowerCase() !== modeLabel.toLowerCase() ? ` · ${value}` : '';
 }
 
+function itemAssignedToGuest(item, guestName, guestEmail) {
+  const email = String(guestEmail || '').trim().toLowerCase();
+  const name = String(guestName || '').trim().toLowerCase();
+  return (item.assignees || []).some((assignee) => (
+    (email && String(assignee.email || '').trim().toLowerCase() === email)
+    || (name && String(assignee.name || '').trim().toLowerCase() === name)
+  ));
+}
+
 export default function DdPortalPage() {
   const token = window.location.pathname.split('/dd/')[1]?.split('/')[0] || '';
   const storedGuest = token ? loadGuest(token) : null;
@@ -56,6 +65,7 @@ export default function DdPortalPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [assignmentFilter, setAssignmentFilter] = useState('all');
 
   const guestHeaders = useMemo(
     () => ({
@@ -111,8 +121,10 @@ export default function DdPortalPage() {
 
   const handleUnlock = (e) => {
     e.preventDefault();
+    setError(null);
+    setLoading(true);
     setPassword(passwordDraft);
-    setNeedsPassword(false);
+    setReloadKey((k) => k + 1);
   };
 
   const handleIdentity = (e) => {
@@ -186,7 +198,7 @@ export default function DdPortalPage() {
 
   if (!token) return <div className="dd-portal"><p>Invalid link</p></div>;
 
-  if (needsPassword && !password) {
+  if (needsPassword) {
     return (
       <div className="dd-portal">
         <header className="dd-portal__header">
@@ -207,7 +219,9 @@ export default function DdPortalPage() {
             />
           </label>
           {error ? <p className="crm-panel--error">{error}</p> : null}
-          <button type="submit" className="btn-primary">Continue</button>
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Checking…' : 'Continue'}
+          </button>
         </form>
       </div>
     );
@@ -215,6 +229,7 @@ export default function DdPortalPage() {
 
   if (loading) return <div className="dd-portal"><p>Loading…</p></div>;
   if (error && !data) return <div className="dd-portal"><p>{error}</p></div>;
+  if (!data) return <div className="dd-portal"><p>Unable to load this checklist.</p></div>;
 
   if (data?.requiresGuestIdentity && !guestReady) {
     return (
@@ -268,8 +283,9 @@ export default function DdPortalPage() {
     .map((group) => ({
       ...group,
       items: (group.items || []).filter((item) => {
-        if (statusFilter === 'all') return true;
-        return item.status === statusFilter;
+        if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+        if (assignmentFilter === 'mine' && !itemAssignedToGuest(item, authorName, authorEmail)) return false;
+        return true;
       })
     }));
 
@@ -320,6 +336,19 @@ export default function DdPortalPage() {
             <option value="na">Not applicable</option>
           </select>
         </label>
+        {data.mode === 'collaborative' ? (
+          <label>
+            <span>Assignment</span>
+            <select
+              className="modal-input"
+              value={assignmentFilter}
+              onChange={(e) => setAssignmentFilter(e.target.value)}
+            >
+              <option value="all">All assignments</option>
+              <option value="mine">Assigned to me</option>
+            </select>
+          </label>
+        ) : null}
         {waitingCount > 0 ? (
           <button
             type="button"
