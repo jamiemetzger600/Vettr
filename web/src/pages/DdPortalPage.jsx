@@ -242,9 +242,10 @@ export default function DdPortalPage() {
 
   const checklist = data?.checklist;
   const progress = checklist?.progress || {};
+  const groups = checklist?.groups || [];
 
   return (
-    <div className="dd-portal">
+    <div className="dd-portal dd-portal--board">
       <header className="dd-portal__header">
         <img src="/vettr-logo.png" alt="Vettr" className="dd-portal__logo" width={160} height={46} />
         <h1>{data.dealName}</h1>
@@ -261,83 +262,99 @@ export default function DdPortalPage() {
         ) : null}
       </header>
 
-      {(checklist?.groups || []).map((group) => (
-        <section key={group.id} className="dd-group">
-          <h2>{group.name}</h2>
-          <ul className="dd-item-list">
-            {(group.items || []).map((item) => (
-              <li key={item.id} className="dd-item dd-item--portal">
-                <span>{item.title}</span>
-                {item.requests_document ? <span className="dd-item__badge">Document</span> : null}
-                {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
-                {data.mode === 'collaborative' ? (
-                  <>
-                    <select
-                      value={item.status}
-                      onChange={(e) => handleStatus(item.id, e.target.value)}
-                      className="modal-input"
-                    >
-                      <option value="not_started">Not started</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="complete">Complete</option>
-                      <option value="waiting_on_other">Waiting</option>
-                    </select>
-                    {item.requests_document ? (
-                      <button type="button" className="btn-secondary" onClick={() => handleDocument(item.id)}>
-                        Add document
-                      </button>
-                    ) : null}
-                    {(item.comments || []).length > 0 ? (
-                      <ul className="dd-item__comments">
-                        {item.comments.map((comment) => (
-                          <li key={comment.id} className="dd-item__comment dd-item__comment--external">
-                            <span className="dd-item__comment-meta">
-                              {comment.authorName || 'Guest'}
-                              {comment.createdAt ? ` · ${formatDate(comment.createdAt)}` : ''}
-                            </span>
-                            <p className="dd-item__comment-body">{comment.body}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <div className="dd-portal-comment">
-                      <input
-                        className="modal-input"
-                        placeholder="Add comment"
-                        value={commentDrafts[item.id] || ''}
-                        onChange={(e) => setCommentDrafts((d) => ({ ...d, [item.id]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleComment(item.id);
-                        }}
-                      />
-                      <button type="button" className="btn-secondary" onClick={() => handleComment(item.id)}>
-                        Post
-                      </button>
+      <main className="dd-portal-board" aria-label="Due diligence checklist board">
+        {groups.map((group) => {
+          const items = group.items || [];
+          const complete = items.filter((item) => item.status === 'complete').length;
+          return (
+            <section key={group.id} className="dd-portal-column">
+              <header className="dd-portal-column__header">
+                <h2>{group.name}</h2>
+                <span>{complete}/{items.length}</span>
+              </header>
+              <ul className="dd-portal-column__cards">
+                {items.map((item) => (
+                  <li
+                    key={item.id}
+                    className="dd-portal-card"
+                    data-status={item.status}
+                  >
+                    <div className="dd-portal-card__top">
+                      <strong>{item.title}</strong>
+                      {item.requests_document ? <span className="dd-item__badge">Document</span> : null}
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="dd-item__status-readonly">{item.status.replace(/_/g, ' ')}</span>
-                    {(item.comments || []).length > 0 ? (
-                      <ul className="dd-item__comments">
-                        {item.comments.map((comment) => (
-                          <li key={comment.id} className="dd-item__comment">
-                            <span className="dd-item__comment-meta">
-                              {comment.authorName || 'Guest'}
-                              {comment.createdAt ? ` · ${formatDate(comment.createdAt)}` : ''}
-                            </span>
-                            <p className="dd-item__comment-body">{comment.body}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+                    {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
+                    {data.mode === 'collaborative' ? (
+                      <>
+                        <select
+                          value={item.status}
+                          onChange={(e) => handleStatus(item.id, e.target.value)}
+                          className="modal-input"
+                          aria-label={`Status for ${item.title}`}
+                        >
+                          <option value="not_started">Not started</option>
+                          <option value="in_progress">In progress</option>
+                          <option value="complete">Complete</option>
+                          <option value="waiting_on_other">Waiting</option>
+                        </select>
+                        {item.requests_document ? (
+                          <button type="button" className="btn-secondary" onClick={() => handleDocument(item.id)}>
+                            Add document
+                          </button>
+                        ) : null}
+                        {(item.comments || []).length > 0 ? (
+                          <ul className="dd-item__comments">
+                            {item.comments.map((comment) => (
+                              <li key={comment.id} className="dd-item__comment dd-item__comment--external">
+                                <span className="dd-item__comment-meta">
+                                  {comment.authorName || 'Guest'}
+                                  {comment.createdAt ? ` · ${formatDate(comment.createdAt)}` : ''}
+                                </span>
+                                <p className="dd-item__comment-body">{comment.body}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        <div className="dd-portal-comment">
+                          <input
+                            className="modal-input"
+                            placeholder="Add comment"
+                            value={commentDrafts[item.id] || ''}
+                            onChange={(e) => setCommentDrafts((d) => ({ ...d, [item.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleComment(item.id);
+                            }}
+                          />
+                          <button type="button" className="btn-secondary" onClick={() => handleComment(item.id)}>
+                            Post
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="dd-item__status-readonly">{item.status.replace(/_/g, ' ')}</span>
+                        {(item.comments || []).length > 0 ? (
+                          <ul className="dd-item__comments">
+                            {item.comments.map((comment) => (
+                              <li key={comment.id} className="dd-item__comment">
+                                <span className="dd-item__comment-meta">
+                                  {comment.authorName || 'Guest'}
+                                  {comment.createdAt ? ` · ${formatDate(comment.createdAt)}` : ''}
+                                </span>
+                                <p className="dd-item__comment-body">{comment.body}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </main>
     </div>
   );
 }
