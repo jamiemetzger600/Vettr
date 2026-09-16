@@ -214,6 +214,7 @@ function parseRows(rows, colLookup) {
 }
 
 const SOURCE_KEY = 'airtable_bizbuysell';
+const UPSERT_BATCH = 250;
 
 /** Sunday 00:00–03:59 in SCRAPE_CRON_TZ → full re-sync without change filter. */
 function isSundayFullSyncWindowPacific() {
@@ -253,9 +254,12 @@ async function upsertDeals(deals) {
   let financialChanges = 0;
   /** DB ids for rows inserted this run (for in-app "new pool" navigation; capped). */
   const newRowIds = [];
+  let inTx = false;
+  let sinceCommit = 0;
 
   try {
     await client.query('BEGIN');
+    inTx = true;
     const prior = await client.query(
       `SELECT source_id, asking_price, annual_profit FROM market_deals WHERE source = $1`,
       [SOURCE_KEY]
@@ -401,11 +405,38 @@ async function upsertDeals(deals) {
         inserted++;
         if (newRowIds.length < 400 && ret.id != null) newRowIds.push(ret.id);
       } else updated++;
+
+      sinceCommit++;
+      if (sinceCommit >= UPSERT_BATCH) {
+        await client.query('COMMIT');
+        inTx = false;
+        console.log(
+          `  Upsert progress: ${inserted + updated}/${deals.length} (${inserted} new, ${updated} updated)`
+        );
+        await client.query('BEGIN');
+        inTx = true;
+        sinceCommit = 0;
+      }
     }
 
-    await dedupeAirtableRowsByListingUrl(client);
+    if (inTx) {
+      await client.query('COMMIT');
+      inTx = false;
+    }
 
-    await client.query('COMMIT');
+    try {
+      await client.query('BEGIN');
+      inTx = true;
+      await dedupeAirtableRowsByListingUrl(client);
+      await client.query('COMMIT');
+      inTx = false;
+    } catch (dedupeErr) {
+      if (inTx) {
+        await client.query('ROLLBACK');
+        inTx = false;
+      }
+      console.warn('  Dedupe after scrape failed (upserts kept):', dedupeErr.message);
+    }
 
     // Update deal_sources metadata
     try {
@@ -430,7 +461,7 @@ async function upsertDeals(deals) {
       console.warn('  Warning: failed to update deal_sources metadata:', metaErr.message);
     }
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (inTx) await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
@@ -553,6 +584,14 @@ export async function scrapeAirtable() {
   } catch (err) {
     console.error('  Airtable scrape error:', err.message);
     _lastResult = { error: err.message, ts: new Date().toISOString() };
+    try {
+      await pool.query(
+        `UPDATE deal_sources SET last_scrape_result = $1 WHERE source_key = $2`,
+        [JSON.stringify(_lastResult), SOURCE_KEY]
+      );
+    } catch (metaErr) {
+      console.warn('  Warning: failed to record scrape error:', metaErr.message);
+    }
     throw err;
   } finally {
     _isRunning = false;

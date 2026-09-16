@@ -1,5 +1,6 @@
 # Daily Airtable ingest — triggers POST /api/airtable-deals/scrape on the Mac API
-# via the Worker proxy (Koyeb is retired).
+# via the Worker proxy (Koyeb is retired). The API starts the scrape and returns
+# immediately; poll GET /api/airtable-deals/status for lastResult.
 #
 # Required GitHub repo secrets:
 #   SCRAPE_TRIGGER_SECRET — same value as backend/.env SCRAPE_TRIGGER_SECRET
@@ -17,7 +18,7 @@ on:
 jobs:
   trigger-scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 3
     steps:
       - name: POST scrape endpoint
         env:
@@ -25,8 +26,15 @@ jobs:
           SCRAPE_SECRET: ${{ secrets.SCRAPE_TRIGGER_SECRET }}
         run: |
           set -euo pipefail
-          if [ -z "${API_BASE:-}" ] || [ -z "${SCRAPE_SECRET:-}" ]; then
-            echo "Missing secrets: set VETTR_API_BASE_URL and SCRAPE_TRIGGER_SECRET in repo Settings → Secrets."
+          WORKER='https://vettr-api.metzgerbuildsthings.workers.dev'
+          API_BASE="${API_BASE:-$WORKER}"
+          if echo "$API_BASE" | grep -qi koyeb; then
+            echo "VETTR_API_BASE_URL still points at Koyeb; using Worker proxy"
+            API_BASE="$WORKER"
+          fi
+          API_BASE="${API_BASE%/}"
+          if [ -z "${SCRAPE_SECRET:-}" ]; then
+            echo "Missing secret: set SCRAPE_TRIGGER_SECRET in repo Settings → Secrets."
             exit 1
           fi
           echo "Triggering scrape at ${API_BASE}/api/airtable-deals/scrape"
@@ -34,9 +42,14 @@ jobs:
             -X POST "${API_BASE}/api/airtable-deals/scrape" \
             -H "X-Scrape-Secret: ${SCRAPE_SECRET}" \
             -H "Content-Type: application/json" \
-            --max-time 600)
+            --max-time 60)
           echo "HTTP ${http_code}"
           cat /tmp/scrape-response.json
+          echo
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            exit 1
+          fi
+          if ! grep -Eq '"status":[[:space:]]*"(started|ok|skipped)"' /tmp/scrape-response.json; then
+            echo "Unexpected scrape response (want status started/ok/skipped)"
             exit 1
           fi

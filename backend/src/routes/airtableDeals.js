@@ -112,18 +112,15 @@ router.get('/status', (_req, res) => {
   res.json(getScraperStatus());
 });
 
-// POST /api/airtable-deals/scrape — trigger a manual scrape (GitHub Actions cron or ops)
-router.post('/scrape', requireScrapeSecret, async (_req, res) => {
-  try {
-    const result = await scrapeAirtable();
-    if (result == null) {
-      res.json({ status: 'skipped', message: 'Scrape already in progress or no previous run yet. Check /api/airtable-deals/status for lastResult.' });
-      return;
-    }
-    res.json({ status: 'ok', ...result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// POST /api/airtable-deals/scrape — kick off a scrape without waiting (Worker/GitHub timeout)
+router.post('/scrape', requireScrapeSecret, (_req, res) => {
+  const status = getScraperStatus();
+  if (status.isRunning) {
+    res.json({ status: 'skipped', message: 'Scrape already in progress', ...status });
+    return;
   }
+  scrapeAirtable().catch(() => {});
+  res.json({ status: 'started', ts: new Date().toISOString() });
 });
 
 export default router;
