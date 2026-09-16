@@ -263,7 +263,6 @@ export default function DdPortalPage() {
       ...group,
       items: (group.items || []).filter((item) => {
         if (statusFilter === 'all') return true;
-        if (statusFilter === 'complete') return item.status === 'complete' || item.status === 'na';
         return item.status === statusFilter;
       })
     }));
@@ -311,7 +310,8 @@ export default function DdPortalPage() {
             <option value="waiting_on_other">Blocked / waiting</option>
             <option value="not_started">Not started</option>
             <option value="in_progress">In progress</option>
-            <option value="complete">Complete / N/A</option>
+            <option value="complete">Complete</option>
+            <option value="na">Not applicable</option>
           </select>
         </label>
         {waitingCount > 0 ? (
