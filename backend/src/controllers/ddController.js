@@ -4,6 +4,7 @@ import {
   startChecklistFromTemplate,
   getDdTemplateSuggestionForDeal,
   patchDdItem,
+  patchDdItemsBulk,
   createShareLink,
   revokeShareLink,
   getPublicChecklistByToken,
@@ -92,6 +93,18 @@ export const patchDealDdItem = async (req, res) => {
     if (error.status === 404) return res.status(404).json({ error: error.message });
     console.error('[dd] patchDealDdItem error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const patchDealDdItemsBulk = async (req, res) => {
+  try {
+    const checklist = await patchDdItemsBulk(req.user.userId, req.params.id, req.body || {});
+    res.json({ checklist });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error('[dd] patchDealDdItemsBulk error:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 

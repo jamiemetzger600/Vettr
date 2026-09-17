@@ -621,6 +621,12 @@ export const crmAPI = {
       body: JSON.stringify(payload)
     }),
 
+  patchDdItemsBulk: (savedDealId, payload) =>
+    apiRequest(`/crm/deals/${savedDealId}/dd/items`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+
   addDdGroup: (savedDealId, name) =>
     apiRequest(`/crm/deals/${savedDealId}/dd/groups`, {
       method: 'POST',

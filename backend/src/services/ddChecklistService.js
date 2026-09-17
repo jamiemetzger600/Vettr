@@ -643,6 +643,130 @@ export async function patchDdItem(userId, savedDealId, itemId, patch, actor = {}
   return getChecklistForDeal(userId, savedDealId);
 }
 
+const DD_ITEM_STATUSES = new Set([
+  'not_started',
+  'in_progress',
+  'waiting_on_other',
+  'complete',
+  'blocked',
+  'na'
+]);
+
+export async function patchDdItemsBulk(userId, savedDealId, { itemIds, dueAt, assignee, status }) {
+  await assertDealOwned(userId, savedDealId);
+  const ids = [...new Set((itemIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) {
+    const err = new Error('itemIds required');
+    err.status = 400;
+    throw err;
+  }
+  if (ids.length > 250) {
+    const err = new Error('Too many items (max 250)');
+    err.status = 400;
+    throw err;
+  }
+  const hasDue = dueAt !== undefined;
+  const hasAssignee = assignee !== undefined;
+  const hasStatus = status !== undefined && status !== null && status !== '';
+  if (!hasDue && !hasAssignee && !hasStatus) {
+    const err = new Error('Nothing to update');
+    err.status = 400;
+    throw err;
+  }
+  if (hasStatus && !DD_ITEM_STATUSES.has(String(status))) {
+    const err = new Error('Invalid status');
+    err.status = 400;
+    throw err;
+  }
+
+  const found = await pool.query(
+    `SELECT i.id, i.title, i.status
+     FROM dd_items i
+     JOIN dd_groups g ON g.id = i.group_id
+     JOIN dd_checklists c ON c.id = g.checklist_id
+     WHERE c.saved_deal_id = $1 AND i.id = ANY($2::int[])`,
+    [savedDealId, ids]
+  );
+  if (found.rows.length !== ids.length) {
+    const err = new Error('One or more DD items not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const client = await pool.connect();
+  let notifyAfterCommit = null;
+  try {
+    await client.query('BEGIN');
+    if (hasDue) {
+      await client.query(
+        'UPDATE dd_items SET due_at = $1::timestamptz WHERE id = ANY($2::int[])',
+        [dueAt, ids]
+      );
+    }
+    if (hasStatus) {
+      await client.query(
+        `UPDATE dd_items
+         SET status = $1::varchar,
+             completed_at = CASE
+               WHEN $3::boolean AND status IS DISTINCT FROM 'complete' THEN NOW()
+               ELSE completed_at
+             END
+         WHERE id = ANY($2::int[])`,
+        [status, ids, status === 'complete']
+      );
+    }
+    if (assignee === null) {
+      await client.query('DELETE FROM dd_item_assignees WHERE item_id = ANY($1::int[])', [ids]);
+    } else if (assignee?.email) {
+      const email = String(assignee.email).trim().toLowerCase();
+      if (!email) {
+        const err = new Error('Assignee email required');
+        err.status = 400;
+        throw err;
+      }
+      await client.query('DELETE FROM dd_item_assignees WHERE item_id = ANY($1::int[])', [ids]);
+      await client.query(
+        `INSERT INTO dd_item_assignees (item_id, email, name, role_label)
+         SELECT x, $2, $3, $4 FROM unnest($1::int[]) AS x
+         ON CONFLICT (item_id, email) DO UPDATE SET name = EXCLUDED.name, role_label = EXCLUDED.role_label`,
+        [ids, email, assignee.name || null, assignee.roleLabel || null]
+      );
+      notifyAfterCommit = {
+        email,
+        name: assignee.name,
+        titles: found.rows.map((r) => r.title)
+      };
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    console.error('[dd] bulk patch failed', { savedDealId, count: ids.length, message: err.message });
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  if (notifyAfterCommit) {
+    notifyBulkAssigneeEmail(
+      notifyAfterCommit.email,
+      notifyAfterCommit.name,
+      notifyAfterCommit.titles,
+      savedDealId
+    ).catch((err) => {
+      console.warn('[dd] bulk assignee notify failed:', err.message);
+    });
+  }
+
+  console.log('[dd] bulk patch', {
+    savedDealId,
+    count: ids.length,
+    dueAt: hasDue,
+    assignee: assignee === null ? 'cleared' : assignee?.email || null,
+    status: hasStatus ? status : null
+  });
+  return getChecklistForDeal(userId, savedDealId);
+}
+
 async function notifyAssigneeEmail(email, name, itemTitle, itemId, savedDealId, userId) {
   const deal = await pool.query('SELECT name FROM saved_deals WHERE id = $1', [savedDealId]);
   const dealName = deal.rows[0]?.name || 'a deal';
@@ -657,6 +781,38 @@ async function notifyAssigneeEmail(email, name, itemTitle, itemId, savedDealId, 
   await pool.query(
     `UPDATE dd_item_assignees SET notified_at = NOW() WHERE item_id = $1 AND email = $2`,
     [itemId, email]
+  );
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function notifyBulkAssigneeEmail(email, name, titles, savedDealId) {
+  const deal = await pool.query('SELECT name FROM saved_deals WHERE id = $1', [savedDealId]);
+  const dealName = deal.rows[0]?.name || 'a deal';
+  const preview = titles.slice(0, 8).map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+  const extra = titles.length > 8 ? `<li>…and ${titles.length - 8} more</li>` : '';
+  await sendEmail({
+    to: email,
+    subject: `DD request: ${titles.length} items on ${dealName}`,
+    html: `<p>Hi${name ? ` ${escapeHtml(name)}` : ''},</p>
+           <p>You were assigned <strong>${titles.length}</strong> due diligence items on <strong>${escapeHtml(dealName)}</strong>:</p>
+           <ul>${preview}${extra}</ul>
+           <p>The buyer will share a collaborative portal link separately if needed.</p>`
+  });
+  await pool.query(
+    `UPDATE dd_item_assignees SET notified_at = NOW()
+     WHERE email = $1 AND item_id IN (
+       SELECT i.id FROM dd_items i
+       JOIN dd_groups g ON g.id = i.group_id
+       JOIN dd_checklists c ON c.id = g.checklist_id
+       WHERE c.saved_deal_id = $2
+     )`,
+    [email, savedDealId]
   );
 }
 
