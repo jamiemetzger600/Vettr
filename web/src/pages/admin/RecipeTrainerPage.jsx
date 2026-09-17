@@ -218,9 +218,6 @@ export default function RecipeTrainerPage() {
     } catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
 
-  if (!recipe || !source) return <AdminScrapeLayout title={key}><p className={err ? 'scrape-error' : 'muted'}>{err || 'Loading…'}</p></AdminScrapeLayout>;
-
-  const fieldCount = Object.keys(recipe.fields || {}).length;
   const visibleFields = useMemo(() => {
     const hidden = new Set(['listing_url', 'city', 'state']);
     const q = fieldQuery.trim().toLowerCase();
@@ -231,14 +228,19 @@ export default function RecipeTrainerPage() {
         || (f.key || '').toLowerCase().includes(q)
       );
     }
+    const fields = recipe?.fields || {};
     if (fieldSort === 'az') {
       list = [...list].sort((a, b) => (a.label || a.key).localeCompare(b.label || b.key));
     } else if (fieldSort === 'mapped') {
-      const mapped = (k) => (recipe.fields?.[k]?.length ? 0 : 1);
+      const mapped = (k) => (fields[k]?.length ? 0 : 1);
       list = [...list].sort((a, b) => mapped(a.key) - mapped(b.key) || (a.label || '').localeCompare(b.label || ''));
     }
     return list;
-  }, [registry, fieldQuery, fieldSort, recipe.fields]);
+  }, [registry, fieldQuery, fieldSort, recipe?.fields]);
+
+  if (!recipe || !source) return <AdminScrapeLayout title={key}><p className={err ? 'scrape-error' : 'muted'}>{err || 'Loading…'}</p></AdminScrapeLayout>;
+
+  const fieldCount = Object.keys(recipe.fields || {}).length;
   const d = recipe.discover || {};
   const setDiscover = (patch) => setRecipe((r) => ({ ...r, discover: { ...(r.discover || {}), ...patch } }));
 
