@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.vettr.scrape-sidecar</string>
+  <key>WorkingDirectory</key><string>__VETTR_SCRAPE_ROOT__/scraper-py</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__VETTR_SCRAPE_ROOT__/scripts/start-vettr-scrape-sidecar.sh</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StandardOutPath</key><string>/Users/jamie/Library/Logs/vettr/scrape-sidecar.log</string>
+  <key>StandardErrorPath</key><string>/Users/jamie/Library/Logs/vettr/scrape-sidecar.err</string>
+</dict>
+</plist>

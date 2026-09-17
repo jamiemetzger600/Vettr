@@ -25,16 +25,32 @@ On this machine, keep both servers up via LaunchAgents (login + KeepAlive):
 | API | `com.vettr.api` | `scripts/start-vettr-api.sh` → port `3001` |
 | Web | `com.vettr.web` | `scripts/start-vettr-web.sh` → port `5173` |
 
+### Scrape staging (Vettr-scrape worktree)
+
+Always-on LaunchAgents for the Source Recipe Platform test lane (`/Users/jamie/Vettr-scrape`, DB `dealcheck_staging`):
+
+| Service | Label | Port |
+|---------|-------|------|
+| Sidecar | `com.vettr.scrape-sidecar` | `3012` |
+| API | `com.vettr.scrape-api` | `3013` |
+| Worker | `com.vettr.scrape-worker` | (polls DB) |
+| Web | `com.vettr.scrape-web` | `5175` |
+
+Install / refresh: `bash /Users/jamie/Vettr-scrape/scripts/install-vettr-scrape-launchagents.sh`  
+Health: `bash /Users/jamie/Vettr-scrape/scripts/vettr-scrape-healthcheck.sh`  
+Admin UI: `http://localhost:5175/admin/sources`
+
 Before starting ad-hoc `npm run dev`:
 
-1. Check `lsof -i :3001` / `lsof -i :5173` (or `curl` health / root).
+1. Check `lsof -i :3001` / `lsof -i :5173` (or `curl` health / root). For scrape staging also check `:3012` / `:3013` / `:5175`.
 2. Do **not** start a duplicate listener on the same port.
 3. If a LaunchAgent owns the port, **do not** `kill` it for routine restarts — use:
    - `launchctl kickstart -k gui/$(id -u)/com.vettr.api`
    - `launchctl kickstart -k gui/$(id -u)/com.vettr.web`
+   - `launchctl kickstart -k gui/$(id -u)/com.vettr.scrape-api` (and scrape-web / scrape-sidecar / scrape-worker)
 4. Only fall back to background `npm run dev` when LaunchAgents are unloaded / unavailable.
 
-Logs: `~/Library/Logs/vettr/api.log`, `web.log` (and `.err`).
+Logs: `~/Library/Logs/vettr/api.log`, `web.log` (and `.err`). Scrape staging: `scrape-api.log`, `scrape-web.log`, `scrape-sidecar.log`, `scrape-worker.log`.
 
 ## After starting
 

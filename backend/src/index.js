@@ -66,7 +66,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.133', scrapePlatform: process.env.SCRAPE_PLATFORM_ENABLED === 'true' });
+  res.json({ status: 'ok', version: '5.0.134', scrapePlatform: process.env.SCRAPE_PLATFORM_ENABLED === 'true' });
 });
 
 // Routes

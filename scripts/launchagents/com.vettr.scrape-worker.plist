@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.vettr.scrape-worker</string>
+  <key>WorkingDirectory</key><string>__VETTR_SCRAPE_ROOT__/backend</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__VETTR_SCRAPE_ROOT__/scripts/start-vettr-scrape-worker.sh</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key><string>development</string>
+    <key>PATH</key><string>/opt/homebrew/opt/postgresql@15/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StandardOutPath</key><string>/Users/jamie/Library/Logs/vettr/scrape-worker.log</string>
+  <key>StandardErrorPath</key><string>/Users/jamie/Library/Logs/vettr/scrape-worker.err</string>
+</dict>
+</plist>

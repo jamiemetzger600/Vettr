@@ -132,7 +132,15 @@ router.patch('/sources/:key', wrap(async (req, res) => {
   const b = req.body || {};
   const sets = [];
   const vals = [source.source_key];
-  const set = (col, val) => { vals.push(val); sets.push(`${col} = $${vals.length}`); };
+  const set = (col, val) => {
+    const i = sets.findIndex((s) => s.startsWith(`${col} = `));
+    if (i >= 0) {
+      vals[i + 1] = val;
+      return;
+    }
+    vals.push(val);
+    sets.push(`${col} = $${vals.length}`);
+  };
   if (b.display_name !== undefined) set('display_name', String(b.display_name).slice(0, 255));
   if (b.base_url !== undefined) set('base_url', b.base_url || null);
   if (b.listings_url !== undefined) set('listings_url', b.listings_url || null);

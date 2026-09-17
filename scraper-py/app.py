@@ -30,7 +30,7 @@ from scrapling.parser import Selector
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [sidecar] %(message)s")
 log = logging.getLogger("sidecar")
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.2"
 ADAPTIVE_DB = os.environ.get(
     "SCRAPLING_ADAPTIVE_DB",
     os.path.expanduser("~/Library/Application Support/vettr/scrapling.db"),
@@ -44,6 +44,15 @@ BLOCK_MARKERS = re.compile(
     r"(cf-chl|challenge-platform|Just a moment|Attention Required|Access Denied|"
     r"captcha|hcaptcha|recaptcha|PerimeterX|_Incapsula_|distil_r|Request unsuccessful|"
     r"Pardon Our Interruption|are you a human|bot detection)",
+    re.I,
+)
+
+# SPA brokers (e.g. KCapex) load listing bodies from Tupelo CRM, not the page HTML.
+LISTING_ID_RE = re.compile(r"[?&]listingId=([a-z0-9]+)", re.I)
+TUPELO_LISTING_RE = re.compile(r"crm\.tupelosmb\.com/api/public/listings/([a-z0-9]+)", re.I)
+TUPELO_API = "https://crm.tupelosmb.com/api/public/listings"
+TUPELO_ORG_ATTR_RE = re.compile(
+    r"<(?:tupelo-marketplace)[^>]*organization-id=[\"']([a-z0-9]+)[\"']",
     re.I,
 )
 
@@ -226,16 +235,184 @@ def make_page(html: str, url: str, adaptive: bool, adaptive_domain: Optional[str
     return Selector(html, url=url)
 
 
+def label_span(text: str, label: str) -> Optional[tuple[int, int]]:
+    """Whole-token span of `label` in `text`. Rejects mid-word hits like Multi-Location."""
+    if not text or not label:
+        return None
+    # Hyphen counts as part of a word so "Multi-Location" does not match "Location"
+    pat = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(label)}(?![A-Za-z0-9-])", re.I)
+    m = pat.search(text)
+    return (m.start(), m.end()) if m else None
+
+
+def is_label_element(own: str, full: str, label: str) -> bool:
+    """True if this node is a real field label, not a random substring hit."""
+    own_bare = re.sub(r"^[\s:–—|-]+|[\s:–—|-]+$", "", own or "").strip()
+    if own_bare.lower() == label.lower():
+        return True
+    # Inline "Label: value" must start with the label token
+    if full and re.match(rf"^{re.escape(label)}(?![A-Za-z0-9-])", full, re.I):
+        return True
+    return False
+
+
 def strip_label(text: str, label: str) -> str:
-    """'Asking Price: $500,000' -> '$500,000'"""
+    """'Asking Price: $500,000' -> '$500,000'. Exact label-only text -> '' so next-cell can win."""
     if not text:
         return ""
-    idx = text.lower().find(label.lower())
-    if idx < 0:
+    span = label_span(text, label)
+    if not span:
+        return text
+    rest = text[span[1] :].lstrip(" \t:-–—|")
+    return rest.strip()
+
+
+def _money(n: Any) -> str:
+    if n is None or n == "":
         return ""
-    after = text[idx + len(label):]
-    after = re.sub(r"^[\s:\-–—|]+", "", after)
-    return clean(after)
+    try:
+        return f"${int(round(float(n))):,}"
+    except (TypeError, ValueError):
+        return str(n)
+
+
+def extract_listing_id(url: str) -> Optional[str]:
+    if not url:
+        return None
+    m = LISTING_ID_RE.search(url) or TUPELO_LISTING_RE.search(url)
+    return m.group(1) if m else None
+
+
+def fetch_tupelo_listing(listing_id: str) -> Optional[dict[str, Any]]:
+    url = f"{TUPELO_API}/{listing_id}"
+    try:
+        # http mode is enough — public JSON API
+        resp = Fetcher.get(url, impersonate="chrome", timeout=30, follow_redirects=True, stealthy_headers=True)
+        body = resp.body.decode(resp.encoding or "utf-8", errors="replace") if isinstance(resp.body, bytes) else str(resp.body)
+        if int(resp.status or 0) >= 400:
+            log.warning("tupelo listing %s -> %s", listing_id, resp.status)
+            return None
+        data = json.loads(body)
+        return data if isinstance(data, dict) and data.get("id") else None
+    except Exception as exc:  # noqa: BLE001
+        log.warning("tupelo listing fetch failed %s: %s", listing_id, exc)
+        return None
+
+
+def fetch_tupelo_listing_index(organization_id: str, take: int = 100, skip: int = 0) -> list[dict[str, Any]]:
+    url = f"{TUPELO_API}?organizationId={organization_id}&take={int(take)}&skip={int(skip)}"
+    try:
+        resp = Fetcher.get(url, impersonate="chrome", timeout=30, follow_redirects=True, stealthy_headers=True)
+        body = resp.body.decode(resp.encoding or "utf-8", errors="replace") if isinstance(resp.body, bytes) else str(resp.body)
+        data = json.loads(body)
+        return list(data.get("listings") or []) if isinstance(data, dict) else []
+    except Exception as exc:  # noqa: BLE001
+        log.warning("tupelo index fetch failed org=%s: %s", organization_id, exc)
+        return []
+
+
+def tupelo_to_html(data: dict[str, Any], page_url: str) -> str:
+    """Build a labeled HTML doc so label/css strategies (and the trainer picker) work."""
+    industries = ", ".join(
+        f"{i.get('sectorTitle') or ''} / {i.get('subSectorTitle') or ''}".strip(" /")
+        for i in (data.get("industries") or [])
+        if isinstance(i, dict)
+    )
+    rows = [
+        ("Name", data.get("headline") or ""),
+        ("Asking Price", _money(data.get("askingPrice"))),
+        ("Cash Flow", _money(data.get("cashFlow"))),
+        ("SDE", _money(data.get("cashFlow"))),
+        ("EBITDA", _money(data.get("ebitda"))),
+        ("Gross Revenue", _money(data.get("revenue"))),
+        ("Revenue", _money(data.get("revenue"))),
+        ("Location", data.get("locationString") or data.get("locationName") or ""),
+        ("Industry", industries),
+        ("Year Established", data.get("yearEstablished") or ""),
+        ("Franchise", "Yes" if data.get("isEstablishedFranchise") else ""),
+        ("Source ID", data.get("id") or ""),
+    ]
+    trs = "".join(
+        f"<tr><th>{label}</th><td>{html_escape(str(val))}</td></tr>"
+        for label, val in rows
+        if val not in (None, "")
+    )
+    headline = html_escape(str(data.get("headline") or "Listing"))
+    desc = html_escape(str(data.get("description") or "")).replace("\n", "<br/>")
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><base href="{html_escape(page_url)}"/><title>{headline}</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111}}
+h1{{font-size:22px}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #ddd;padding:8px 10px;text-align:left}}
+th{{width:40%;background:#f6f6f6;font-weight:600}}.desc{{margin-top:18px;line-height:1.45}}</style></head>
+<body>
+<p data-vettr-source="tupelo">Hydrated from Tupelo CRM (page shell had no listing body).</p>
+<h1>{headline}</h1>
+<table>{trs}</table>
+<div class="desc"><h2>Description</h2><p>{desc}</p></div>
+</body></html>"""
+
+
+def html_escape(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def parse_tupelo_org_id(html: str, discover: dict[str, Any]) -> Optional[str]:
+    explicit = (discover.get("tupelo") or {}).get("organizationId")
+    if explicit:
+        return str(explicit)
+    if not html:
+        return None
+    m = TUPELO_ORG_ATTR_RE.search(html)
+    return m.group(1) if m else None
+
+
+def tupelo_listing_page_url(start_url: str, listing_id: str, template: Optional[str] = None) -> str:
+    if template:
+        return template.replace("{id}", listing_id)
+    p = urlparse(start_url)
+    path = p.path or "/business-listings/"
+    return f"{p.scheme}://{p.netloc}{path}?listingId={listing_id}"
+
+
+def discover_tupelo_listing_urls(org_id: str, start_url: str, max_urls: int, template: Optional[str]) -> list[str]:
+    urls: list[str] = []
+    skip = 0
+    take = min(100, max(1, max_urls))
+    while len(urls) < max_urls:
+        batch = fetch_tupelo_listing_index(org_id, take=take, skip=skip)
+        if not batch:
+            break
+        for row in batch:
+            lid = row.get("id") if isinstance(row, dict) else None
+            if not lid:
+                continue
+            urls.append(tupelo_listing_page_url(start_url, str(lid), template))
+            if len(urls) >= max_urls:
+                break
+        if len(batch) < take:
+            break
+        skip += take
+    return urls
+
+
+def maybe_hydrate_spa_listing(url: str, html: str) -> tuple[str, Optional[str]]:
+    """If this is a Tupelo-backed SPA listing URL, replace HTML with a labeled snapshot."""
+    lid = extract_listing_id(url)
+    if not lid:
+        return html, None
+    # Skip if the page already has financial labels (rare for these SPAs)
+    if re.search(r"Asking\s*Price|Cash\s*Flow|Gross\s*Revenue", html or "", re.I):
+        return html, None
+    data = fetch_tupelo_listing(lid)
+    if not data:
+        return html, None
+    log.info("hydrated tupelo listing %s (%s)", lid, data.get("headline"))
+    return tupelo_to_html(data, url), "tupelo"
 
 
 LABEL_NOISE = re.compile(r"^(n/?a|not disclosed|undisclosed|—|-|contact( broker)?|call)$", re.I)
@@ -259,6 +436,8 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
     def ok(v: str) -> bool:
         return bool(v) and value_matches(expect, v)
 
+    value_max = 200 if expect in ("money", "number") else 8000
+
     for label in labels:
         try:
             matches = page.find_by_text(label, first_match=False, partial=True)
@@ -270,9 +449,13 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
             # Skip huge blocks (paragraphs / whole containers) — labels are short.
             if len(own) > len(label) + 60 and len(full) > 300:
                 continue
+            # Reject mid-word hits (e.g. "Location" inside "Multi-Location")
+            if not is_label_element(own, full, label):
+                continue
             # 1) inline "Label: value" in the same element (label must lead the text, not sit mid-paragraph)
             inline = strip_label(full, label)
-            label_pos = full.lower().find(label.lower())
+            span = label_span(full, label)
+            label_pos = span[0] if span else -1
             if inline and 0 <= label_pos <= 3 and not LABEL_NOISE.match(inline) and len(inline) < 200 and value_mode in ("auto", "inline") and ok(inline):
                 return inline, f"label:inline:{label}"
             # 2) next sibling element (dt/dd, th/td, label/span)
@@ -283,7 +466,7 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
                     nxt = None
                 if nxt is not None:
                     t = elem_text(nxt)
-                    if t and t.lower() != label.lower() and len(t) < 200 and ok(t):
+                    if t and t.lower() != label.lower() and len(t) < value_max and ok(t):
                         return t, f"label:next:{label}"
             # 3) parent text minus label, then parent's next sibling
             if value_mode in ("auto", "parent"):
@@ -293,7 +476,7 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
                     par = None
                 if par is not None:
                     pt = strip_label(elem_text(par), label)
-                    if pt and len(pt) < 200 and ok(pt):
+                    if pt and len(pt) < value_max and ok(pt):
                         return pt, f"label:parent:{label}"
                     try:
                         pn = par.next
@@ -301,7 +484,7 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
                         pn = None
                     if pn is not None:
                         t = elem_text(pn)
-                        if t and len(t) < 200 and ok(t):
+                        if t and len(t) < value_max and ok(t):
                             return t, f"label:parentnext:{label}"
     return "", ""
 
@@ -520,6 +703,7 @@ def fetch(req: FetchReq):
 def extract(req: ExtractReq):
     fetched = None
     html = req.html
+    hydrate_src = None
     if html is None:
         fetched = do_fetch(req.url, req.mode, req.timeout_ms, req.proxy, req.wait_selector, req.network_idle, req.solve_cloudflare)
         html = fetched["html"]
@@ -534,6 +718,7 @@ def extract(req: ExtractReq):
                 "fields": {},
                 "elapsed_ms": fetched["elapsed_ms"],
             }
+    html, hydrate_src = maybe_hydrate_spa_listing(req.url, html or "")
     started = time.time()
     fields = extract_fields(html, req.url, req.fields, req.adaptive, req.adaptive_domain, req.source_key)
     out: dict[str, Any] = {
@@ -545,6 +730,7 @@ def extract(req: ExtractReq):
         "error": None,
         "fields": fields,
         "elapsed_ms": (fetched["elapsed_ms"] if fetched else 0) + int((time.time() - started) * 1000),
+        "hydrated": hydrate_src,
     }
     if req.include_html:
         out["html"] = html
@@ -562,6 +748,30 @@ def discover(req: DiscoverReq):
     start_urls: list[str] = d.get("startUrls") or ([d["startUrl"]] if d.get("startUrl") else [])
     if not start_urls:
         raise HTTPException(400, "discover.startUrls required")
+
+    # Tupelo marketplace widgets (KCapex etc.) have no listing <a href>s — use the public API.
+    first = start_urls[0]
+    org_html = ""
+    org_id = parse_tupelo_org_id("", d)
+    if not org_id:
+        f0 = do_fetch(first, "http", req.timeout_ms, req.proxy, None, False, False)
+        org_html = f0.get("html") or ""
+        org_id = parse_tupelo_org_id(org_html, d)
+    if org_id:
+        template = (d.get("tupelo") or {}).get("listingUrlTemplate")
+        urls = discover_tupelo_listing_urls(org_id, first, req.max_urls, template)
+        log.info("discover tupelo org=%s found=%s", org_id, len(urls))
+        return {
+            "urls": urls,
+            "count": len(urls),
+            "pages_fetched": 1 if org_html else 0,
+            "blocked": False,
+            "block_reason": None,
+            "errors": [],
+            "pages": [{"page": first, "added": len(urls), "status": 200, "organizationId": org_id}],
+            "hydrated": "tupelo",
+        }
+
     link_cfg = d.get("listingLink") or {}
     link_css = link_cfg.get("css")
     link_xpath = link_cfg.get("xpath")
@@ -674,10 +884,11 @@ def snapshot(req: SnapshotReq):
     f = do_fetch(req.url, req.mode, req.timeout_ms, req.proxy, None, req.mode != "http", req.solve_cloudflare)
     if f["status"] == 0 and f["error"]:
         raise HTTPException(502, f"fetch failed: {f['error']}")
+    html, hydrate_src = maybe_hydrate_spa_listing(req.url, f["html"] or "")
     title = ""
     text = ""
     try:
-        page = Selector(f["html"], url=f["final_url"])
+        page = Selector(html, url=f["final_url"])
         t = page.css("title")
         title = clean(t[0].text) if t else ""
         text = page.get_all_text(separator="\n", strip=True)[:30000]
@@ -690,10 +901,11 @@ def snapshot(req: SnapshotReq):
         "blocked": f["blocked"],
         "block_reason": f["block_reason"],
         "title": title,
-        "html": sanitize_html(f["html"], f["final_url"]),
-        "raw_html": f["html"],
+        "html": sanitize_html(html, f["final_url"]),
+        "raw_html": html,
         "text": text,
         "elapsed_ms": f["elapsed_ms"],
+        "hydrated": hydrate_src,
     }
 
 
