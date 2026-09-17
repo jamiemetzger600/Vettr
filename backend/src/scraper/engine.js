@@ -7,7 +7,7 @@ import pool from '../db/pool.js';
 import * as sidecar from './sidecar.js';
 import { normalizeListing, FIELD_REGISTRY } from './normalize.js';
 import { validateListing } from './validate.js';
-import { upsertRow, deactivateUnseen } from './upsert.js';
+import { upsertRow, deactivateUnseen, normalizeListingUrlKey } from './upsert.js';
 import { isCancelled } from './queue.js';
 import { afterRun } from './health.js';
 import { postRunLlm, LLM_SAMPLE_RATE, LLM_SAMPLE_CAP, llmConfig } from './llm.js';
@@ -168,6 +168,46 @@ export async function executeRun(run) {
     await updateRun(run.id, { discovered: counters.discovered }, { log: logger.text() });
     if (!urls.length) { finalStatus = 'failed'; throw new Error('no listing URLs discovered'); }
 
+    // Skip re-fetch of listings we already scraped recently (same-day Sample + cron, accidental double Run).
+    // Nightly cron still refreshes: default 18h < 24h between 5am runs. Raise skipFetchIfScrapedWithinHours to spend less CPU.
+    const skipHoursRaw = recipe.politeness?.skipFetchIfScrapedWithinHours;
+    const skipHours = skipHoursRaw === 0 || skipHoursRaw === false ? 0 : Number(skipHoursRaw ?? 18);
+    if (skipHours > 0) {
+      const recent = await pool.query(
+        `SELECT listing_url FROM market_deals_staging
+         WHERE source = $1 AND is_active = true
+           AND last_scraped_at > NOW() - ($2 * INTERVAL '1 hour')`,
+        [source.source_key, skipHours]
+      );
+      const skipKeys = new Set(recent.rows.map((row) => normalizeListingUrlKey(row.listing_url)).filter(Boolean));
+      const toSkip = [];
+      const toFetch = [];
+      for (const u of urls) {
+        const k = normalizeListingUrlKey(u);
+        if (k && skipKeys.has(k)) toSkip.push(k);
+        else toFetch.push(u);
+      }
+      if (toSkip.length) {
+        await pool.query(
+          `UPDATE market_deals_staging SET last_scraped_at = NOW()
+           WHERE source = $1 AND listing_url IS NOT NULL
+             AND lower(trim(split_part(listing_url, '#', 1))) = ANY($2::text[])`,
+          [source.source_key, toSkip]
+        );
+        if (writeToPool) {
+          await pool.query(
+            `UPDATE market_deals SET last_scraped_at = NOW()
+             WHERE source = $1 AND listing_url IS NOT NULL
+               AND lower(trim(split_part(listing_url, '#', 1))) = ANY($2::text[])`,
+            [source.source_key, toSkip]
+          );
+        }
+        counters.unchanged += toSkip.length;
+        logger.log('skip recently scraped', { skipped: toSkip.length, fetch: toFetch.length, windowHours: skipHours });
+      }
+      urls = toFetch;
+    }
+
     // 2) Per listing
     let consecutiveBlocked = 0;
     let consecutiveErrors = 0;
@@ -255,7 +295,7 @@ export async function executeRun(run) {
       } finally { client.release(); }
     }
 
-    if (finalStatus === 'success' && counters.valid === 0) finalStatus = 'failed';
+    if (finalStatus === 'success' && counters.valid === 0 && !(counters.unchanged > 0 && counters.fetched === 0)) finalStatus = 'failed';
     else if (finalStatus === 'success' && counters.failed + counters.blocked > 0) finalStatus = 'partial';
     if (finalStatus === 'failed' && !error) error = counters.fetched ? 'no valid listings extracted' : 'nothing fetched';
   } catch (err) {

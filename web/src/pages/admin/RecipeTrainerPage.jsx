@@ -41,7 +41,7 @@ const DEFAULT_RECIPE = (source) => ({
   politeness: { rateLimitMs: source?.rate_limit_ms || 3000 },
 });
 
-const PRIMARY_FIELDS = ['name', 'asking_price', 'annual_profit', 'annual_revenue', 'location', 'industries', 'description', 'years_established', 'broker_name', 'source_id'];
+const PRIMARY_FIELDS = ['name', 'asking_price', 'annual_profit', 'sde', 'ebitda', 'annual_revenue', 'location', 'industries', 'description', 'years_established', 'broker_name', 'source_id'];
 
 function ruleSummary(rules) {
   if (!rules?.length) return null;
@@ -79,6 +79,8 @@ export default function RecipeTrainerPage() {
   const [genResult, setGenResult] = useState(null);
   const [activateOnSave, setActivateOnSave] = useState(true);
   const [rightTab, setRightTab] = useState('fields');
+  const [fieldQuery, setFieldQuery] = useState('');
+  const [fieldSort, setFieldSort] = useState('default');
 
   useEffect(() => {
     Promise.all([adminScrapeAPI.source(key), adminScrapeAPI.status()])
@@ -203,7 +205,13 @@ export default function RecipeTrainerPage() {
   const save = async () => {
     setBusy('save'); setErr(null);
     try {
-      const payload = { recipe, fetch_mode: mode, rate_limit_ms: recipe.politeness?.rateLimitMs };
+      const startUrls = [...(recipe.discover?.startUrls || [])].map((u) => String(u || '').trim()).filter(Boolean);
+      if (!startUrls.length && (source.listings_url || source.base_url)) startUrls.push(source.listings_url || source.base_url);
+      const payload = {
+        recipe: { ...recipe, discover: { ...(recipe.discover || {}), startUrls } },
+        fetch_mode: mode,
+        rate_limit_ms: recipe.politeness?.rateLimitMs,
+      };
       if (activateOnSave && Object.keys(recipe.fields || {}).length) { payload.status = 'active'; payload.scrape_enabled = true; }
       await adminScrapeAPI.updateSource(key, payload);
       navigate(`/admin/sources/${encodeURIComponent(key)}`);
@@ -213,6 +221,24 @@ export default function RecipeTrainerPage() {
   if (!recipe || !source) return <AdminScrapeLayout title={key}><p className={err ? 'scrape-error' : 'muted'}>{err || 'Loading…'}</p></AdminScrapeLayout>;
 
   const fieldCount = Object.keys(recipe.fields || {}).length;
+  const visibleFields = useMemo(() => {
+    const hidden = new Set(['listing_url', 'city', 'state']);
+    const q = fieldQuery.trim().toLowerCase();
+    let list = registry.filter((f) => !hidden.has(f.key));
+    if (q) {
+      list = list.filter((f) =>
+        (f.label || '').toLowerCase().includes(q)
+        || (f.key || '').toLowerCase().includes(q)
+      );
+    }
+    if (fieldSort === 'az') {
+      list = [...list].sort((a, b) => (a.label || a.key).localeCompare(b.label || b.key));
+    } else if (fieldSort === 'mapped') {
+      const mapped = (k) => (recipe.fields?.[k]?.length ? 0 : 1);
+      list = [...list].sort((a, b) => mapped(a.key) - mapped(b.key) || (a.label || '').localeCompare(b.label || ''));
+    }
+    return list;
+  }, [registry, fieldQuery, fieldSort, recipe.fields]);
   const d = recipe.discover || {};
   const setDiscover = (patch) => setRecipe((r) => ({ ...r, discover: { ...(r.discover || {}), ...patch } }));
 
@@ -267,41 +293,78 @@ export default function RecipeTrainerPage() {
             <>
               {pick ? (
                 <div className="scrape-panel" style={{ marginBottom: 10 }}>
-                  <h3>Picked &lt;{pick.tag}&gt; for <b>{activeField}</b> <span className="muted">“{(pick.text || '').slice(0, 60)}”</span></h3>
+                  <h3>Picked &lt;{pick.tag}&gt; for <b>{activeField}</b> <span className="muted">“{(pick.text || '').slice(0, 60)}”{pick.chars ? ` · ${pick.chars} chars` : ''}</span></h3>
+                  {(activeField === 'description' || activeField === 'summary' || ['reason_for_sale','training_support','historical_summary','buyer_qualifications','competition','growth_opportunities','financing_notes'].includes(activeField) || (pick.containers || []).length > 0) ? (
+                    <p className="muted" style={{ marginTop: 0 }}>For Description / Summary on VR-style pages: click the <b>section title</b> (Description, Reason For Sale, …) and use the <b>label</b> rule. Reload the page after this update so nested paragraphs stay attached to their labels.</p>
+                  ) : null}
                   <div className="trainer-candidates">
                     {(pick.labels || []).map((l) => (
                       <div className="trainer-candidate" key={`l-${l}`}>
-                        <div><Chip kind="ok">label</Chip> <code>{l}</code> <span className="muted">value next to this label</span></div>
+                        <div><Chip kind="ok">label</Chip> <code>{l}</code> <span className="muted">value next to this label{['description','summary','reason_for_sale','training_support','historical_summary','buyer_qualifications','competition','growth_opportunities','financing_notes'].includes(activeField) ? ' (keeps following paragraphs)' : ''}</span></div>
                         <button type="button" className="btn btn-primary btn-sm" onClick={() => applyCandidate({ type: 'label', labels: [l] })}>Use</button>
+                      </div>
+                    ))}
+                    {(pick.containers || []).map((c, i) => (
+                      <div className="trainer-candidate" key={`box-${i}`}>
+                        <div>
+                          <Chip kind="ok">container · {c.chars} chars · depth {c.depth}</Chip>{' '}
+                          <code>{c.sel}</code>
+                          {c.raw_value ? <div className="muted">→ {String(c.raw_value).slice(0, 120)}{c.chars > 120 ? '…' : ''}</div> : null}
+                        </div>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => applyCandidate({ type: c.type, sel: c.sel })}>Use container</button>
                       </div>
                     ))}
                     {(pick.candidates || []).filter((c) => c.sel).map((c, i) => (
                       <div className="trainer-candidate" key={`c-${i}`}>
-                        <div><Chip kind={c.matches === 1 ? 'ok' : 'warn'}>{c.type} · {c.matches} match{c.matches === 1 ? '' : 'es'}</Chip> <code>{c.sel}</code>{c.raw_value ? <div className="muted">→ {String(c.raw_value).slice(0, 80)}</div> : <div className="scrape-error">no value on raw page</div>}</div>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyCandidate({ type: c.type, sel: c.sel })}>Use</button>
+                        <div>
+                          <Chip kind={c.matches === 1 ? 'ok' : 'warn'}>{c.type} · {c.matches} match{c.matches === 1 ? '' : 'es'}{c.chars ? ` · ${c.chars} chars` : ''}</Chip>{' '}
+                          <code>{c.sel}</code>
+                          {c.raw_value ? <div className="muted">→ {String(c.raw_value).slice(0, 80)}</div> : <div className="scrape-error">no value on raw page</div>}
+                        </div>
+                        <div className="scrape-toolbar" style={{ gap: 4 }}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyCandidate({ type: c.type, sel: c.sel })}>Use</button>
+                          {c.matches > 1 ? (
+                            <button type="button" className="btn btn-secondary btn-sm" title="Join every match (useful for repeated paragraph selectors)" onClick={() => applyCandidate({ type: c.type, sel: c.sel, all: true })}>Use all</button>
+                          ) : null}
+                        </div>
                       </div>
                     ))}
-                    {!pick.labels?.length && !pick.candidates?.length ? <p className="muted">No candidates. Try clicking the value text itself.</p> : null}
+                    {!pick.labels?.length && !pick.candidates?.length && !pick.containers?.length ? <p className="muted">No candidates. Try clicking the value text itself.</p> : null}
                   </div>
                   <div className="scrape-toolbar" style={{ marginTop: 8 }}><button type="button" className="btn btn-secondary btn-sm" onClick={() => setPick(null)}>Dismiss</button></div>
                 </div>
               ) : null}
 
               <div className="scrape-toolbar" style={{ marginBottom: 8 }}>
-                <span className="muted">{snap ? 'Select a field, then click its value on the page.' : 'Load a page to start picking.'}</span>
+                <input
+                  className="modal-input"
+                  style={{ flex: 1, minWidth: 140 }}
+                  type="search"
+                  placeholder="Search fields…"
+                  value={fieldQuery}
+                  onChange={(e) => setFieldQuery(e.target.value)}
+                  aria-label="Search fields"
+                />
+                <select className="modal-input" value={fieldSort} onChange={(e) => setFieldSort(e.target.value)} title="Sort fields" aria-label="Sort fields">
+                  <option value="default">Registry order</option>
+                  <option value="mapped">Mapped first</option>
+                  <option value="az">A–Z</option>
+                </select>
+                <span className="muted">{visibleFields.length}/{registry.filter((f) => !['listing_url', 'city', 'state'].includes(f.key)).length}</span>
                 <span className="spacer" />
                 <button type="button" className="btn btn-secondary btn-sm" disabled={!snap || busy === 'suggest'} onClick={suggest} title="Ask the local LLM where each field is on this page">{busy === 'suggest' ? 'Asking LLM…' : 'Suggest with AI'}</button>
               </div>
+              <p className="muted" style={{ margin: '0 0 8px' }}>{snap ? 'Select a field, then click its value on the page.' : 'Load a page to start picking.'}</p>
 
               <div className="trainer-fields">
-                {registry.filter((f) => !['listing_url', 'city', 'state', 'ebitda', 'sde'].includes(f.key)).map((f) => {
+                {visibleFields.map((f) => {
                   const rules = recipe.fields?.[f.key];
                   const pv = preview?.fields?.[f.key];
                   const norm = preview?.normalized?.[f.key];
                   const sugg = suggestions?.suggestions?.[f.key];
                   return (
                     <div key={f.key} className={`trainer-field ${activeField === f.key ? 'active' : ''}`} onClick={() => setActiveField(f.key)}>
-                      <div className="name">{f.label} <span className="muted mono">{f.key}</span></div>
+                      <div className="name">{f.label} <span className="muted mono">{f.key}</span>{f.virtual ? <span className="muted"> · extra</span> : null}</div>
                       <div className="scrape-toolbar" style={{ gap: 4 }}>
                         <button type="button" className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); addManualLabel(f.key); }} title="Type a label instead of clicking">+label</button>
                         {rules?.length ? <button type="button" className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); setRules(f.key, null); }}>clear</button> : null}
@@ -321,6 +384,7 @@ export default function RecipeTrainerPage() {
                     </div>
                   );
                 })}
+                {!visibleFields.length ? <p className="muted">No fields match “{fieldQuery}”.</p> : null}
               </div>
               {preview?.validation ? (
                 <p className={preview.validation.ok ? 'scrape-ok' : 'scrape-error'} style={{ marginTop: 8 }}>

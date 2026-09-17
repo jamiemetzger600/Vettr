@@ -30,7 +30,7 @@ from scrapling.parser import Selector
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [sidecar] %(message)s")
 log = logging.getLogger("sidecar")
 
-APP_VERSION = "0.1.2"
+APP_VERSION = "0.1.4"
 ADAPTIVE_DB = os.environ.get(
     "SCRAPLING_ADAPTIVE_DB",
     os.path.expanduser("~/Library/Application Support/vettr/scrapling.db"),
@@ -201,7 +201,33 @@ def do_fetch(
         "elapsed_ms": int((time.time() - started) * 1000),
         "mode": mode,
     }
+    html = flatten_broken_listing_html(html)
+    out["html"] = html
     log.info("fetched %s status=%s mode=%s bytes=%s blocked=%s %sms", url, status, mode, len(html), reason, out["elapsed_ms"])
+    return out
+
+
+def flatten_broken_listing_html(html: str) -> str:
+    """VR/WordPress listings nest <p> inside <span class="description-value">.
+
+    Parsers hoist the inner <p>, leaving the value span empty so label/next
+    and the trainer picker cannot see Reason For Sale / Training / etc.
+    """
+    if not html or "description-value" not in html:
+        return html
+    pair = re.compile(
+        r"(<(span|div)(?=[^>]*\bdescription-value\b)[^>]*>)(.*?)(</\2>)",
+        re.I | re.S,
+    )
+
+    def repl(m: re.Match[str]) -> str:
+        inner = re.sub(r"</?p\b[^>]*>", " ", m.group(3), flags=re.I)
+        inner = re.sub(r"\s+", " ", inner).strip()
+        return f"{m.group(1)}{inner}{m.group(4)}"
+
+    out, n = pair.subn(repl, html)
+    if n:
+        log.info("flattened %s nested description-value block(s)", n)
     return out
 
 
@@ -222,6 +248,71 @@ def elem_text(el) -> str:
         return clean(el.get_all_text(separator=" ", strip=True))
     except Exception:  # noqa: BLE001
         return clean(getattr(el, "text", ""))
+
+
+def elem_text_blocks(el) -> str:
+    """Prefer paragraph breaks for long copy (description / summary sections)."""
+    try:
+        raw = el.get_all_text(separator="\n", strip=True)
+    except Exception:  # noqa: BLE001
+        raw = getattr(el, "text", "") or ""
+    lines = [ln.strip() for ln in str(raw).splitlines()]
+    lines = [ln for ln in lines if ln]
+    return "\n\n".join(lines).strip()
+
+
+LONGTEXT_FIELDS = {
+    "description", "summary", "reason_for_sale", "training_support",
+    "historical_summary", "buyer_qualifications", "competition",
+    "growth_opportunities", "financing_notes",
+}
+
+
+def _classes(el) -> str:
+    return ((el.attrib or {}).get("class") or "").lower()
+
+
+def _class_has(el, name: str) -> bool:
+    return name.lower() in _classes(el).split()
+
+
+def _looks_like_section_heading(el, own: str, full: str) -> bool:
+    """True when a sibling looks like the start of the next labeled section."""
+    if _class_has(el, "message-box-left") or _class_has(el, "description-name"):
+        return True
+    tag = (getattr(el, "tag", "") or "").lower()
+    if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        return True
+    t = own or full
+    if not t or len(t) > 80:
+        return False
+    if re.match(r"^[A-Z][A-Za-z0-9 /&'()-]{1,60}:?\s*$", t):
+        return True
+    return False
+
+
+def collect_following_blocks(start_el, label: str, value_max: int, long: bool) -> str:
+    """Take start_el text; if long, keep following siblings until the next section heading."""
+    parts: list[str] = []
+    cur = start_el
+    n = 0
+    while cur is not None and n < 40:
+        own = clean(getattr(cur, "text", ""))
+        full = elem_text_blocks(cur) if long else elem_text(cur)
+        if n > 0 and _looks_like_section_heading(cur, own, full):
+            break
+        if full and full.lower() != label.lower():
+            parts.append(full)
+        if not long:
+            break
+        try:
+            cur = cur.next
+        except Exception:  # noqa: BLE001
+            break
+        n += 1
+    sep = "\n\n" if long else " "
+    joined = sep.join(parts).strip()
+    return joined[:value_max] if len(joined) > value_max else joined
 
 
 def make_page(html: str, url: str, adaptive: bool, adaptive_domain: Optional[str]) -> Selector:
@@ -418,7 +509,10 @@ def maybe_hydrate_spa_listing(url: str, html: str) -> tuple[str, Optional[str]]:
 LABEL_NOISE = re.compile(r"^(n/?a|not disclosed|undisclosed|—|-|contact( broker)?|call)$", re.I)
 MONEY_RE = re.compile(r"(\$\s?\d|\d{1,3}(,\d{3})+|\b\d+(\.\d+)?\s?(k|m|mm|million|thousand)\b|\bnot disclosed\b|\bn/?a\b|\bundisclosed\b|\bconfidential\b)", re.I)
 NUMBER_RE = re.compile(r"\d")
-MONEY_FIELDS = {"asking_price", "annual_profit", "annual_revenue", "ebitda", "sde", "cash_flow", "revenue", "price"}
+MONEY_FIELDS = {
+    "asking_price", "annual_profit", "annual_revenue", "ebitda", "sde", "cash_flow", "revenue", "price",
+    "down_payment", "ffe_value", "inventory", "real_estate_value", "monthly_rent",
+}
 
 
 def value_matches(expect: Optional[str], value: str) -> bool:
@@ -431,12 +525,13 @@ def value_matches(expect: Optional[str], value: str) -> bool:
     return True
 
 
-def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", expect: Optional[str] = None) -> tuple[str, str]:
+def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", expect: Optional[str] = None, long: bool = False) -> tuple[str, str]:
     """Find a key/value pair by its label. Returns (value, how). `expect` filters candidates (money|number)."""
     def ok(v: str) -> bool:
         return bool(v) and value_matches(expect, v)
 
-    value_max = 200 if expect in ("money", "number") else 8000
+    value_max = 200 if expect in ("money", "number") else (20000 if long else 8000)
+    inline_max = 20000 if long else 200
 
     for label in labels:
         try:
@@ -453,21 +548,34 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
             if not is_label_element(own, full, label):
                 continue
             # 1) inline "Label: value" in the same element (label must lead the text, not sit mid-paragraph)
-            inline = strip_label(full, label)
+            inline = strip_label(full if not long else elem_text_blocks(el), label)
             span = label_span(full, label)
             label_pos = span[0] if span else -1
-            if inline and 0 <= label_pos <= 3 and not LABEL_NOISE.match(inline) and len(inline) < 200 and value_mode in ("auto", "inline") and ok(inline):
+            if inline and 0 <= label_pos <= 3 and not LABEL_NOISE.match(inline) and len(inline) < inline_max and value_mode in ("auto", "inline") and ok(inline):
                 return inline, f"label:inline:{label}"
-            # 2) next sibling element (dt/dd, th/td, label/span)
+            # 2) next sibling — skip empty wrappers; prefer .description-value
             if value_mode in ("auto", "nextCell", "next"):
+                nxt = None
                 try:
                     nxt = el.next
                 except Exception:  # noqa: BLE001
                     nxt = None
-                if nxt is not None:
-                    t = elem_text(nxt)
-                    if t and t.lower() != label.lower() and len(t) < value_max and ok(t):
-                        return t, f"label:next:{label}"
+                hops = 0
+                while nxt is not None and hops < 5:
+                    t = collect_following_blocks(nxt, label, value_max, long)
+                    if t and t.lower() != label.lower() and ok(t):
+                        return t, f"label:next{'s' if long else ''}:{label}"
+                    try:
+                        empty = not (elem_text(nxt) or "").strip()
+                    except Exception:  # noqa: BLE001
+                        empty = True
+                    if not empty and not _class_has(nxt, "description-value"):
+                        break
+                    try:
+                        nxt = nxt.next
+                    except Exception:  # noqa: BLE001
+                        break
+                    hops += 1
             # 3) parent text minus label, then parent's next sibling
             if value_mode in ("auto", "parent"):
                 try:
@@ -475,7 +583,7 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
                 except Exception:  # noqa: BLE001
                     par = None
                 if par is not None:
-                    pt = strip_label(elem_text(par), label)
+                    pt = strip_label(elem_text_blocks(par) if long else elem_text(par), label)
                     if pt and len(pt) < value_max and ok(pt):
                         return pt, f"label:parent:{label}"
                     try:
@@ -483,9 +591,9 @@ def label_strategy(page: Selector, labels: list[str], value_mode: str = "auto", 
                     except Exception:  # noqa: BLE001
                         pn = None
                     if pn is not None:
-                        t = elem_text(pn)
-                        if t and len(t) < value_max and ok(t):
-                            return t, f"label:parentnext:{label}"
+                        t = collect_following_blocks(pn, label, value_max, long)
+                        if t and ok(t):
+                            return t, f"label:parentnext{'s' if long else ''}:{label}"
     return "", ""
 
 
@@ -533,6 +641,8 @@ def run_strategy(page: Selector, url: str, field: str, idx: int, strat: dict[str
     stype = (strat.get("type") or "css").lower()
     result = {"value": "", "how": "", "relocated": False, "selector": None}
     identifier = f"{source_key}:{field}:{idx}"
+    long = field in LONGTEXT_FIELDS or bool(strat.get("long"))
+    text_of = elem_text_blocks if long else elem_text
 
     if stype in ("css", "xpath"):
         sel = strat.get("sel") or strat.get("selector") or ""
@@ -563,10 +673,10 @@ def run_strategy(page: Selector, url: str, field: str, idx: int, strat: dict[str
         if attr:
             val = clean((el.attrib or {}).get(attr, ""))
         else:
-            val = elem_text(el)
+            val = text_of(el)
         if strat.get("all"):
-            vals = [elem_text(e) for e in els]
-            val = " | ".join(v for v in vals if v)
+            vals = [text_of(e) for e in els]
+            val = ("\n\n" if long else " | ").join(v for v in vals if v)
         result["value"] = val
         result["how"] = f"{stype}:{sel}"
         return result
@@ -574,7 +684,7 @@ def run_strategy(page: Selector, url: str, field: str, idx: int, strat: dict[str
     if stype == "label":
         labels = strat.get("labels") or ([strat["label"]] if strat.get("label") else [])
         expect = strat.get("expect") or ("money" if field in MONEY_FIELDS else None)
-        val, how = label_strategy(page, labels, strat.get("value", "auto"), expect)
+        val, how = label_strategy(page, labels, strat.get("value", "auto"), expect, long=long)
         result["value"], result["how"] = val, how
         return result
 
@@ -718,7 +828,8 @@ def extract(req: ExtractReq):
                 "fields": {},
                 "elapsed_ms": fetched["elapsed_ms"],
             }
-    html, hydrate_src = maybe_hydrate_spa_listing(req.url, html or "")
+    html = flatten_broken_listing_html(html or "")
+    html, hydrate_src = maybe_hydrate_spa_listing(req.url, html)
     started = time.time()
     fields = extract_fields(html, req.url, req.fields, req.adaptive, req.adaptive_domain, req.source_key)
     out: dict[str, Any] = {
@@ -945,12 +1056,24 @@ def _label_candidates(el) -> list[str]:
             push(m.group(1))
     except Exception:  # noqa: BLE001
         pass
+    # VR listings: span.description-name next to span.description-value
+    try:
+        if _class_has(el, "description-value") or _class_has(el, "description-name"):
+            names = el.xpath("preceding-sibling::*[contains(@class,'description-name')][1]") if _class_has(el, "description-value") else [el]
+            if not names and _class_has(el, "description-name"):
+                names = [el]
+            if names:
+                push(elem_text(names[0]))
+        if _class_has(el, "message-box-left"):
+            push(elem_text(el))
+    except Exception:  # noqa: BLE001
+        pass
     return cands[:5]
 
 
 @app.post("/selector")
 def selector(req: SelectorReq):
-    page = Selector(req.html, url=req.url)
+    page = Selector(flatten_broken_listing_html(req.html or ""), url=req.url)
     try:
         els = page.css(req.path)
     except Exception as exc:  # noqa: BLE001
@@ -958,7 +1081,14 @@ def selector(req: SelectorReq):
     if not els:
         raise HTTPException(404, "element not found for path")
     el = els[0]
-    out: dict[str, Any] = {"tag": el.tag, "text": elem_text(el)[:300], "candidates": []}
+    clicked_text = elem_text_blocks(el) or elem_text(el)
+    out: dict[str, Any] = {
+        "tag": el.tag,
+        "text": clicked_text[:500],
+        "chars": len(clicked_text),
+        "candidates": [],
+        "containers": [],
+    }
     for kind, getter in (
         ("css", lambda: el.generate_css_selector),
         ("css_full", lambda: el.generate_full_css_selector),
@@ -969,10 +1099,55 @@ def selector(req: SelectorReq):
             if not sel:
                 continue
             # verify uniqueness / match count on this page
-            count = len(page.css(sel) if kind.startswith("css") else page.xpath(sel))
-            out["candidates"].append({"type": "xpath" if kind == "xpath" else "css", "sel": sel, "matches": count})
+            matched = page.css(sel) if kind.startswith("css") else page.xpath(sel)
+            count = len(matched)
+            preview = elem_text_blocks(matched[0]) if matched else ""
+            out["candidates"].append({
+                "type": "xpath" if kind == "xpath" else "css",
+                "sel": sel,
+                "matches": count,
+                "chars": len(preview),
+                "raw_value": preview[:200],
+            })
         except Exception as exc:  # noqa: BLE001
             out["candidates"].append({"type": kind, "sel": None, "error": str(exc)[:120]})
+
+    # Ancestor containers — use these for multi-paragraph description / summary
+    base_len = len(clicked_text)
+    cur = el
+    seen_sels: set[str] = set()
+    for depth in range(1, 6):
+        try:
+            cur = cur.parent
+        except Exception:  # noqa: BLE001
+            break
+        if cur is None or not isinstance(getattr(cur, "tag", None), str):
+            break
+        if cur.tag.lower() in ("html", "body"):
+            break
+        text = elem_text_blocks(cur)
+        if len(text) <= base_len + 30:
+            continue
+        try:
+            sel = cur.generate_css_selector
+        except Exception:  # noqa: BLE001
+            sel = None
+        if not sel or sel in seen_sels:
+            continue
+        seen_sels.add(sel)
+        try:
+            count = len(page.css(sel))
+        except Exception:  # noqa: BLE001
+            count = 0
+        out["containers"].append({
+            "type": "css",
+            "sel": sel,
+            "matches": count,
+            "chars": len(text),
+            "raw_value": text[:240],
+            "depth": depth,
+        })
+
     out["labels"] = _label_candidates(el)
     attrs = dict(el.attrib or {})
     out["attrs"] = {k: v[:200] for k, v in attrs.items() if k in ("id", "class", "itemprop", "data-field", "data-label", "name")}

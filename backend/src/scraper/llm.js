@@ -76,8 +76,10 @@ export async function chatJson({ system, user, maxTokens = 800, temperature = 0 
 const FIELD_HINTS = {
   name: 'the listing title / business name',
   asking_price: 'asking price in USD',
-  annual_profit: 'cash flow, SDE, seller discretionary earnings, net income or EBITDA (owner benefit)',
-  annual_revenue: 'gross revenue / annual sales',
+  annual_profit: 'cash flow or owner benefit (not SDE/EBITDA if listed separately)',
+  sde: 'SDE or seller discretionary earnings',
+  ebitda: 'EBITDA',
+  annual_revenue: 'gross revenue / annual sales / total sales',
   location: 'city and state',
   industries: 'industry / category',
   years_established: 'year established or years in business',

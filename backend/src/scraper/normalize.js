@@ -117,9 +117,14 @@ export function parseYesNo(raw) {
   return String(raw).trim().slice(0, 100);
 }
 
-export function cleanText(raw, max = 20000) {
+export function cleanText(raw, max = 20000, { preserveNewlines = false } = {}) {
   if (raw == null) return null;
-  const s = String(raw).replace(/\s+/g, ' ').trim();
+  let s = String(raw);
+  if (preserveNewlines) {
+    s = s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  } else {
+    s = s.replace(/\s+/g, ' ').trim();
+  }
   return s ? s.slice(0, max) : null;
 }
 
@@ -128,15 +133,38 @@ export const FIELD_REGISTRY = {
   business: [
     { key: 'name', label: 'Business name / title', type: 'text', required: true },
     { key: 'asking_price', label: 'Asking price', type: 'money' },
-    { key: 'annual_profit', label: 'Cash flow / SDE / EBITDA', type: 'money' },
+    { key: 'down_payment', label: 'Down payment', type: 'money', virtual: true },
+    { key: 'annual_profit', label: 'Cash flow', type: 'money' },
+    { key: 'sde', label: 'SDE', type: 'money', virtual: true },
+    { key: 'ebitda', label: 'EBITDA', type: 'money', virtual: true },
     { key: 'annual_revenue', label: 'Gross revenue', type: 'money' },
-    { key: 'ebitda', label: 'EBITDA (if separate from cash flow)', type: 'money', virtual: true },
-    { key: 'sde', label: 'SDE (if separate from cash flow)', type: 'money', virtual: true },
+    { key: 'ffe_value', label: 'FF&E value', type: 'money', virtual: true },
+    { key: 'ffe_included', label: 'FF&E included?', type: 'yesno', virtual: true },
+    { key: 'inventory', label: 'Inventory', type: 'money', virtual: true },
+    { key: 'inventory_included', label: 'Inventory included?', type: 'yesno', virtual: true },
+    { key: 'lender_prequalified', label: 'Lender pre-qualified?', type: 'yesno', virtual: true },
+    { key: 'employees', label: 'Employees', type: 'text', virtual: true },
+    { key: 'real_estate_in_sale', label: 'Real estate as part of sale?', type: 'yesno', virtual: true },
+    { key: 'real_estate_value', label: 'Value of real estate', type: 'money', virtual: true },
+    { key: 'real_estate_included', label: 'Real estate included?', type: 'yesno', virtual: true },
+    { key: 'monthly_rent', label: 'Monthly rent / lease', type: 'money', virtual: true },
+    { key: 'building_type', label: 'Building type', type: 'text', virtual: true },
+    { key: 'building_sqft', label: 'Building square footage', type: 'text', virtual: true },
+    { key: 'property_sqft', label: 'Property square footage', type: 'text', virtual: true },
     { key: 'location', label: 'Location (city, state)', type: 'location', virtual: true },
     { key: 'city', label: 'City', type: 'text' },
     { key: 'state', label: 'State', type: 'state' },
     { key: 'industries', label: 'Industry / category', type: 'industries' },
     { key: 'description', label: 'Description', type: 'longtext' },
+    { key: 'summary', label: 'Summary', type: 'longtext', virtual: true },
+    { key: 'reason_for_sale', label: 'Reason for sale', type: 'longtext', virtual: true },
+    { key: 'training_support', label: 'Training & support', type: 'longtext', virtual: true },
+    { key: 'historical_summary', label: 'Historical summary', type: 'longtext', virtual: true },
+    { key: 'buyer_qualifications', label: 'Owner / buyer qualifications', type: 'longtext', virtual: true },
+    { key: 'competition', label: 'Competition', type: 'longtext', virtual: true },
+    { key: 'growth_opportunities', label: 'Potential growth', type: 'longtext', virtual: true },
+    { key: 'financing_notes', label: 'Financing terms (seller/owner)', type: 'longtext', virtual: true },
+    { key: 'seller_financing', label: 'Seller / owner financing?', type: 'yesno', virtual: true },
     { key: 'years_established', label: 'Year established', type: 'year' },
     { key: 'franchise', label: 'Franchise?', type: 'yesno' },
     { key: 'remote_relocatable', label: 'Relocatable?', type: 'yesno' },
@@ -172,7 +200,7 @@ export function normalizeListing(extracted, pageUrl, sourceKey) {
     source: sourceKey,
     source_id: null,
     name: cleanText(v('name'), 500),
-    description: cleanText(v('description')),
+    description: cleanText(v('description'), 20000, { preserveNewlines: true }),
     listing_url: cleanText(v('listing_url'), 2000) || pageUrl,
     industries: parseIndustries(v('industries')),
     asking_price: parseMoney(v('asking_price')),

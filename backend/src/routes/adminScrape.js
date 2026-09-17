@@ -31,6 +31,22 @@ const notFound = (msg) => Object.assign(new Error(msg), { status: 404 });
 const ALLOWED_STATUS = ['draft', 'active', 'paused', 'broken'];
 const ALLOWED_MODES = ['http', 'browser', 'stealth'];
 
+/** If the trainer omitted Discover, fill startUrls from the source listings page. */
+export function fillDiscoverStartUrls(recipe, source = {}) {
+  if (!recipe || typeof recipe !== 'object') return recipe;
+  const d = { ...(recipe.discover || {}) };
+  const urls = [...(d.startUrls || [])]
+    .concat(d.startUrl ? [d.startUrl] : [])
+    .map((u) => String(u || '').trim())
+    .filter(Boolean);
+  if (!urls.length) {
+    const fb = source.listings_url || source.base_url;
+    if (fb) urls.push(fb);
+  }
+  if (!urls.length) return recipe;
+  return { ...recipe, discover: { ...d, startUrls: [...new Set(urls)] } };
+}
+
 export function validateRecipe(recipe) {
   const errors = [];
   if (!recipe || typeof recipe !== 'object') return ['recipe must be an object'];
@@ -158,6 +174,7 @@ router.patch('/sources/:key', wrap(async (req, res) => {
   if (b.recipe !== undefined) {
     if (b.recipe === null) set('recipe', null);
     else {
+      b.recipe = fillDiscoverStartUrls(b.recipe, source);
       const errs = validateRecipe(b.recipe);
       if (errs.length) return res.status(400).json({ error: 'invalid recipe', details: errs });
       set('recipe', JSON.stringify(b.recipe));
