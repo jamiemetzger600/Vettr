@@ -19,11 +19,59 @@ const PICKER_SCRIPT = `<script>(function(){
     }
     return parts.join(' ');
   }
-  document.addEventListener('mouseover',function(e){ if(!picking) return; if(active) active.style.outline=''; active=e.target; active.style.outline='2px solid #27ae60'; active.style.outlineOffset='1px'; },true);
+  function clearMapped(){
+    document.querySelectorAll('[data-vettr-mapped]').forEach(function(el){
+      el.style.outline=''; el.style.outlineOffset=''; el.removeAttribute('data-vettr-mapped');
+    });
+  }
+  function mark(el){
+    if(!el) return;
+    el.setAttribute('data-vettr-mapped','1');
+    el.style.outline='2px solid #27ae60';
+    el.style.outlineOffset='2px';
+    try{ el.scrollIntoView({block:'center'}); }catch(err){}
+  }
+  function findByText(q){
+    if(!q) return null;
+    q=String(q).replace(/\\s+/g,' ').trim();
+    if(q.length<2) return null;
+    var walker=document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+    var best=null, bestLen=1e9;
+    while(walker.nextNode()){
+      var el=walker.currentNode;
+      if(el.children && el.children.length>12) continue;
+      var t=((el.innerText||el.textContent||'')+'').replace(/\\s+/g,' ').trim();
+      if(!t || t.length>4000) continue;
+      if(t===q || t.indexOf(q)===0 || (q.length>=6 && t.indexOf(q)!==-1)){
+        if(t.length<bestLen){ best=el; bestLen=t.length; }
+      }
+    }
+    return best;
+  }
+  document.addEventListener('mouseover',function(e){
+    if(!picking) return;
+    if(active && active.getAttribute('data-vettr-mapped')!=='1') active.style.outline='';
+    active=e.target;
+    if(active.getAttribute('data-vettr-mapped')!=='1'){ active.style.outline='2px solid #27ae60'; active.style.outlineOffset='1px'; }
+  },true);
   document.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); if(!picking) return; var el=e.target;
     parent.postMessage({type:'vettr-pick', path:cssPath(el), text:(el.innerText||el.textContent||'').trim().slice(0,200), tag:el.tagName.toLowerCase()}, '*'); },true);
   document.addEventListener('submit',function(e){ e.preventDefault(); },true);
-  window.addEventListener('message',function(e){ if(e.data && e.data.type==='vettr-picking') picking=!!e.data.on; });
+  window.addEventListener('message',function(e){
+    var d=e.data||{};
+    if(d.type==='vettr-picking') picking=!!d.on;
+    if(d.type==='vettr-highlight'){
+      clearMapped();
+      var el=null;
+      if(d.css){ try{ el=document.querySelector(d.css); }catch(err){} }
+      if(!el && d.text) el=findByText(d.text);
+      if(!el && d.label){
+        var lab=findByText(d.label);
+        if(lab) el=lab.nextElementSibling||lab.parentElement;
+      }
+      mark(el);
+    }
+  });
   parent.postMessage({type:'vettr-ready'}, '*');
 })();</script>`;
 
@@ -178,9 +226,22 @@ export default function RecipeTrainerPage() {
 
   const srcdoc = useMemo(() => (snap?.html ? snap.html.replace(/<\/body>/i, `${PICKER_SCRIPT}</body>`) : ''), [snap]);
 
+  const postHighlight = useCallback(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    const rules = recipe?.fields?.[activeField] || [];
+    const pv = preview?.fields?.[activeField];
+    const css = rules.find((r) => (r.type === 'css' || r.type === 'xpath') && r.sel)?.sel || pv?.selector || '';
+    const labelRule = rules.find((r) => r.type === 'label');
+    const label = (labelRule?.labels && labelRule.labels[0]) || labelRule?.label || '';
+    const text = pv?.value ? String(pv.value).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+    win.postMessage({ type: 'vettr-highlight', css, text, label }, '*');
+  }, [activeField, preview, recipe?.fields]);
+
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage({ type: 'vettr-picking', on: picking }, '*');
-  }, [picking, srcdoc]);
+    postHighlight();
+  }, [picking, srcdoc, postHighlight]);
 
   // ---- Preview extraction (runs whenever rules change) -----------------------
   const runPreview = useCallback(async (fields) => {
@@ -198,7 +259,11 @@ export default function RecipeTrainerPage() {
     const onMsg = async (e) => {
       const d = e.data;
       if (!d || typeof d !== 'object') return;
-      if (d.type === 'vettr-ready') { iframeRef.current?.contentWindow?.postMessage({ type: 'vettr-picking', on: picking }, '*'); return; }
+      if (d.type === 'vettr-ready') {
+        iframeRef.current?.contentWindow?.postMessage({ type: 'vettr-picking', on: picking }, '*');
+        postHighlight();
+        return;
+      }
       if (d.type !== 'vettr-pick' || !snap?.id) return;
       setBusy('selector'); setErr(null);
       try {
@@ -210,7 +275,7 @@ export default function RecipeTrainerPage() {
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [snap?.id, picking]);
+  }, [snap?.id, picking, postHighlight]);
 
   const setRules = (field, rules) => setRecipe((r) => {
     const fields = { ...(r.fields || {}) };
@@ -447,7 +512,7 @@ export default function RecipeTrainerPage() {
                 <span className="spacer" />
                 <button type="button" className="btn btn-secondary btn-sm" disabled={!snap || busy === 'suggest'} onClick={suggest} title="Ask the local LLM where each field is on this page">{busy === 'suggest' ? 'Asking LLM…' : 'Suggest with AI'}</button>
               </div>
-              <p className="muted" style={{ margin: '0 0 8px' }}>{snap ? 'Select a field, then click its value on the page.' : 'Load a page to start picking.'}</p>
+              <p className="muted" style={{ margin: '0 0 8px' }}>{snap ? 'Select a field to outline it in green, then click to set or change the rule.' : 'Load a page to start picking.'}</p>
 
               <div className="trainer-fields">
                 {visibleFields.map((f) => {

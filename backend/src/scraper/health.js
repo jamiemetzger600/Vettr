@@ -82,7 +82,7 @@ export async function evaluateRun(run, source) {
   if (attempted) score -= Math.round(((run.failed || 0) / attempted) * 30);
   score = Math.max(0, Math.min(100, score));
 
-  const paused = breaches.some((b) => b.kind === 'blocked');
+  const paused = breaches.some((b) => b.kind === 'blocked') && run.trigger === 'cron';
   return { score, breaches, baseline, paused };
 }
 

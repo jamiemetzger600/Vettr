@@ -97,6 +97,11 @@ export default function SourceDetailPage() {
                     <div className="row" key={f}><span>{f}</span><span className="muted">{pct}%{baseline?.coverage?.[f] != null ? ` / ${baseline.coverage[f]}` : ''}</span><Bar pct={pct} /></div>
                   ))}
                 </div>
+              ) : lastRun ? (
+                <p className={lastRun.status === 'failed' ? 'scrape-error' : 'muted'}>
+                  Run #{lastRun.id} {lastRun.status}{lastRun.error ? `: ${lastRun.error}` : ''}.
+                  {lastRun.blocked ? ` ${lastRun.blocked} blocked.` : ''} Sample 25 needs listing URLs — BizBuySell search pages often return Access Denied.
+                </p>
               ) : <p className="muted">No completed runs yet. Use the trainer, then Sample 25.</p>}
             </div>
             <div className="scrape-panel">
