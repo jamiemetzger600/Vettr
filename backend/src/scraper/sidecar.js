@@ -94,8 +94,8 @@ export function discover({ discover, mode = 'http', maxUrls = 500, rateLimitMs =
 }
 
 /** @returns {{url,final_url,status,blocked,block_reason,title,html,raw_html,text,elapsed_ms}} */
-export function snapshot({ url, mode = 'browser', timeoutMs, proxy, solveCloudflare }) {
-  return post('/snapshot', { url, mode, timeout_ms: timeoutMs, proxy, solve_cloudflare: !!solveCloudflare });
+export function snapshot({ url, mode = 'browser', timeoutMs, proxy, solveCloudflare, html }) {
+  return post('/snapshot', { url, mode, timeout_ms: timeoutMs, proxy, solve_cloudflare: !!solveCloudflare, html });
 }
 
 /** @returns {{tag,text,candidates:[{type,sel,matches}],labels:string[],attrs}} */

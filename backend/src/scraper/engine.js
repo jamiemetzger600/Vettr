@@ -37,11 +37,12 @@ export async function loadSource(sourceKey) {
 /** Effective fetch settings for a recipe/source. */
 export function fetchSettings(source, recipe) {
   const f = recipe?.fetch || {};
+  const mode = f.mode || source?.fetch_mode || 'http';
   return {
-    mode: f.mode || source?.fetch_mode || 'http',
+    mode,
     waitSelector: f.waitSelector || null,
     networkIdle: f.networkIdle ?? false,
-    solveCloudflare: f.solveCloudflare ?? false,
+    solveCloudflare: f.solveCloudflare ?? (mode === 'stealth'),
     proxy: f.proxy || process.env.SCRAPE_PROXY_URL || null,
     timeoutMs: f.timeoutMs || null,
     rateLimitMs: recipe?.politeness?.rateLimitMs ?? source?.rate_limit_ms ?? 3000,
@@ -150,9 +151,14 @@ export async function executeRun(run) {
     let urls = Array.isArray(options.urls) && options.urls.length ? options.urls.slice() : null;
     if (!urls) {
       if (!recipe.discover) throw new Error('recipe.discover missing (or pass options.urls)');
-      const maxUrls = Number(options.maxUrls) || Number(recipe.discover.maxUrls) || 500;
+      let discover = recipe.discover;
+      const hasStart = (discover.startUrls || []).some(Boolean) || discover.startUrl;
+      if (!hasStart && (source.listings_url || source.base_url)) {
+        discover = { ...discover, startUrls: [source.listings_url || source.base_url] };
+      }
+      const maxUrls = Number(options.maxUrls) || Number(discover.maxUrls) || 500;
       const d = await sidecar.discover({
-        discover: recipe.discover, mode: recipe.discover.mode || fs.mode, maxUrls,
+        discover, mode: discover.mode || fs.mode, maxUrls,
         rateLimitMs: Math.min(fs.rateLimitMs, 5000), timeoutMs: fs.timeoutMs, proxy: fs.proxy, solveCloudflare: fs.solveCloudflare,
       });
       urls = d.urls || [];

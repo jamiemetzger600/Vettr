@@ -30,7 +30,7 @@ from scrapling.parser import Selector
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [sidecar] %(message)s")
 log = logging.getLogger("sidecar")
 
-APP_VERSION = "0.1.4"
+APP_VERSION = "0.1.5"
 ADAPTIVE_DB = os.environ.get(
     "SCRAPLING_ADAPTIVE_DB",
     os.path.expanduser("~/Library/Application Support/vettr/scrapling.db"),
@@ -105,6 +105,7 @@ class SnapshotReq(BaseModel):
     timeout_ms: Optional[int] = None
     proxy: Optional[str] = None
     solve_cloudflare: bool = False
+    html: Optional[str] = None
 
 
 class SelectorReq(BaseModel):
@@ -132,6 +133,10 @@ def detect_block(status: int, html: str) -> Optional[str]:
     return None
 
 
+def _chrome_app() -> bool:
+    return os.path.isdir("/Applications/Google Chrome.app")
+
+
 def do_fetch(
     url: str,
     mode: str = "http",
@@ -144,6 +149,7 @@ def do_fetch(
     timeout_ms = timeout_ms or DEFAULT_TIMEOUT_MS
     started = time.time()
     mode = (mode or "http").lower()
+    host = _domain(url)
     try:
         if mode == "http":
             kwargs: dict[str, Any] = {
@@ -156,20 +162,30 @@ def do_fetch(
                 kwargs["proxy"] = proxy
             resp = Fetcher.get(url, **kwargs)
         else:
-            kwargs = {
+            # Keep styles/JS — WAFs (Akamai on BizBuySell) fail if we drop them.
+            kwargs: dict[str, Any] = {
                 "headless": True,
-                "timeout": timeout_ms,
+                "timeout": max(timeout_ms, 90000) if mode == "stealth" else timeout_ms,
                 "network_idle": network_idle,
-                "disable_resources": True,
+                "disable_resources": False,
             }
             if proxy:
                 kwargs["proxy"] = proxy
+            if not wait_selector and "bizbuysell.com" in host:
+                path = urlparse(url).path or ""
+                if re.search(r"/(business-opportunity|business-for-sale)/[^/]+/\d+", path):
+                    wait_selector = "#ldp-sticky-header, h1"
             if wait_selector:
                 kwargs["wait_selector"] = wait_selector
             with BROWSER_LOCK:
                 if mode == "stealth":
-                    kwargs["solve_cloudflare"] = solve_cloudflare
+                    kwargs["solve_cloudflare"] = bool(solve_cloudflare or "bizbuysell.com" in host)
                     kwargs["block_webrtc"] = True
+                    kwargs["hide_canvas"] = True
+                    kwargs["wait"] = 2500
+                    if _chrome_app():
+                        kwargs["real_chrome"] = True
+                    log.info("stealth fetch chrome=%s solve_cf=%s wait=%s", kwargs.get("real_chrome"), kwargs.get("solve_cloudflare"), wait_selector)
                     resp = StealthyFetcher.fetch(url, **kwargs)
                 else:
                     resp = DynamicFetcher.fetch(url, **kwargs)
@@ -992,7 +1008,32 @@ def discover(req: DiscoverReq):
 
 @app.post("/snapshot")
 def snapshot(req: SnapshotReq):
-    f = do_fetch(req.url, req.mode, req.timeout_ms, req.proxy, None, req.mode != "http", req.solve_cloudflare)
+    if req.html and len(req.html) > 200:
+        html = flatten_broken_listing_html(req.html)
+        title = ""
+        text = ""
+        try:
+            page = Selector(html, url=req.url)
+            t = page.css("title")
+            title = clean(t[0].text) if t else ""
+            text = page.get_all_text(separator="\n", strip=True)[:30000]
+        except Exception:  # noqa: BLE001
+            pass
+        log.info("snapshot from pasted html url=%s bytes=%s", req.url, len(html))
+        return {
+            "url": req.url,
+            "final_url": req.url,
+            "status": 200,
+            "blocked": False,
+            "block_reason": None,
+            "title": title,
+            "html": sanitize_html(html, req.url),
+            "raw_html": html,
+            "text": text,
+            "elapsed_ms": 0,
+            "hydrated": "pasted",
+        }
+    f = do_fetch(req.url, req.mode, req.timeout_ms, req.proxy, None, False, req.solve_cloudflare or req.mode == "stealth")
     if f["status"] == 0 and f["error"]:
         raise HTTPException(502, f"fetch failed: {f['error']}")
     html, hydrate_src = maybe_hydrate_spa_listing(req.url, f["html"] or "")

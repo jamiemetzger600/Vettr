@@ -30,18 +30,22 @@ const notFound = (msg) => Object.assign(new Error(msg), { status: 404 });
 
 const ALLOWED_STATUS = ['draft', 'active', 'paused', 'broken'];
 const ALLOWED_MODES = ['http', 'browser', 'stealth'];
+const isAirtableFeed = (key) => key === 'airtable_bizbuysell';
+
+function asUrlList(value) {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value : String(value).split(/\s+/);
+  return raw.map((u) => String(u || '').trim()).filter((u) => /^https?:\/\//i.test(u));
+}
 
 /** If the trainer omitted Discover, fill startUrls from the source listings page. */
 export function fillDiscoverStartUrls(recipe, source = {}) {
   if (!recipe || typeof recipe !== 'object') return recipe;
   const d = { ...(recipe.discover || {}) };
-  const urls = [...(d.startUrls || [])]
-    .concat(d.startUrl ? [d.startUrl] : [])
-    .map((u) => String(u || '').trim())
-    .filter(Boolean);
+  const urls = asUrlList(d.startUrls).concat(asUrlList(d.startUrl));
   if (!urls.length) {
     const fb = source.listings_url || source.base_url;
-    if (fb) urls.push(fb);
+    if (fb) urls.push(String(fb).trim());
   }
   if (!urls.length) return recipe;
   return { ...recipe, discover: { ...d, startUrls: [...new Set(urls)] } };
@@ -63,7 +67,7 @@ export function validateRecipe(recipe) {
   }
   if (recipe.discover) {
     const d = recipe.discover;
-    if (!(d.startUrls?.length || d.startUrl)) errors.push('discover.startUrls required');
+    if (!asUrlList(d.startUrls).length && !asUrlList(d.startUrl).length) errors.push('discover.startUrls required');
     if (d.pagination?.urlTemplate && !/\{page\}/.test(d.pagination.urlTemplate)) errors.push('pagination.urlTemplate must contain {page}');
   }
   if (recipe.fetch?.mode && !ALLOWED_MODES.includes(recipe.fetch.mode)) errors.push(`fetch.mode must be one of ${ALLOWED_MODES.join(', ')}`);
@@ -106,6 +110,8 @@ router.get('/sources', wrap(async (req, res) => {
   res.json({ sources: r.rows });
 }));
 
+const SOURCE_KEY_ALIASES = { bizbuysell: 'bizbuysell_direct', bizquest: 'bizquest_direct' };
+
 router.post('/sources', wrap(async (req, res) => {
   const { display_name, base_url, listings_url, fetch_mode = 'http', source_key } = req.body || {};
   if (!display_name || !(base_url || listings_url)) throw bad('display_name and base_url/listings_url required');
@@ -114,12 +120,18 @@ router.post('/sources', wrap(async (req, res) => {
     try { key = new URL(base_url || listings_url).hostname.replace(/^www\./, '').split('.')[0]; } catch { key = display_name; }
     key = key.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60);
   }
+  if (SOURCE_KEY_ALIASES[key]) key = SOURCE_KEY_ALIASES[key];
   if (!ALLOWED_MODES.includes(fetch_mode)) throw bad('invalid fetch_mode');
+  const existing = await loadSource(key);
+  if (existing) {
+    console.log('[admin-scrape] reuse source', key);
+    return res.status(200).json({ source: existing, reused: true });
+  }
   const r = await pool.query(
     `INSERT INTO deal_sources (source_key, display_name, source_type, base_url, listings_url, fetch_mode, status, scrape_enabled, scrape_cron, entity_type)
      VALUES ($1,$2,'recipe',$3,$4,$5,'draft',false,'0 5 * * *','business') RETURNING *`,
     [key, display_name, base_url || null, listings_url || null, fetch_mode]
-  ).catch((err) => { if (/duplicate/.test(err.message)) throw bad(`source_key ${key} already exists`); throw err; });
+  );
   console.log('[admin-scrape] created source', key);
   res.status(201).json({ source: r.rows[0] });
 }));
@@ -172,11 +184,18 @@ router.patch('/sources/:key', wrap(async (req, res) => {
     else set('paused_reason', b.paused_reason || 'Paused by admin');
   }
   if (b.recipe !== undefined) {
+    if (isAirtableFeed(source.source_key)) throw bad('Airtable feed is managed by its own scraper — train bizbuysell_direct instead');
     if (b.recipe === null) set('recipe', null);
     else {
       b.recipe = fillDiscoverStartUrls(b.recipe, source);
       const errs = validateRecipe(b.recipe);
-      if (errs.length) return res.status(400).json({ error: 'invalid recipe', details: errs });
+      if (errs.length) {
+        console.warn('[admin-scrape] invalid recipe', source.source_key, errs, {
+          listings_url: source.listings_url, base_url: source.base_url,
+          discover: b.recipe?.discover,
+        });
+        return res.status(400).json({ error: 'invalid recipe', details: errs });
+      }
       set('recipe', JSON.stringify(b.recipe));
       if (b.recipe.fetch?.mode) set('fetch_mode', b.recipe.fetch.mode);
     }
@@ -203,6 +222,7 @@ router.delete('/sources/:key', wrap(async (req, res) => {
 router.post('/sources/:key/run', wrap(async (req, res) => {
   const source = await loadSource(req.params.key);
   if (!source) throw notFound('source not found');
+  if (isAirtableFeed(source.source_key) || source.source_type === 'airtable') throw bad('Airtable feed is managed by its own scraper');
   if (!source.recipe?.fields) throw bad('source has no recipe yet');
   const { maxUrls, limit } = req.body || {};
   const { run, reused } = await enqueueRun(source.source_key, 'manual', { maxUrls: maxUrls ? Number(maxUrls) : undefined, limit: limit ? Number(limit) : undefined });
@@ -240,7 +260,7 @@ router.post('/sources/:key/unpublish', wrap(async (req, res) => {
 router.post('/sources/:key/discover-test', wrap(async (req, res) => {
   const source = await loadSource(req.params.key);
   if (!source) throw notFound('source not found');
-  const recipe = req.body?.recipe || source.recipe;
+  const recipe = fillDiscoverStartUrls(req.body?.recipe || source.recipe, source);
   if (!recipe?.discover) throw bad('recipe.discover required');
   const errs = validateRecipe({ discover: recipe.discover });
   if (errs.length) return res.status(400).json({ error: 'invalid discover config', details: errs });
@@ -257,7 +277,7 @@ router.post('/sources/:key/discover-test', wrap(async (req, res) => {
 router.post('/sources/:key/test', wrap(async (req, res) => {
   const source = await loadSource(req.params.key);
   if (!source) throw notFound('source not found');
-  const recipe = req.body?.recipe || source.recipe;
+  const recipe = fillDiscoverStartUrls(req.body?.recipe || source.recipe, source);
   if (!recipe?.fields) throw bad('recipe.fields required');
   const errs = validateRecipe(recipe);
   if (errs.length) return res.status(400).json({ error: 'invalid recipe', details: errs });
@@ -398,12 +418,20 @@ function gcSnapshots() {
 }
 
 router.post('/snapshot', wrap(async (req, res) => {
-  const { url, mode = 'http', source_key } = req.body || {};
+  const { url, mode = 'http', source_key, html } = req.body || {};
   if (!url) throw bad('url required');
   gcSnapshots();
   const source = source_key ? await loadSource(source_key) : null;
   const fs = fetchSettings(source, source?.recipe);
-  const snap = await sidecar.snapshot({ url, mode: mode || fs.mode, proxy: fs.proxy, solveCloudflare: fs.solveCloudflare });
+  const usedMode = mode || fs.mode;
+  const snap = await sidecar.snapshot({
+    url,
+    mode: usedMode,
+    proxy: fs.proxy,
+    solveCloudflare: usedMode === 'stealth' || fs.solveCloudflare,
+    timeoutMs: usedMode === 'http' ? 45000 : 120000,
+    html: typeof html === 'string' && html.length > 200 ? html : undefined,
+  });
   const id = crypto.randomUUID();
   snapshots.set(id, { ...snap, createdAt: Date.now() });
   console.log('[admin-scrape] snapshot', id, url, snap.status, `${snap.html?.length || 0}b`);

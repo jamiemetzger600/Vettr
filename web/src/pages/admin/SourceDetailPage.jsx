@@ -53,9 +53,15 @@ export default function SourceDetailPage() {
           <Score value={source.health?.score} />
           <span className="muted">{source.anti_bot_estimate ? `anti-bot ${source.anti_bot_estimate} · ` : ''}mode {source.fetch_mode} · every {source.rate_limit_ms}ms · cron <span className="mono">{source.scrape_cron || '—'}</span></span>
           <span className="spacer" />
-          <Link className="btn btn-secondary btn-sm" to={`/admin/sources/${encodeURIComponent(source.source_key)}/train`}>{source.recipe ? 'Edit recipe (trainer)' : 'Train recipe'}</Link>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !source.recipe} onClick={() => act('Run now', () => adminScrapeAPI.runSource(source.source_key))}>Run now</button>
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !source.recipe} onClick={() => act('Sample run (25)', () => adminScrapeAPI.runSource(source.source_key, { limit: 25 }))}>Sample 25</button>
+          {source.source_key === 'airtable_bizbuysell'
+            ? <span className="muted">Airtable feed — train <Link to="/admin/sources/bizbuysell_direct/train">BizBuySell (direct)</Link></span>
+            : (
+              <>
+                <Link className="btn btn-secondary btn-sm" to={`/admin/sources/${encodeURIComponent(source.source_key)}/train`}>{source.recipe ? 'Edit recipe (trainer)' : 'Train recipe'}</Link>
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !source.recipe} onClick={() => act('Run now', () => adminScrapeAPI.runSource(source.source_key))}>Run now</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !source.recipe} onClick={() => act('Sample run (25)', () => adminScrapeAPI.runSource(source.source_key, { limit: 25 }))}>Sample 25</button>
+              </>
+            )}
           {source.status === 'paused' || source.status === 'draft' || source.status === 'broken'
             ? <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !source.recipe} onClick={() => act('Activate', () => adminScrapeAPI.resume(source.source_key))}>Activate schedule</button>
             : <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act('Pause', () => adminScrapeAPI.pause(source.source_key, 'Paused by admin'))}>Pause</button>}

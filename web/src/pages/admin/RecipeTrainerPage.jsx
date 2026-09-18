@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import AdminScrapeLayout, { Chip } from './AdminScrapeLayout';
 import { adminScrapeAPI } from '../../utils/adminScrapeApi';
 
@@ -27,19 +27,64 @@ const PICKER_SCRIPT = `<script>(function(){
   parent.postMessage({type:'vettr-ready'}, '*');
 })();</script>`;
 
-const DEFAULT_RECIPE = (source) => ({
-  fetch: { mode: source?.fetch_mode || 'http' },
-  discover: {
-    startUrls: [source?.listings_url || source?.base_url || ''].filter(Boolean),
+function defaultDiscover(source) {
+  const startUrls = collectStartUrls(null, source, '');
+  let host = '';
+  try { host = new URL(startUrls[0] || source?.listings_url || source?.base_url || '').hostname.replace(/^www\./i, '').toLowerCase(); } catch { /* ignore */ }
+  if (host === 'bizbuysell.com') {
+    let origin = 'https://www.bizbuysell.com';
+    try { origin = new URL(startUrls[0] || source?.listings_url || source?.base_url).origin; } catch { /* ignore */ }
+    return {
+      startUrls: [`${origin}/businesses-for-sale/`],
+      listingLink: { css: 'a[href*="/business-opportunity/"], a[href*="/business-for-sale/"]' },
+      urlPattern: '/(business-opportunity|business-for-sale)/[^/?#]+/[0-9]+',
+      pagination: { css: 'a[rel=next], a.next, .next a', maxPages: 20 },
+      maxUrls: 1500,
+    };
+  }
+  return {
+    startUrls,
     listingLink: { css: 'a[href]' },
     urlPattern: '',
     pagination: { css: 'a[rel=next], a.next, .next a', maxPages: 20 },
     maxUrls: 1500,
-  },
+  };
+}
+
+const DEFAULT_RECIPE = (source) => ({
+  fetch: { mode: source?.fetch_mode || 'http' },
+  discover: defaultDiscover(source),
   fields: {},
   validate: { anyOf: ['asking_price', 'annual_profit', 'annual_revenue'] },
   politeness: { rateLimitMs: source?.rate_limit_ms || 3000 },
 });
+
+function isListingsIndex(url) {
+  try {
+    const p = new URL(url).pathname.replace(/\/+$/, '') || '/';
+    return /\/(businesses-for-sale|buy|search)$/i.test(p) || p === '/';
+  } catch { return false; }
+}
+
+function collectStartUrls(recipe, source, snapUrl) {
+  const d = recipe?.discover || {};
+  const raw = d.startUrls;
+  const fromRecipe = (Array.isArray(raw) ? raw : raw ? String(raw).split(/\s+/) : [])
+    .concat(d.startUrl ? [d.startUrl] : [])
+    .map((u) => String(u || '').trim())
+    .filter((u) => /^https?:\/\//i.test(u));
+  if (fromRecipe.length) return [...new Set(fromRecipe)];
+  const listed = String(source?.listings_url || source?.base_url || '').trim();
+  if (/^https?:\/\//i.test(listed)) return [listed];
+  try {
+    const u = new URL(snapUrl || '');
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host === 'bizbuysell.com') return [`${u.origin}/businesses-for-sale/`];
+    if (host === 'bizquest.com') return [`${u.origin}/businesses-for-sale/`];
+    if (u.origin && u.origin !== 'null') return [`${u.origin}/`];
+  } catch { /* ignore */ }
+  return [];
+}
 
 const PRIMARY_FIELDS = ['name', 'asking_price', 'annual_profit', 'sde', 'ebitda', 'annual_revenue', 'location', 'industries', 'description', 'years_established', 'broker_name', 'source_id'];
 
@@ -56,6 +101,7 @@ function ruleSummary(rules) {
 
 export default function RecipeTrainerPage() {
   const { key } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const iframeRef = useRef(null);
   const [source, setSource] = useState(null);
@@ -67,6 +113,8 @@ export default function RecipeTrainerPage() {
   // Snapshot / picking
   const [snapUrl, setSnapUrl] = useState('');
   const [snap, setSnap] = useState(null);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteHtml, setPasteHtml] = useState('');
   const [picking, setPicking] = useState(true);
   const [activeField, setActiveField] = useState('asking_price');
   const [pick, setPick] = useState(null); // { path, text, tag, candidates, labels }
@@ -88,23 +136,43 @@ export default function RecipeTrainerPage() {
         setSource(d.source);
         setRegistry(st.fieldRegistry?.[d.source.entity_type || 'business'] || []);
         const r = d.source.recipe && Object.keys(d.source.recipe).length ? d.source.recipe : DEFAULT_RECIPE(d.source);
-        setRecipe({ ...DEFAULT_RECIPE(d.source), ...r, discover: { ...DEFAULT_RECIPE(d.source).discover, ...(r.discover || {}) }, fields: { ...(r.fields || {}) } });
+        const defDisc = DEFAULT_RECIPE(d.source).discover;
+        const disc = { ...defDisc, ...(r.discover || {}) };
+        if (!disc.urlPattern) disc.urlPattern = defDisc.urlPattern;
+        if (!disc.listingLink?.css || disc.listingLink.css === 'a[href]') disc.listingLink = defDisc.listingLink;
+        const hint = location.state?.snapUrl || location.state?.listings_url || '';
+        const merged = { ...DEFAULT_RECIPE(d.source), ...r, discover: disc, fields: { ...(r.fields || {}) } };
+        setRecipe({ ...merged, discover: { ...merged.discover, startUrls: collectStartUrls(merged, d.source, hint) } });
+        setSnapUrl((prev) => {
+          if (prev) return prev;
+          const listed = hint || d.source.listings_url || d.source.base_url || '';
+          return isListingsIndex(listed) ? '' : listed;
+        });
       })
       .catch((e) => setErr(e.message));
   }, [key]);
 
-  const mode = recipe?.fetch?.mode || 'http';
+  const mode = recipe?.fetch?.mode || source?.fetch_mode || 'http';
   const setMode = (m) => setRecipe((r) => ({ ...r, fetch: { ...(r.fetch || {}), mode: m } }));
 
   // ---- Snapshot -------------------------------------------------------------
-  const takeSnapshot = async (url = snapUrl) => {
-    if (!url) return;
+  const takeSnapshot = async (url = snapUrl, html) => {
+    if (!url && !html) return;
+    const pageUrl = url || snapUrl;
+    if (!pageUrl) { setErr('Paste the listing URL first, then the HTML.'); return; }
     setBusy('snapshot'); setErr(null); setPick(null); setPreview(null); setSuggestions(null);
     try {
-      const s = await adminScrapeAPI.snapshot({ url, mode, source_key: key });
+      const s = await adminScrapeAPI.snapshot({ url: pageUrl, mode, source_key: key, html });
       setSnap(s);
-      setSnapUrl(url);
-      if (s.blocked) setErr(`Blocked (${s.block_reason}). Try mode "stealth".`);
+      setSnapUrl(pageUrl);
+      if (html) setShowPaste(false);
+      if (s.blocked) {
+        const hint = isListingsIndex(pageUrl)
+          ? 'That is the search index (Akamai). Open a listing in Chrome and use Paste HTML.'
+          : 'Akamai blocked the scraper. Open the listing in Chrome and use Paste HTML.';
+        setErr(`Blocked (${s.block_reason}). ${hint}`);
+        setShowPaste(true);
+      }
     } catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
 
@@ -186,7 +254,8 @@ export default function RecipeTrainerPage() {
   const testDiscover = async () => {
     setBusy('discover'); setErr(null); setDiscoverResult(null);
     try {
-      const d = await adminScrapeAPI.discoverTest(key, { recipe, maxUrls: 40 });
+      const startUrls = collectStartUrls(recipe, source, snapUrl);
+      const d = await adminScrapeAPI.discoverTest(key, { recipe: { ...recipe, discover: { ...(recipe.discover || {}), startUrls } }, maxUrls: 40 });
       setDiscoverResult(d);
       if (d.urls?.length && !genUrls) setGenUrls(d.urls.slice(0, 6).join('\n'));
       if (d.urls?.length && !snapUrl) setSnapUrl(d.urls[0]);
@@ -205,8 +274,12 @@ export default function RecipeTrainerPage() {
   const save = async () => {
     setBusy('save'); setErr(null);
     try {
-      const startUrls = [...(recipe.discover?.startUrls || [])].map((u) => String(u || '').trim()).filter(Boolean);
-      if (!startUrls.length && (source.listings_url || source.base_url)) startUrls.push(source.listings_url || source.base_url);
+      const startUrls = collectStartUrls(recipe, source, snapUrl);
+      if (!startUrls.length) {
+        setErr('Add a Discover start URL (the listings search page). Open the discover tab or paste a listings URL.');
+        setBusy('');
+        return;
+      }
       const payload = {
         recipe: { ...recipe, discover: { ...(recipe.discover || {}), startUrls } },
         fetch_mode: mode,
@@ -238,6 +311,14 @@ export default function RecipeTrainerPage() {
     return list;
   }, [registry, fieldQuery, fieldSort, recipe?.fields]);
 
+  if (key === 'airtable_bizbuysell') {
+    return (
+      <AdminScrapeLayout title="Airtable (BizBuySell)">
+        <p>This is the Airtable feed, not a site recipe. Train <Link to="/admin/sources/bizbuysell_direct/train">BizBuySell (direct)</Link> instead.</p>
+      </AdminScrapeLayout>
+    );
+  }
+
   if (!recipe || !source) return <AdminScrapeLayout title={key}><p className={err ? 'scrape-error' : 'muted'}>{err || 'Loading…'}</p></AdminScrapeLayout>;
 
   const fieldCount = Object.keys(recipe.fields || {}).length;
@@ -249,17 +330,27 @@ export default function RecipeTrainerPage() {
       <div className="scrape-panel">
         <div className="scrape-toolbar">
           <span className="muted">Step 1</span>
-          <input className="modal-input" style={{ flex: 1, minWidth: 320 }} placeholder="Paste a listing detail URL (or find one with Discover below)" value={snapUrl} onChange={(e) => setSnapUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') takeSnapshot(); }} />
+          <input className="modal-input" style={{ flex: 1, minWidth: 320 }} placeholder="Listing URL (…/business-opportunity/name/1234567/) — not the search page" value={snapUrl} onChange={(e) => setSnapUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') takeSnapshot(); }} />
           <select className="modal-input" value={mode} onChange={(e) => setMode(e.target.value)} title="Fetch mode used for this source">
             <option value="http">http</option><option value="browser">browser</option><option value="stealth">stealth</option>
           </select>
           <button type="button" className="btn btn-primary btn-sm" disabled={!snapUrl || busy === 'snapshot'} onClick={() => takeSnapshot()}>{busy === 'snapshot' ? 'Loading…' : 'Load page'}</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPaste((v) => !v)}>{showPaste ? 'Hide paste' : 'Paste HTML'}</button>
           <span className="spacer" />
           <label className="muted"><input type="checkbox" checked={activateOnSave} onChange={(e) => setActivateOnSave(e.target.checked)} /> activate schedule on save</label>
           <button type="button" className="btn btn-primary btn-sm" disabled={busy === 'save' || !fieldCount} onClick={save}>Save recipe ({fieldCount} fields)</button>
           <Link className="btn btn-secondary btn-sm" to={`/admin/sources/${encodeURIComponent(key)}`}>Cancel</Link>
         </div>
         {err ? <p className="scrape-error" style={{ marginTop: 8 }}>{err}</p> : null}
+        {showPaste ? (
+          <div style={{ marginTop: 8 }}>
+            <p className="muted">Chrome: open the listing → DevTools → Elements → right-click <code>&lt;html&gt;</code> → Copy → Copy outerHTML.</p>
+            <textarea className="modal-input" rows={6} placeholder="Paste the page HTML here" value={pasteHtml} onChange={(e) => setPasteHtml(e.target.value)} />
+            <div className="scrape-toolbar" style={{ marginTop: 6 }}>
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy === 'snapshot' || pasteHtml.length < 200} onClick={() => takeSnapshot(snapUrl, pasteHtml)}>Use pasted HTML</button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="trainer">

@@ -13,6 +13,7 @@ export default function SourcesPage() {
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ display_name: '', listings_url: '', fetch_mode: 'http' });
 
   const load = async () => {
@@ -33,13 +34,21 @@ export default function SourcesPage() {
 
   const submitAdd = async (e) => {
     e.preventDefault();
+    const listings_url = /^https?:\/\//i.test(form.listings_url.trim()) ? form.listings_url.trim() : `https://${form.listings_url.trim()}`;
+    const display_name = form.display_name.trim();
+    if (!display_name || !listings_url) { setError('Display name and listings URL are required'); return; }
+    setSaving(true); setError(null);
     try {
-      const d = await adminScrapeAPI.createSource(form);
+      const d = await adminScrapeAPI.createSource({ ...form, display_name, listings_url });
+      const key = d.source?.source_key;
+      if (!key) throw new Error('Create succeeded but no source_key returned');
       setAdding(false);
       setForm({ display_name: '', listings_url: '', fetch_mode: 'http' });
-      navigate(`/admin/sources/${encodeURIComponent(d.source.source_key)}/train`);
+      navigate(`/admin/sources/${encodeURIComponent(key)}/train`, { state: { listings_url, snapUrl: listings_url } });
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -60,13 +69,13 @@ export default function SourcesPage() {
         {adding ? (
           <form onSubmit={submitAdd} className="scrape-toolbar" style={{ marginTop: 10 }}>
             <input className="modal-input" required placeholder="Display name (e.g. Murphy Business)" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} style={{ minWidth: 220 }} />
-            <input className="modal-input" required type="url" placeholder="Listings URL (https://…/businesses-for-sale/)" value={form.listings_url} onChange={(e) => setForm({ ...form, listings_url: e.target.value })} style={{ flex: 1, minWidth: 280 }} />
+            <input className="modal-input" required type="text" inputMode="url" placeholder="Listings URL (https://…/businesses-for-sale/)" value={form.listings_url} onChange={(e) => setForm({ ...form, listings_url: e.target.value })} style={{ flex: 1, minWidth: 280 }} />
             <select className="modal-input" value={form.fetch_mode} onChange={(e) => setForm({ ...form, fetch_mode: e.target.value })}>
               <option value="http">http (fast)</option>
               <option value="browser">browser (JS sites)</option>
               <option value="stealth">stealth (anti-bot)</option>
             </select>
-            <button type="submit" className="btn btn-primary btn-sm">Create &amp; train</button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Creating…' : 'Create & train'}</button>
           </form>
         ) : null}
         {error ? <p className="scrape-error" style={{ marginTop: 8 }}>{error}</p> : null}
@@ -109,7 +118,9 @@ export default function SourcesPage() {
                   <td><span className="muted">{s.anti_bot_estimate || '—'}</span> <span className="muted mono">{s.fetch_mode}</span></td>
                   <td className="muted mono">{s.status === 'active' && s.scrape_enabled ? s.scrape_cron : '—'}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/admin/sources/${encodeURIComponent(s.source_key)}/train`)}>{s.recipe ? 'Edit recipe' : 'Train'}</button>
+                    {s.source_key === 'airtable_bizbuysell'
+                      ? <span className="muted">Airtable feed</span>
+                      : <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/admin/sources/${encodeURIComponent(s.source_key)}/train`)}>{s.recipe ? 'Edit recipe' : 'Train'}</button>}
                   </td>
                 </tr>
               );
