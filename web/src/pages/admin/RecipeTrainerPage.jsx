@@ -19,57 +19,149 @@ const PICKER_SCRIPT = `<script>(function(){
     }
     return parts.join(' ');
   }
-  function clearMapped(){
-    document.querySelectorAll('[data-vettr-mapped]').forEach(function(el){
-      el.style.outline=''; el.style.outlineOffset=''; el.removeAttribute('data-vettr-mapped');
-    });
+  var boxEl=null, boxEls=null, captionText='';
+  function ensureBox(){
+    var box=document.getElementById('vettr-confirm-box');
+    if(box) return box;
+    var style=document.createElement('style');
+    style.textContent='#vettr-confirm-box{position:absolute;pointer-events:none;z-index:2147483646;border:3px solid #16a34a;border-radius:4px;box-shadow:0 0 0 4px rgba(22,163,74,.28);display:none;box-sizing:border-box}#vettr-confirm-label{position:absolute;left:-3px;bottom:100%;margin-bottom:4px;background:#166534;color:#fff;font:600 12px/1.35 ui-sans-serif,system-ui,sans-serif;padding:3px 8px;border-radius:4px;white-space:nowrap;max-width:460px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 4px rgba(0,0,0,.25)}';
+    document.documentElement.appendChild(style);
+    box=document.createElement('div');
+    box.id='vettr-confirm-box';
+    var lab=document.createElement('div');
+    lab.id='vettr-confirm-label';
+    box.appendChild(lab);
+    document.documentElement.appendChild(box);
+    window.addEventListener('scroll', function(){ reposition(false); }, true);
+    window.addEventListener('resize', function(){ reposition(false); });
+    return box;
   }
-  function mark(el){
-    if(!el) return;
-    el.setAttribute('data-vettr-mapped','1');
-    el.style.outline='2px solid #27ae60';
-    el.style.outlineOffset='2px';
-    try{ el.scrollIntoView({block:'center'}); }catch(err){}
+  function place(el, caption, scroll){
+    var box=ensureBox();
+    var lab=document.getElementById('vettr-confirm-label');
+    if(!el){ box.style.display='none'; boxEl=null; boxEls=null; return; }
+    boxEl=el; boxEls=null; captionText=caption||'';
+    var r=el.getBoundingClientRect();
+    box.style.display='block';
+    box.style.top=(r.top+window.scrollY)+'px';
+    box.style.left=(r.left+window.scrollX)+'px';
+    box.style.width=Math.max(r.width, 12)+'px';
+    box.style.height=Math.max(r.height, 12)+'px';
+    box.style.borderColor='#16a34a';
+    box.style.boxShadow='0 0 0 4px rgba(22,163,74,.28)';
+    if(lab) lab.textContent=captionText;
+    if(scroll){ try{ el.scrollIntoView({block:'center', inline:'nearest'}); }catch(err){} }
   }
-  function findByText(q){
+  function smallestMatch(q){
     if(!q) return null;
     q=String(q).replace(/\\s+/g,' ').trim();
     if(q.length<2) return null;
-    var walker=document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+    var nodes=document.body.getElementsByTagName('*');
     var best=null, bestLen=1e9;
-    while(walker.nextNode()){
-      var el=walker.currentNode;
-      if(el.children && el.children.length>12) continue;
+    for(var i=0;i<nodes.length;i++){
+      var el=nodes[i];
+      if(el.id==='vettr-confirm-box'||el.id==='vettr-confirm-label') continue;
       var t=((el.innerText||el.textContent||'')+'').replace(/\\s+/g,' ').trim();
-      if(!t || t.length>4000) continue;
-      if(t===q || t.indexOf(q)===0 || (q.length>=6 && t.indexOf(q)!==-1)){
+      if(!t||t.length>2500) continue;
+      if(t===q||t.indexOf(q)===0||(q.length>=4&&t.indexOf(q)!==-1)){
         if(t.length<bestLen){ best=el; bestLen=t.length; }
       }
     }
     return best;
   }
+  function isMeta(t){
+    return /^(asking price|reading time|revenue|income|multiple|ebitda|cash flow)\b/i.test(t) || (t.length<80 && t.indexOf(':')!==-1 && t.indexOf(':')<40);
+  }
+  function textOf(el){ return ((el.innerText||'')+'').replace(/\s+/g,' ').trim(); }
+  function followingFrom(start){
+    var parent=start.parentElement;
+    if(!parent) return [start];
+    var out=[], seen=false;
+    var kids=parent.children;
+    for(var i=0;i<kids.length;i++){
+      var cur=kids[i];
+      if(!seen){
+        if(cur===start || cur.contains(start)) seen=true;
+        else continue;
+      }
+      var tag=(cur.tagName||'').toLowerCase();
+      if(seen && cur!==start && !cur.contains(start) && /^h[1-6]$/.test(tag)) break;
+      var nodes=(tag==='p'||tag==='li')?[cur]:cur.querySelectorAll('p, li');
+      if(!nodes.length && tag==='div' && textOf(cur).length>80) nodes=[cur];
+      for(var j=0;j<nodes.length;j++){
+        var t=textOf(nodes[j]);
+        if(!t || isMeta(t) || t.length<40) continue;
+        out.push(nodes[j]);
+      }
+    }
+    return out.length?out:[start];
+  }
+  function reposition(scroll){
+    if(boxEls && boxEls.length) placeMany(boxEls, captionText, scroll);
+    else if(boxEl) place(boxEl, captionText, scroll);
+  }
+  function placeMany(els, caption, scroll){
+    if(!els || !els.length){ place(null, caption, false); return; }
+    var box=ensureBox();
+    var lab=document.getElementById('vettr-confirm-label');
+    var top=1e9, left=1e9, right=0, bottom=0;
+    for(var i=0;i<els.length;i++){
+      var r=els[i].getBoundingClientRect();
+      top=Math.min(top, r.top+window.scrollY);
+      left=Math.min(left, r.left+window.scrollX);
+      right=Math.max(right, r.right+window.scrollX);
+      bottom=Math.max(bottom, r.bottom+window.scrollY);
+    }
+    boxEl=els[0]; boxEls=els; captionText=caption||'';
+    box.style.display='block';
+    box.style.top=top+'px';
+    box.style.left=left+'px';
+    box.style.width=Math.max(right-left, 12)+'px';
+    box.style.height=Math.max(bottom-top, 12)+'px';
+    box.style.borderColor='#16a34a';
+    box.style.boxShadow='0 0 0 4px rgba(22,163,74,.28)';
+    if(lab) lab.textContent=captionText;
+    if(scroll!==false){ try{ els[0].scrollIntoView({block:'center', inline:'nearest'}); }catch(err){} }
+  }
   document.addEventListener('mouseover',function(e){
     if(!picking) return;
-    if(active && active.getAttribute('data-vettr-mapped')!=='1') active.style.outline='';
+    if(active) active.style.outline='';
     active=e.target;
-    if(active.getAttribute('data-vettr-mapped')!=='1'){ active.style.outline='2px solid #27ae60'; active.style.outlineOffset='1px'; }
+    active.style.outline='2px solid #86efac';
+    active.style.outlineOffset='1px';
   },true);
   document.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); if(!picking) return; var el=e.target;
-    parent.postMessage({type:'vettr-pick', path:cssPath(el), text:(el.innerText||el.textContent||'').trim().slice(0,200), tag:el.tagName.toLowerCase()}, '*'); },true);
+    var tag=el.tagName.toLowerCase();
+    var text=(el.innerText||el.textContent||'').trim().slice(0,200);
+    place(el, 'Selected <'+tag+'> — choose Use on the right', true);
+    parent.postMessage({type:'vettr-pick', path:cssPath(el), text:text, tag:tag}, '*'); },true);
   document.addEventListener('submit',function(e){ e.preventDefault(); },true);
   window.addEventListener('message',function(e){
     var d=e.data||{};
     if(d.type==='vettr-picking') picking=!!d.on;
     if(d.type==='vettr-highlight'){
-      clearMapped();
       var el=null;
-      if(d.css){ try{ el=document.querySelector(d.css); }catch(err){} }
-      if(!el && d.text) el=findByText(d.text);
-      if(!el && d.label){
-        var lab=findByText(d.label);
-        if(lab) el=lab.nextElementSibling||lab.parentElement;
+      if(d.xpath){
+        try{
+          var found=document.evaluate(d.xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+          el=found.singleNodeValue;
+        }catch(err){}
       }
-      mark(el);
+      if(!el && d.css){ try{ el=document.querySelector(d.css); }catch(err){} }
+      if(!el && d.anchor) el=smallestMatch(d.anchor);
+      if(!el && d.label) el=smallestMatch(d.label);
+      if(!el && d.text && !d.exact) el=smallestMatch(d.text);
+      if(d.mode==='following' && el){
+        var group=followingFrom(el);
+        placeMany(group, (d.option||d.field||'Description')+' · '+group.length+' paragraphs', true);
+        return;
+      }
+      var cap=(d.field||'Field');
+      if(d.option) cap=d.option;
+      else if(d.text) cap+=' → '+String(d.text).replace(/\\s+/g,' ').trim().slice(0,90);
+      else if(d.label) cap+=' → label “'+d.label+'”';
+      else if(!el) cap+=' → no match on this page';
+      place(el, cap, true);
     }
   });
   parent.postMessage({type:'vettr-ready'}, '*');
@@ -140,6 +232,7 @@ function ruleSummary(rules) {
   if (!rules?.length) return null;
   const r = rules[0];
   const extra = rules.length > 1 ? ` (+${rules.length - 1})` : '';
+  if (r.type === 'following') return `paragraphs from: ${(r.anchor || r.sel || '').slice(0, 48)}${extra}`;
   if (r.type === 'label') return `label: ${(r.labels || [r.label]).join(' | ')}${extra}`;
   if (r.type === 'css' || r.type === 'xpath') return `${r.type}: ${r.sel}${r.attr ? ` @${r.attr}` : ''}${extra}`;
   if (r.type === 'jsonld') return `jsonld: ${r.path}${extra}`;
@@ -166,6 +259,7 @@ export default function RecipeTrainerPage() {
   const [picking, setPicking] = useState(true);
   const [activeField, setActiveField] = useState('asking_price');
   const [pick, setPick] = useState(null); // { path, text, tag, candidates, labels }
+  const [shownOption, setShownOption] = useState(null);
   const [preview, setPreview] = useState(null); // { fields, normalized, validation }
   const [suggestions, setSuggestions] = useState(null);
 
@@ -224,19 +318,29 @@ export default function RecipeTrainerPage() {
     } catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
 
-  const srcdoc = useMemo(() => (snap?.html ? snap.html.replace(/<\/body>/i, `${PICKER_SCRIPT}</body>`) : ''), [snap]);
+  const srcdoc = useMemo(() => (snap?.html ? snap.html.replace(/<\/body>/i, `${PICKER_SCRIPT}</body>`) : ''), [snap?.html, PICKER_SCRIPT]);
 
   const postHighlight = useCallback(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     const rules = recipe?.fields?.[activeField] || [];
     const pv = preview?.fields?.[activeField];
-    const css = rules.find((r) => (r.type === 'css' || r.type === 'xpath') && r.sel)?.sel || pv?.selector || '';
+    const selRule = rules.find((r) => (r.type === 'css' || r.type === 'xpath' || r.type === 'following') && r.sel);
+    const css = selRule?.type === 'css' || selRule?.type === 'following' ? selRule.sel : '';
+    const xpath = selRule?.type === 'xpath' ? selRule.sel : '';
+    const follow = selRule?.type === 'following';
     const labelRule = rules.find((r) => r.type === 'label');
     const label = (labelRule?.labels && labelRule.labels[0]) || labelRule?.label || '';
-    const text = pv?.value ? String(pv.value).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
-    win.postMessage({ type: 'vettr-highlight', css, text, label }, '*');
-  }, [activeField, preview, recipe?.fields]);
+    const text = pv?.value ? String(pv.value).replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+    if (!css && !xpath && !text && !label) return;
+    const field = registry.find((f) => f.key === activeField)?.label || activeField;
+    win.postMessage({
+      type: 'vettr-highlight', css, xpath, text, label, field,
+      exact: Boolean(css || xpath || label),
+      mode: follow ? 'following' : '',
+      anchor: follow ? (selRule.anchor || '') : '',
+    }, '*');
+  }, [activeField, preview, recipe?.fields, registry]);
 
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage({ type: 'vettr-picking', on: picking }, '*');
@@ -267,8 +371,9 @@ export default function RecipeTrainerPage() {
       if (d.type !== 'vettr-pick' || !snap?.id) return;
       setBusy('selector'); setErr(null);
       try {
-        const out = await adminScrapeAPI.selector(snap.id, d.path);
+        const out = await adminScrapeAPI.selector(snap.id, d.path, d.text);
         setPick({ ...d, ...out });
+        setShownOption(null);
         setRightTab('fields');
       } catch (e) { setErr(`Could not resolve element: ${e.message}`); setPick({ ...d, candidates: [], labels: [] }); }
       finally { setBusy(''); }
@@ -283,14 +388,32 @@ export default function RecipeTrainerPage() {
     return { ...r, fields };
   });
 
+  const showOption = (id, spec) => {
+    setShownOption(id);
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    const field = registry.find((f) => f.key === activeField)?.label || activeField;
+    const previewText = spec.raw_value ? String(spec.raw_value).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+    const option = previewText ? `${spec.kind} → ${previewText}` : spec.kind;
+    win.postMessage({
+      type: 'vettr-highlight',
+      exact: true,
+      field,
+      option,
+      css: spec.type === 'css' || spec.type === 'following' ? spec.sel : '',
+      xpath: spec.type === 'xpath' ? spec.sel : '',
+      label: spec.type === 'label' ? (spec.labels?.[0] || '') : '',
+      mode: spec.type === 'following' ? 'following' : '',
+      anchor: spec.anchor || '',
+      text: previewText,
+    }, '*');
+  };
+
   const applyCandidate = (rule) => {
     if (!activeField) return;
     const existing = (recipe.fields?.[activeField] || []).filter((r) => JSON.stringify(r) !== JSON.stringify(rule));
     setRules(activeField, [rule, ...existing]);
     setPick(null);
-    // advance to the next field without a rule
-    const next = PRIMARY_FIELDS.find((f) => f !== activeField && !(recipe.fields?.[f]?.length));
-    if (next) setActiveField(next);
   };
 
   const addManualLabel = (field) => {
@@ -452,28 +575,39 @@ export default function RecipeTrainerPage() {
               {pick ? (
                 <div className="scrape-panel" style={{ marginBottom: 10 }}>
                   <h3>Picked &lt;{pick.tag}&gt; for <b>{activeField}</b> <span className="muted">“{(pick.text || '').slice(0, 60)}”{pick.chars ? ` · ${pick.chars} chars` : ''}</span></h3>
-                  {(activeField === 'description' || activeField === 'summary' || ['reason_for_sale','training_support','historical_summary','buyer_qualifications','competition','growth_opportunities','financing_notes'].includes(activeField) || (pick.containers || []).length > 0) ? (
-                    <p className="muted" style={{ marginTop: 0 }}>For Description / Summary on VR-style pages: click the <b>section title</b> (Description, Reason For Sale, …) and use the <b>label</b> rule. Reload the page after this update so nested paragraphs stay attached to their labels.</p>
+                  {activeField === 'description' || activeField === 'summary' ? (
+                    <p className="muted" style={{ marginTop: 0 }}>For several paragraphs, click the option whose text starts with the paragraph in the green box and continues into the next ones. That block keeps whatever number of paragraphs the next listing has.</p>
                   ) : null}
+                  <p className="muted" style={{ marginTop: 0 }}>Click an option to outline it in green. Use saves that outline.</p>
                   <div className="trainer-candidates">
+                    {(pick.blocks || []).map((b, i) => (
+                      <div className={`trainer-candidate${shownOption === `block-${i}` ? ' is-shown' : ''}`} key={`block-${i}`} onClick={() => showOption(`block-${i}`, { type: 'following', sel: b.sel, anchor: b.anchor, kind: b.note, raw_value: b.raw_value })}>
+                        <div>
+                          <Chip kind="ok">{b.note}</Chip>{' '}
+                          <span className="muted">{b.chars} chars · skips asking price and reading time</span>
+                          {b.raw_value ? <div className="muted">→ {String(b.raw_value).slice(0, 180)}{b.chars > 180 ? '…' : ''}</div> : null}
+                        </div>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); applyCandidate({ type: 'following', sel: b.sel, anchor: b.anchor }); }}>Use</button>
+                      </div>
+                    ))}
                     {(pick.labels || []).map((l) => (
-                      <div className="trainer-candidate" key={`l-${l}`}>
+                      <div className={`trainer-candidate${shownOption === `l-${l}` ? ' is-shown' : ''}`} key={`l-${l}`} onClick={() => showOption(`l-${l}`, { type: 'label', labels: [l], kind: 'label', raw_value: l })}>
                         <div><Chip kind="ok">label</Chip> <code>{l}</code> <span className="muted">value next to this label{['description','summary','reason_for_sale','training_support','historical_summary','buyer_qualifications','competition','growth_opportunities','financing_notes'].includes(activeField) ? ' (keeps following paragraphs)' : ''}</span></div>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={() => applyCandidate({ type: 'label', labels: [l] })}>Use</button>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); applyCandidate({ type: 'label', labels: [l] }); }}>Use</button>
                       </div>
                     ))}
                     {(pick.containers || []).map((c, i) => (
-                      <div className="trainer-candidate" key={`box-${i}`}>
+                      <div className={`trainer-candidate${shownOption === `box-${i}` ? ' is-shown' : ''}`} key={`box-${i}`} onClick={() => showOption(`box-${i}`, { type: c.type || 'css', sel: c.sel, kind: 'container', raw_value: c.raw_value })}>
                         <div>
-                          <Chip kind="ok">container · {c.chars} chars · depth {c.depth}</Chip>{' '}
+                          <Chip kind="ok">{c.note || `container · ${c.chars} chars · depth ${c.depth}`}</Chip>{' '}
                           <code>{c.sel}</code>
                           {c.raw_value ? <div className="muted">→ {String(c.raw_value).slice(0, 120)}{c.chars > 120 ? '…' : ''}</div> : null}
                         </div>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={() => applyCandidate({ type: c.type, sel: c.sel })}>Use container</button>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); applyCandidate({ type: c.type, sel: c.sel }); }}>Use container</button>
                       </div>
                     ))}
                     {(pick.candidates || []).filter((c) => c.sel).map((c, i) => (
-                      <div className="trainer-candidate" key={`c-${i}`}>
+                      <div className={`trainer-candidate${shownOption === `c-${i}` ? ' is-shown' : ''}`} key={`c-${i}`} onClick={() => showOption(`c-${i}`, { type: c.type, sel: c.sel, kind: c.type, raw_value: c.raw_value })}>
                         <div>
                           <Chip kind={c.matches === 1 ? 'ok' : 'warn'}>{c.type} · {c.matches} match{c.matches === 1 ? '' : 'es'}{c.chars ? ` · ${c.chars} chars` : ''}</Chip>{' '}
                           <code>{c.sel}</code>
@@ -530,7 +664,7 @@ export default function RecipeTrainerPage() {
                       {rules?.length ? <div className="rule">{ruleSummary(rules)}</div> : <div className="rule muted">no rule yet{activeField === f.key && snap ? ' — click the value on the page' : ''}</div>}
                       {rules?.length && preview ? (
                         pv?.value
-                          ? <div className="val">→ {String(pv.value).slice(0, 90)} {norm != null && typeof norm !== 'object' && String(norm) !== String(pv.value) ? <b>= {String(norm)}</b> : null}</div>
+                          ? <div className="val">{String(pv.value)}{norm != null && typeof norm !== 'object' && String(norm) !== String(pv.value) ? <b> = {String(norm)}</b> : null}<div className="muted">{String(pv.value).length} characters</div></div>
                           : <div className="val empty">no value on this page</div>
                       ) : null}
                       {sugg?.value && !rules?.length ? (

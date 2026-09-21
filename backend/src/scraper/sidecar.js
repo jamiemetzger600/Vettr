@@ -99,8 +99,8 @@ export function snapshot({ url, mode = 'browser', timeoutMs, proxy, solveCloudfl
 }
 
 /** @returns {{tag,text,candidates:[{type,sel,matches}],labels:string[],attrs}} */
-export function selectorFor({ url, html, path }) {
-  return post('/selector', { url, html, path }, { retries: 0 });
+export function selectorFor({ url, html, path, text }) {
+  return post('/selector', { url, html, path, text: text || '' }, { retries: 0 });
 }
 
 export { SIDECAR_URL };

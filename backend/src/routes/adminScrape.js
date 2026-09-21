@@ -59,7 +59,7 @@ export function validateRecipe(recipe) {
     if (!Array.isArray(rules)) { errors.push(`fields.${k} must be an array of strategies`); continue; }
     rules.forEach((r, i) => {
       if (!r || typeof r !== 'object' || !r.type) errors.push(`fields.${k}[${i}] missing type`);
-      else if (['css', 'xpath'].includes(r.type) && !(r.sel || r.selector)) errors.push(`fields.${k}[${i}] ${r.type} needs sel`);
+      else if (['css', 'xpath', 'following'].includes(r.type) && !(r.sel || r.selector)) errors.push(`fields.${k}[${i}] ${r.type} needs sel`);
       else if (r.type === 'label' && !(r.labels?.length || r.label)) errors.push(`fields.${k}[${i}] label needs labels[]`);
       else if (r.type === 'jsonld' && !r.path) errors.push(`fields.${k}[${i}] jsonld needs path`);
       else if (['regex', 'url'].includes(r.type) && !(r.pattern || r.regex)) errors.push(`fields.${k}[${i}] ${r.type} needs pattern`);
@@ -441,10 +441,10 @@ router.post('/snapshot', wrap(async (req, res) => {
 router.post('/snapshot/:id/selector', wrap(async (req, res) => {
   const snap = snapshots.get(req.params.id);
   if (!snap) throw notFound('snapshot expired; take a new one');
-  const { path } = req.body || {};
+  const { path, text } = req.body || {};
   if (!path) throw bad('path required');
   // Use the sanitized HTML: it is the DOM the trainer iframe rendered, so the picker's path resolves here.
-  const out = await sidecar.selectorFor({ url: snap.final_url || snap.url, html: snap.html, path });
+  const out = await sidecar.selectorFor({ url: snap.final_url || snap.url, html: snap.html, path, text });
   // Verify each candidate against the raw page (what production runs see) and report match counts there too.
   for (const c of out.candidates || []) {
     if (!c.sel) continue;

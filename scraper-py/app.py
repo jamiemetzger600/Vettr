@@ -112,6 +112,7 @@ class SelectorReq(BaseModel):
     url: str
     html: str
     path: str = Field(..., description="CSS path of the clicked element from the trainer picker")
+    text: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +698,27 @@ def run_strategy(page: Selector, url: str, field: str, idx: int, strat: dict[str
         result["how"] = f"{stype}:{sel}"
         return result
 
+    if stype == "following":
+        sel = strat.get("sel") or ""
+        anchor = clean(strat.get("anchor") or "")
+        start = None
+        if sel:
+            try:
+                found = list(page.css(sel) or [])
+            except Exception:  # noqa: BLE001
+                found = []
+            for cand in found:
+                body = clean(elem_text_blocks(cand) or elem_text(cand))
+                if not anchor or body.startswith(anchor[:40]):
+                    start = cand
+                    break
+        if start is None and anchor:
+            start = _resolve_clicked(page, "p", anchor)
+        parts = _description_siblings(start) if start is not None else []
+        result["value"] = "\n\n".join(parts)
+        result["how"] = f"following:{sel}"
+        return result
+
     if stype == "label":
         labels = strat.get("labels") or ([strat["label"]] if strat.get("label") else [])
         expect = strat.get("expect") or ("money" if field in MONEY_FIELDS else None)
@@ -1112,16 +1134,91 @@ def _label_candidates(el) -> list[str]:
     return cands[:5]
 
 
+_META_LINE = re.compile(
+    r"^(asking price|reading time|revenue|income|multiple|ebitda|cash flow)\b",
+    re.I,
+)
+
+
+def _is_description_block(el, text: str) -> bool:
+    """Body copy. Drops the asking-price heading, reading time, and stat labels."""
+    t = clean(text)
+    if not t or _META_LINE.match(t):
+        return False
+    if len(t) < 80 and ":" in t[:40]:
+        return False
+    tag = (getattr(el, "tag", "") or "").lower()
+    return tag in ("p", "li") or (tag == "div" and len(t) > 80)
+
+
+def _description_siblings(start) -> list[str]:
+    """Clicked paragraph plus later sibling paragraphs, skipping price and reading time."""
+    parts: list[str] = []
+    walk = start
+    for n in range(15):
+        if walk is None:
+            break
+        own = clean(getattr(walk, "text", ""))
+        full = elem_text_blocks(walk)
+        if n > 0 and _looks_like_section_heading(walk, own, full):
+            break
+        if _is_description_block(walk, full):
+            parts.append(full)
+        elif n > 0 and full:
+            break
+        try:
+            walk = walk.next
+        except Exception:  # noqa: BLE001
+            break
+    return parts
+
+
+def _resolve_clicked(page: Selector, path: str, text: Optional[str]):
+    """The picker path often matches several <p> tags. Keep the one the user clicked."""
+    try:
+        els = list(page.css(path) or [])
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"invalid path selector: {exc}") from exc
+    want = clean(text)[:240]
+    def closeness(cand) -> int:
+        if not want:
+            return 0
+        body = clean(elem_text_blocks(cand) or elem_text(cand))
+        if not body:
+            return 0
+        head = want[:80]
+        if body == want or body.startswith(head):
+            return 100000 - min(len(body), 50000)
+        if head in body[:800]:
+            return 10000 - min(len(body), 9000)
+        return 0
+    if els and want:
+        ranked = sorted(els, key=closeness, reverse=True)
+        if closeness(ranked[0]) > 0:
+            return ranked[0]
+    if want:
+        best = None
+        best_score = 0
+        try:
+            pool = page.css("p, li, h1, h2, h3, h4, div, section") or []
+        except Exception:  # noqa: BLE001
+            pool = []
+        for cand in pool:
+            score = closeness(cand)
+            if score > best_score:
+                best = cand
+                best_score = score
+        if best is not None:
+            return best
+    if not els:
+        raise HTTPException(404, "element not found for path")
+    return els[0]
+
+
 @app.post("/selector")
 def selector(req: SelectorReq):
     page = Selector(flatten_broken_listing_html(req.html or ""), url=req.url)
-    try:
-        els = page.css(req.path)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"invalid path selector: {exc}") from exc
-    if not els:
-        raise HTTPException(404, "element not found for path")
-    el = els[0]
+    el = _resolve_clicked(page, req.path, req.text)
     clicked_text = elem_text_blocks(el) or elem_text(el)
     out: dict[str, Any] = {
         "tag": el.tag,
@@ -1142,16 +1239,35 @@ def selector(req: SelectorReq):
             # verify uniqueness / match count on this page
             matched = page.css(sel) if kind.startswith("css") else page.xpath(sel)
             count = len(matched)
-            preview = elem_text_blocks(matched[0]) if matched else ""
+            first = elem_text_blocks(matched[0]) if matched else ""
             out["candidates"].append({
                 "type": "xpath" if kind == "xpath" else "css",
                 "sel": sel,
                 "matches": count,
-                "chars": len(preview),
-                "raw_value": preview[:200],
+                "chars": len(first),
+                "raw_value": first[:200],
             })
         except Exception as exc:  # noqa: BLE001
             out["candidates"].append({"type": kind, "sel": None, "error": str(exc)[:120]})
+
+    # Paragraphs only: the one clicked, then later siblings. Skips Asking Price and Reading Time.
+    follow_parts = _description_siblings(el)
+    if len(follow_parts) > 1:
+        try:
+            start_sel = el.generate_full_css_selector or el.generate_css_selector
+        except Exception:  # noqa: BLE001
+            start_sel = None
+        if start_sel:
+            joined = "\n\n".join(follow_parts)
+            out["blocks"] = [{
+                "type": "following",
+                "sel": start_sel,
+                "anchor": clean(clicked_text)[:80],
+                "matches": len(follow_parts),
+                "chars": len(joined),
+                "raw_value": joined[:400],
+                "note": f"{len(follow_parts)} description paragraphs",
+            }]
 
     # Ancestor containers — use these for multi-paragraph description / summary
     base_len = len(clicked_text)
