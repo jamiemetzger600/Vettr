@@ -428,7 +428,7 @@ function AggregatorDeedCardBody({
           title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}
         >
           <span>Date added</span>
-          <span className={`deal-date-age ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`}>
+          <span className={`deal-date-age ${getListingAgeClass(deal.discoveredAt)}`}>
             {formatDealDate(deal.discoveredAt)}
           </span>
         </div>
@@ -3339,7 +3339,7 @@ function renderDealCell(columnId, deal, ctx) {
     case 'date':
       return (
         <td key={columnId} data-col="date">
-          <span className={`deal-date-age ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`} title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}>
+          <span className={`deal-date-age ${getListingAgeClass(deal.discoveredAt)}`} title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}>
             {formatDealDate(deal.discoveredAt)}
           </span>
         </td>

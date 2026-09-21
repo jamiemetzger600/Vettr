@@ -78,7 +78,7 @@ function DealSwipeCard({
           <div className="deal-swipe-card__main">
             <h3 className="deal-swipe-card__name">{deal.name || 'Unnamed Business'}</h3>
             <div className="deal-swipe-card__date">
-              <span className={`deal-date-age ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`} title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}>
+              <span className={`deal-date-age ${getListingAgeClass(deal.discoveredAt)}`} title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}>
                 {formatDealDate(deal.discoveredAt)}
               </span>
             </div>

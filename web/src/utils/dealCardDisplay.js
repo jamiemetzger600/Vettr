@@ -105,9 +105,9 @@ export function getListingAgeClass(discoveredAt) {
   return 'deal-date-age--older';
 }
 
-export function listingAgeTitle(discoveredAt, { source, sourceUpdatedAt } = {}) {
-  const days = getListingAgeDays(sourceUpdatedAt || discoveredAt);
-  const dateStr = formatDealDate(sourceUpdatedAt || discoveredAt);
+export function listingAgeTitle(discoveredAt, { source } = {}) {
+  const days = getListingAgeDays(discoveredAt);
+  const dateStr = formatDealDate(discoveredAt);
   const src = source ? String(source).replace(/_/g, ' ') : '';
   let age = dateStr;
   if (days === 0) age = `${dateStr} — today`;

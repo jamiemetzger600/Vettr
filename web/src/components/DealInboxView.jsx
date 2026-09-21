@@ -277,7 +277,7 @@ export default function DealInboxView({
               <div className="deal-inbox__gmail-top">
                 <span className="deal-inbox__gmail-title">{deal.name || 'Unnamed Business'}</span>
                 <span
-                  className={`deal-inbox__date ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`}
+                  className={`deal-inbox__date ${getListingAgeClass(deal.discoveredAt)}`}
                   title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}
                 >
                   {formatDealDate(deal.discoveredAt)}
@@ -333,7 +333,7 @@ export default function DealInboxView({
             <div className="deal-inbox__gmail-top">
               <span className="deal-inbox__gmail-title">{deal.name || 'Unnamed Business'}</span>
               <span
-                className={`deal-inbox__date ${getListingAgeClass(deal.sourceUpdatedAt || deal.discoveredAt)}`}
+                className={`deal-inbox__date ${getListingAgeClass(deal.discoveredAt)}`}
                 title={listingAgeTitle(deal.discoveredAt, { source: deal.source, sourceUpdatedAt: deal.sourceUpdatedAt })}
               >
                 {formatDealDate(deal.discoveredAt)}
