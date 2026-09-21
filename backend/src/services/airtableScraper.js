@@ -216,18 +216,127 @@ function parseRows(rows, colLookup) {
 const SOURCE_KEY = 'airtable_bizbuysell';
 const UPSERT_BATCH = 250;
 
-/** Sunday 00:00–03:59 in SCRAPE_CRON_TZ → full re-sync without change filter. */
-function isSundayFullSyncWindowPacific() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: SCRAPE_CRON_TZ,
-    weekday: 'short',
-    hour: 'numeric',
-    hour12: false,
-  }).formatToParts(new Date());
-  const wd = parts.find((p) => p.type === 'weekday')?.value;
-  const hourRaw = parts.find((p) => p.type === 'hour')?.value;
-  const hour = hourRaw != null ? parseInt(hourRaw, 10) : NaN;
-  return wd === 'Sun' && Number.isFinite(hour) && hour >= 0 && hour < 4;
+/** Refuse to drop active rows when the shared view payload looks truncated. */
+const MIN_SNAPSHOT_ROWS = 1000;
+
+function listingTime(value) {
+  if (value == null || value === '') return null;
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function dealIdentityKeys(deal) {
+  const keys = [];
+  for (const raw of [deal.airtable_record_id, deal.airtable_id]) {
+    if (raw == null) continue;
+    const key = String(raw).trim();
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+function indexExistingRows(existingRows) {
+  const byId = new Map();
+  const byUrl = new Map();
+  for (const row of existingRows || []) {
+    if (row?.source_id != null) byId.set(String(row.source_id), row);
+    const urlKey = normalizeListingUrlKey(row?.listing_url);
+    if (urlKey && !byUrl.has(urlKey)) byUrl.set(urlKey, row);
+  }
+  return { byId, byUrl };
+}
+
+function findExistingDeal(deal, index) {
+  for (const id of dealIdentityKeys(deal)) {
+    if (index.byId.has(id)) return index.byId.get(id);
+  }
+  const urlKey = normalizeListingUrlKey(deal.listing_url);
+  if (urlKey && index.byUrl.has(urlKey)) return index.byUrl.get(urlKey);
+  return null;
+}
+
+/** Rows still missing from the database go first, then newest Date Added. */
+export function sortDealsForSync(deals, existingRows) {
+  const index = indexExistingRows(existingRows);
+  function rank(deal) {
+    const existing = findExistingDeal(deal, index);
+    return {
+      isNew: !existing || existing.is_active === false,
+      added: listingTime(deal.airtable_added_at) ?? 0,
+      updated: listingTime(deal.airtable_updated_at) ?? 0,
+    };
+  }
+  return [...deals].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra.isNew !== rb.isNew) return ra.isNew ? -1 : 1;
+    if (ra.added !== rb.added) return rb.added - ra.added;
+    return rb.updated - ra.updated;
+  });
+}
+
+/**
+ * A short Airtable payload must not be treated as the full list.
+ * Half-size versus the last good fetch is treated as a truncated response.
+ */
+export function assessSnapshot(rowCount, previousRowCount) {
+  if (!Number.isFinite(rowCount) || rowCount < MIN_SNAPSHOT_ROWS) {
+    return { ok: false, reason: 'snapshot_too_small' };
+  }
+  if (
+    Number.isFinite(previousRowCount) &&
+    previousRowCount >= MIN_SNAPSHOT_ROWS &&
+    rowCount < previousRowCount * 0.5
+  ) {
+    return { ok: false, reason: 'snapshot_shrunk' };
+  }
+  return { ok: true };
+}
+
+export function readSnapshotRowCount(raw) {
+  if (raw == null) return null;
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const n = Number(parsed?.rows);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Keep rows the database does not already have, plus rows whose Airtable
+ * dates moved or that were deactivated. Match each listing on its own.
+ * A global max(date) cutoff drops listings that are new to us but older
+ * than the newest row already stored.
+ */
+export function selectDealsToUpsert(deals, existingRows) {
+  const index = indexExistingRows(existingRows);
+
+  const selected = [];
+  let skipped = 0;
+  for (const deal of deals) {
+    const existing = findExistingDeal(deal, index);
+
+    if (!existing || existing.is_active === false) {
+      selected.push(deal);
+      continue;
+    }
+
+    const added = listingTime(deal.airtable_added_at);
+    const updated = listingTime(deal.airtable_updated_at);
+    const prevAdded = listingTime(existing.source_added_at);
+    const prevUpdated = listingTime(existing.source_updated_at);
+    const addedMoved = added != null && (prevAdded == null || added > prevAdded);
+    const updatedMoved = updated != null && (prevUpdated == null || updated > prevUpdated);
+    if (addedMoved || updatedMoved) selected.push(deal);
+    else skipped += 1;
+  }
+
+  return { selected, skipped };
 }
 
 /** Collapse same-listing rows after switching source_id scheme (e.g. numeric → rec…). */
@@ -470,6 +579,48 @@ async function upsertDeals(deals) {
   return { inserted, updated, financialChanges };
 }
 
+/**
+ * Mark active rows inactive when they are not in the current Airtable view.
+ * Matches record id, numeric ID, or listing URL so older source_id schemes stay.
+ */
+export async function deactivateDealsAbsentFromSnapshot(snapshotDeals, previousRowCount = null) {
+  const rowCount = Array.isArray(snapshotDeals) ? snapshotDeals.length : 0;
+  const check = assessSnapshot(rowCount, previousRowCount);
+  if (!check.ok) {
+    console.warn(
+      `  Skip absence deactivation: ${check.reason} (snapshot ${rowCount}, previous ${previousRowCount ?? 'none'})`
+    );
+    return { deactivated: 0, skipped: true, reason: check.reason, rows: rowCount, previousRows: previousRowCount };
+  }
+
+  const ids = [];
+  const urls = [];
+  for (const deal of snapshotDeals) {
+    ids.push(...dealIdentityKeys(deal));
+    const urlKey = normalizeListingUrlKey(deal.listing_url);
+    if (urlKey) urls.push(urlKey);
+  }
+
+  const result = await pool.query(
+    `UPDATE market_deals
+     SET is_active = false
+     WHERE source = $1
+       AND is_active = true
+       AND NOT (
+         source_id = ANY($2::text[])
+         OR (
+           listing_url IS NOT NULL
+           AND lower(trim(split_part(listing_url, '#', 1))) = ANY($3::text[])
+         )
+       )`,
+    [SOURCE_KEY, ids, urls]
+  );
+
+  const deactivated = result.rowCount ?? 0;
+  console.log(`  Absence sync: deactivated ${deactivated} listings no longer in the Airtable view`);
+  return { deactivated, skipped: false };
+}
+
 // ---------------------------------------------------------------------------
 // Main scrape orchestration
 // ---------------------------------------------------------------------------
@@ -507,54 +658,56 @@ export async function scrapeAirtable() {
     const colLookup = buildColumnLookup(columns);
     let deals = parseRows(rows, colLookup);
 
-    // -----------------------------------------------------------------------
-    // Change detection: skip rows we already have and haven't changed.
-    // Query the DB for the latest dates we've seen for this source, then
-    // filter the fetched rows to only those that are genuinely new or updated.
-    // This avoids upserting thousands of unchanged rows on every cron run.
-    // We still do a full re-sync (no filter) if the DB has no records yet,
-    // or on Sunday 00:00–03:59 Pacific (SCRAPE_CRON_TZ) to catch soft-deletes or corrections.
-    // -----------------------------------------------------------------------
-    const isSundayFullSync = isSundayFullSyncWindowPacific();
+    // Skip rows we already store with the same dates. Match per listing
+    // (record id, numeric ID, or URL) so an older unseen row is still inserted.
+    // The full snapshot is kept so listings that left the view can be deactivated.
+    const snapshot = deals;
     let skipped = 0;
+    let previousRowCount = null;
+    let snapshotOk = assessSnapshot(snapshot.length, null).ok;
+    try {
+      const meta = await pool.query(
+        `SELECT last_scrape_result FROM deal_sources WHERE source_key = $1`,
+        [SOURCE_KEY]
+      );
+      previousRowCount = readSnapshotRowCount(meta.rows[0]?.last_scrape_result);
+      snapshotOk = assessSnapshot(snapshot.length, previousRowCount).ok;
+    } catch (metaErr) {
+      console.warn('  Could not read last scrape size:', metaErr.message);
+    }
 
-    if (!isSundayFullSync) {
-      try {
-        const cutoffResult = await pool.query(
-          `SELECT
-             MAX(source_added_at)   AS max_added,
-             MAX(source_updated_at) AS max_updated
-           FROM market_deals WHERE source = $1`,
-          [SOURCE_KEY]
-        );
-        const maxAdded   = cutoffResult.rows[0]?.max_added;
-        const maxUpdated = cutoffResult.rows[0]?.max_updated;
-
-        if (maxAdded) {
-          const addedCutoff   = new Date(maxAdded);
-          const updatedCutoff = maxUpdated ? new Date(maxUpdated) : addedCutoff;
-          const before = deals.length;
-
-          deals = deals.filter((d) => {
-            const addedAt   = d.airtable_added_at   ? new Date(d.airtable_added_at)   : null;
-            const updatedAt = d.airtable_updated_at ? new Date(d.airtable_updated_at) : null;
-            return (addedAt && addedAt > addedCutoff) ||
-                   (updatedAt && updatedAt > updatedCutoff);
-          });
-
-          skipped = before - deals.length;
-          console.log(
-            `  Change filter: ${before} fetched → ${deals.length} new/updated, ${skipped} unchanged skipped`
-          );
-        }
-      } catch (cutoffErr) {
-        console.warn('  Could not query cutoff dates, upserting all rows:', cutoffErr.message);
+    try {
+      const existing = await pool.query(
+        `SELECT source_id, listing_url, source_added_at, source_updated_at, is_active
+         FROM market_deals WHERE source = $1`,
+        [SOURCE_KEY]
+      );
+      const picked = selectDealsToUpsert(deals, existing.rows);
+      deals = sortDealsForSync(picked.selected, existing.rows);
+      skipped = picked.skipped;
+      console.log(
+        `  Change filter: ${snapshot.length} fetched → ${deals.length} new/updated, ${skipped} unchanged skipped`
+      );
+      if (deals.length > 0) {
+        console.log('  Upsert order: listings missing from the database first, newest date first', {
+          firstAdded: deals[0]?.airtable_added_at || null,
+          lastAdded: deals[deals.length - 1]?.airtable_added_at || null,
+        });
       }
-    } else {
-      console.log('  Sunday full-sync: skipping change filter, processing all rows');
+    } catch (cutoffErr) {
+      console.warn('  Could not load existing listings, upserting all rows:', cutoffErr.message);
+      deals = sortDealsForSync(deals, []);
     }
 
     const { inserted, updated } = await upsertDeals(deals);
+
+    let absent = null;
+    try {
+      absent = await deactivateDealsAbsentFromSnapshot(snapshot, previousRowCount);
+    } catch (absentErr) {
+      console.warn('  Absence deactivation failed:', absentErr.message);
+      absent = { error: absentErr.message };
+    }
 
     let prune = null;
     try {
@@ -566,16 +719,31 @@ export async function scrapeAirtable() {
 
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     _lastResult = {
-      rows: rows.length,
+      rows: snapshotOk ? rows.length : (previousRowCount ?? rows.length),
+      fetched: rows.length,
       processed: deals.length,
       skipped,
       inserted,
       updated,
+      absent,
       prune,
       elapsed,
       ts: new Date().toISOString(),
     };
     _lastRun = new Date();
+
+    try {
+      await pool.query(
+        `UPDATE deal_sources SET
+          last_scrape_at = NOW(),
+          last_scrape_result = $1,
+          deal_count = (SELECT COUNT(*) FROM market_deals WHERE source = $2 AND is_active = true)
+        WHERE source_key = $2`,
+        [JSON.stringify(_lastResult), SOURCE_KEY]
+      );
+    } catch (metaErr) {
+      console.warn('  Warning: failed to record scrape snapshot:', metaErr.message);
+    }
 
     console.log(
       `  Done: ${rows.length} fetched, ${deals.length} processed (${inserted} new, ${updated} updated, ${skipped} skipped) in ${elapsed}s`
