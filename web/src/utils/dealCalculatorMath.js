@@ -398,14 +398,32 @@ export function isDefaultScenarioName(name, index) {
 
 export function scenarioDisplayName(scenario, index) {
   const name = typeof scenario?.name === 'string' ? scenario.name.trim() : '';
+  if (scenario?.nameCustom === true && name) return name;
   if (isDefaultScenarioName(name, index)) return defaultScenarioName(index);
   return name;
+}
+
+/**
+ * Keep a user-chosen tab name. Default labels ("Structure 1", legacy "Scenario 1")
+ * stay unlocked so they can follow the current default. Anything else is locked
+ * until the user renames it again.
+ */
+export function withLockedScenarioName(scenario, index) {
+  const name = typeof scenario?.name === 'string' ? scenario.name.trim() : '';
+  if (scenario?.nameCustom === true && name) {
+    return { ...scenario, name, nameCustom: true };
+  }
+  if (name && !isDefaultScenarioName(name, index)) {
+    return { ...scenario, name, nameCustom: true };
+  }
+  return { ...scenario, name: defaultScenarioName(index), nameCustom: false };
 }
 
 /** Email header: custom tab names get "Structure"; defaults stay "Structure 1". */
 export function ioiScenarioBlockLabel(scenario, index) {
   const name = scenarioDisplayName(scenario, index);
-  if (isDefaultScenarioName(scenario?.name, index)) return name;
+  const lockedCustom = scenario?.nameCustom === true && !isDefaultScenarioName(name, index);
+  if (!lockedCustom && isDefaultScenarioName(name, index)) return name;
   if (/structure$/i.test(name)) return name;
   return `${name} Structure`;
 }

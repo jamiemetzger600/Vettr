@@ -5,13 +5,14 @@ import {
   calculateTargetOfferAnalytical,
   createDefaultScenarios,
   DEFAULT_CALC_SBA_RATE,
-  isValidCalculatorPayload,
   parseMoney,
   SELLER_NOTE_TERM_YEARS,
   DEFAULT_SELLER_STANDBY_YEARS,
   stringifyDealNumber,
   defaultScenarioName,
-  scenarioDisplayName
+  isDefaultScenarioName,
+  scenarioDisplayName,
+  withLockedScenarioName
 } from '../utils/dealCalculatorMath';
 import {
   isScenario3Pristine,
@@ -20,9 +21,9 @@ import {
 import { dealsAPI } from '../utils/api';
 import {
   isSavedDealRowId,
-  loadCalculatorState,
   saveCalculatorState
 } from '../utils/dealCalculatorStorage';
+import { resolveStoredCalculatorState } from '../utils/savedDealCalculatorSummary';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
 const PER_DEAL_PERSIST_DEBOUNCE_MS = 400;
@@ -67,6 +68,8 @@ export default function DealCalculator({
   const renameInputRef = useRef(null);
   const persistTimerRef = useRef(null);
   const perDealPersistTimerRef = useRef(null);
+  const pendingCalculatorPayloadRef = useRef(null);
+  const persistCalculatorPayloadRef = useRef(null);
   const canOpenIOI = typeof onUseForIOI === 'function' && scenarios.length > 0;
   const showMobileQuickIOI = canOpenIOI && isMobile && (showQuickIOI === 'mobile' || showQuickIOI === 'always');
   const showFooterIOI = canOpenIOI && showQuickIOI === 'always' && !isMobile;
@@ -85,25 +88,18 @@ export default function DealCalculator({
     const defaults = createDefaultScenarios(deal, calculatorDefaults);
     const n = defaults.length;
 
-    const fromApi = deal.calculatorState;
-    const fromLs = loadCalculatorState(deal.id);
-    const fromListingKey =
-      deal.dealId != null && deal.dealId !== deal.id ? loadCalculatorState(deal.dealId) : null;
-
-    let stored = null;
-    if (isValidCalculatorPayload(fromApi, n)) stored = fromApi;
-    else if (isValidCalculatorPayload(fromLs, n)) stored = fromLs;
-    else if (isValidCalculatorPayload(fromListingKey, n)) stored = fromListingKey;
+    // localStorage wins over deal.calculatorState — the parent deal can lag a rename.
+    const stored = resolveStoredCalculatorState(deal, n);
 
     if (stored) {
       const merged = stored.scenarios.map((s, i) => {
-        const mergedRow = { ...defaults[i], ...s };
-        mergedRow.name = scenarioDisplayName(mergedRow, i);
-        if (mergedRow.name !== (typeof s?.name === 'string' ? s.name : '')) {
-          console.debug('[DealCalculator] remapped scenario name', {
+        const mergedRow = withLockedScenarioName({ ...defaults[i], ...s }, i);
+        if (mergedRow.name !== (typeof s?.name === 'string' ? s.name : '') || mergedRow.nameCustom !== Boolean(s?.nameCustom)) {
+          console.debug('[DealCalculator] locked scenario name', {
             index: i,
             from: s?.name,
-            to: mergedRow.name
+            to: mergedRow.name,
+            nameCustom: mergedRow.nameCustom
           });
         }
         return mergedRow;
@@ -147,15 +143,7 @@ export default function DealCalculator({
     if (!deal?.id) return;
     const defaults = createDefaultScenarios(deal, calculatorDefaults);
     const n = defaults.length;
-    const fromApi = deal.calculatorState;
-    const fromLs = loadCalculatorState(deal.id);
-    const fromListingKey =
-      deal.dealId != null && deal.dealId !== deal.id ? loadCalculatorState(deal.dealId) : null;
-    const hasStored =
-      isValidCalculatorPayload(fromApi, n) ||
-      isValidCalculatorPayload(fromLs, n) ||
-      isValidCalculatorPayload(fromListingKey, n);
-    if (hasStored) return;
+    if (resolveStoredCalculatorState(deal, n)) return;
     const sal =
       calculatorDefaults.salary != null && calculatorDefaults.salary !== ''
         ? String(calculatorDefaults.salary)
@@ -228,33 +216,60 @@ export default function DealCalculator({
     setTargetOfferResult(null);
   }, [activeScenario]);
 
+  const persistCalculatorPayload = useCallback((dealId, payload) => {
+    saveCalculatorState(dealId, payload);
+    if (!isSavedDealRowId(dealId)) return;
+    const active = payload.scenarios[Math.min(Number(payload.activeScenario) || 0, payload.scenarios.length - 1)] || payload.scenarios[0];
+    const syncPatch = { calculatorState: payload };
+    const ap = parseMoney(active?.askingPrice);
+    const eb = parseMoney(active?.ebitda);
+    if (ap > 0) syncPatch.askingPrice = ap;
+    if (eb > 0) syncPatch.ebitda = eb;
+    dealsAPI
+      .updateDeal(dealId, syncPatch)
+      .then(() => {
+        if (typeof onCalculatorPersisted === 'function') onCalculatorPersisted();
+      })
+      .catch((err) => {
+        console.warn('DealCalculator: failed to sync calculator to server', err);
+      });
+  }, [onCalculatorPersisted]);
+
   useEffect(() => {
-    if (!deal?.id || scenarios.length === 0) return;
+    if (!deal?.id || scenarios.length === 0) return undefined;
+    const payload = { scenarios, activeScenario, targetCOC, ui: uiOpen };
+    pendingCalculatorPayloadRef.current = { dealId: deal.id, payload };
     if (perDealPersistTimerRef.current) clearTimeout(perDealPersistTimerRef.current);
     perDealPersistTimerRef.current = setTimeout(() => {
-      const payload = { scenarios, activeScenario, targetCOC, ui: uiOpen };
-      saveCalculatorState(deal.id, payload);
-      if (isSavedDealRowId(deal.id)) {
-        const active = scenarios[Math.min(Number(activeScenario) || 0, scenarios.length - 1)] || scenarios[0];
-        const syncPatch = { calculatorState: payload };
-        const ap = parseMoney(active?.askingPrice);
-        const eb = parseMoney(active?.ebitda);
-        if (ap > 0) syncPatch.askingPrice = ap;
-        if (eb > 0) syncPatch.ebitda = eb;
-        dealsAPI
-          .updateDeal(deal.id, syncPatch)
-          .then(() => {
-            if (typeof onCalculatorPersisted === 'function') onCalculatorPersisted();
-          })
-          .catch((err) => {
-            console.warn('DealCalculator: failed to sync calculator to server', err);
-          });
-      }
+      perDealPersistTimerRef.current = null;
+      pendingCalculatorPayloadRef.current = null;
+      persistCalculatorPayload(deal.id, payload);
     }, PER_DEAL_PERSIST_DEBOUNCE_MS);
     return () => {
       if (perDealPersistTimerRef.current) clearTimeout(perDealPersistTimerRef.current);
     };
-  }, [deal?.id, scenarios, activeScenario, targetCOC, uiOpen, onCalculatorPersisted]);
+  }, [deal?.id, scenarios, activeScenario, targetCOC, uiOpen, persistCalculatorPayload]);
+
+  persistCalculatorPayloadRef.current = persistCalculatorPayload;
+
+  // Switching sections unmounts the calculator before the debounce fires.
+  useEffect(() => {
+    return () => {
+      const pending = pendingCalculatorPayloadRef.current;
+      const persist = persistCalculatorPayloadRef.current;
+      if (!pending || typeof persist !== 'function') return;
+      if (perDealPersistTimerRef.current) {
+        clearTimeout(perDealPersistTimerRef.current);
+        perDealPersistTimerRef.current = null;
+      }
+      pendingCalculatorPayloadRef.current = null;
+      console.log('[DealCalculator] flushed structure names on unmount', {
+        dealId: pending.dealId,
+        names: pending.payload.scenarios.map((scenario) => scenario?.name)
+      });
+      persist(pending.dealId, pending.payload);
+    };
+  }, []);
 
   const patchScenario = useCallback((patch) => {
     setScenarios((current) =>
@@ -263,11 +278,13 @@ export default function DealCalculator({
   }, [activeScenario]);
 
   const commitScenarioName = useCallback((index, raw) => {
-    const next = String(raw || '').trim() || defaultScenarioName(index);
+    const trimmed = String(raw || '').trim();
+    const next = trimmed || defaultScenarioName(index);
+    const nameCustom = Boolean(trimmed) && !isDefaultScenarioName(trimmed, index);
     setScenarios((current) =>
-      current.map((scenario, i) => (i === index ? { ...scenario, name: next } : scenario))
+      current.map((scenario, i) => (i === index ? { ...scenario, name: next, nameCustom } : scenario))
     );
-    console.log('[DealCalculator] renamed scenario', { index, name: next, dealId: deal?.id });
+    console.log('[DealCalculator] renamed scenario', { index, name: next, nameCustom, dealId: deal?.id });
     setRenamingScenarioIndex(null);
     setRenameDraft('');
   }, [deal?.id]);
@@ -492,7 +509,8 @@ export default function DealCalculator({
                 className="calc-scenario-tab calc-scenario-tab-input active"
                 value={renameDraft}
                 maxLength={80}
-                aria-label={`Name for ${defaultScenarioName(index)}`}
+                placeholder={defaultScenarioName(index)}
+                aria-label={`Rename ${defaultScenarioName(index)}`}
                 onChange={(event) => setRenameDraft(event.target.value)}
                 onBlur={() => commitScenarioName(index, renameDraft)}
                 onKeyDown={(event) => {
@@ -511,7 +529,8 @@ export default function DealCalculator({
                 key={`scenario-${index + 1}`}
                 type="button"
                 className={`calc-scenario-tab ${!showScenarioCompare && activeScenario === index ? 'active' : ''}`}
-                title="Click the active tab again, or double-click, to rename"
+                title="Rename this structure"
+                aria-label={`${scenarioDisplayName(scenario, index)}. Rename structure`}
                 onClick={() => {
                   setShowScenarioCompare(false);
                   if (!showScenarioCompare && activeScenario === index) {
@@ -526,7 +545,21 @@ export default function DealCalculator({
                   startRenameScenario(index);
                 }}
               >
-                {scenarioDisplayName(scenario, index)}
+                <span className="calc-scenario-tab-label">{scenarioDisplayName(scenario, index)}</span>
+                <span
+                  className="calc-scenario-tab-rename"
+                  title="Rename structure"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    startRenameScenario(index);
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </span>
               </button>
             )
           )}

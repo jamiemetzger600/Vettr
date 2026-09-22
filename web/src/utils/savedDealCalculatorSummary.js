@@ -6,7 +6,7 @@ import {
 } from './dealCalculatorMath';
 import { loadCalculatorState } from './dealCalculatorStorage';
 
-function resolveStoredCalculatorState(deal, scenarioCount) {
+export function resolveStoredCalculatorState(deal, scenarioCount) {
   const fromLs = loadCalculatorState(deal.id);
   const fromListingKey =
     deal.dealId != null && deal.dealId !== deal.id ? loadCalculatorState(deal.dealId) : null;

@@ -1168,7 +1168,7 @@ export default function DealAggregator({
       order: primary.direction,
       hiddenDealDbIds: showHiddenDeals ? [] : hiddenDbIds,
       showHidden: showHiddenDeals,
-      excludeKeywords: matchFilterMode ? [] : excludeKw,
+      excludeKeywords: excludeKw,
       sources: matchFilterMode ? null : sourceFilter,
       restrictToDbIds,
       firstSeenAfter,
@@ -1177,7 +1177,11 @@ export default function DealAggregator({
     });
 
     if (matchFilterMode) {
-      console.log('[DealAggregator] match alert filter', { count: matchFilterIds.length, keepView: true });
+      console.log('[DealAggregator] match alert filter', {
+        count: matchFilterIds.length,
+        keepView: true,
+        excludeKeywords: excludeKw.length
+      });
     } else if (filterNewToday) {
       console.log('[DealAggregator] newToday filter', { firstSeenAfter, windowHours: 24 });
     }

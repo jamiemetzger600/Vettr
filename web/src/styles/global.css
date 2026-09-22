@@ -4743,6 +4743,10 @@ button.aggregator-welcome__buybox {
 }
 
 .calc-scenario-tabs .calc-scenario-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -4763,11 +4767,37 @@ button.aggregator-welcome__buybox {
   color: var(--text-primary);
 }
 
-.calc-scenario-tab-input {
-  min-width: 0;
+.calc-scenario-tab-label {
+  border-bottom: 1px dashed transparent;
+}
+
+.calc-scenario-tabs .calc-scenario-tab.active .calc-scenario-tab-label,
+.calc-scenario-tabs .calc-scenario-tab:hover .calc-scenario-tab-label {
+  border-bottom-color: rgba(228, 228, 228, 0.45);
+}
+
+.calc-scenario-tab-rename {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.calc-scenario-tabs .calc-scenario-tab.active .calc-scenario-tab-rename,
+.calc-scenario-tabs .calc-scenario-tab:hover .calc-scenario-tab-rename,
+.calc-scenario-tabs .calc-scenario-tab:focus-visible .calc-scenario-tab-rename {
+  opacity: 0.95;
+}
+
+.calc-scenario-tabs .calc-scenario-tab-input {
+  display: inline-block;
+  min-width: 8ch;
   max-width: 180px;
   box-sizing: border-box;
   text-align: center;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
 }
 
 .calc-scenario-tab-input:focus {
