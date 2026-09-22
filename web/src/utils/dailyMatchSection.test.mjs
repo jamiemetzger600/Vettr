@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   dailyMatchRows,
   dailyMatchSection,
+  feedFreshCutoff,
   isDefaultDateSort,
   isFirstSeenOnOrAfter,
 } from './dailyMatchSection.js';
@@ -26,15 +27,49 @@ describe('isDefaultDateSort', () => {
   });
 });
 
+describe('feedFreshCutoff', () => {
+  it('keeps this visit on the saved cutoff, then the last look, then local midnight', () => {
+    const now = new Date('2026-09-22T18:00:00.000Z')
+    assert.equal(
+      feedFreshCutoff({ sessionCutoff: '2026-09-15T15:00:00.000Z', previousViewedAt: '2026-09-22T12:00:00.000Z', now }),
+      '2026-09-15T15:00:00.000Z'
+    )
+    assert.equal(
+      feedFreshCutoff({ previousViewedAt: '2026-09-15T15:00:00.000Z', now }),
+      '2026-09-15T15:00:00.000Z'
+    )
+    const first = new Date(feedFreshCutoff({ now }))
+    assert.equal(first.getDate(), now.getDate())
+    assert.equal(first.getHours(), 0)
+  })
+})
+
 describe('dailyMatchSection', () => {
   const today = deal('2026-09-22T16:00:00.000Z');
   const older = deal('2026-09-21T16:00:00.000Z');
 
-  it('treats first-seen at or after local midnight as today', () => {
+  it('treats a deal first seen after the last visit as fresh', () => {
     assert.equal(isFirstSeenOnOrAfter(today, DAY), true);
     assert.equal(isFirstSeenOnOrAfter(older, DAY), false);
     assert.equal(isFirstSeenOnOrAfter(deal(null), DAY), false);
   });
+
+  it('keeps a week of unseen deals above the bar', () => {
+    const weekAgo = Date.parse('2026-09-15T15:00:00.000Z')
+    const midweek = deal('2026-09-18T16:00:00.000Z')
+    const before = deal('2026-09-10T16:00:00.000Z')
+    const section = dailyMatchSection({
+      deals: [midweek, before],
+      page: 1,
+      perPage: 50,
+      newTodayTotal: 1,
+      enabled: true,
+      freshSinceMs: weekAgo,
+    })
+    assert.equal(section.kind, 'boundary')
+    assert.equal(section.dividerBefore, 1)
+    assert.equal(section.newOnPage, 1)
+  })
 
   it('puts the divider before the first older deal on the page', () => {
     const section = dailyMatchSection({
@@ -43,7 +78,7 @@ describe('dailyMatchSection', () => {
       perPage: 50,
       newTodayTotal: 2,
       enabled: true,
-      dayStartMs: DAY,
+      freshSinceMs: DAY,
     });
     assert.equal(section.kind, 'boundary');
     assert.equal(section.dividerBefore, 2);
@@ -58,7 +93,7 @@ describe('dailyMatchSection', () => {
       perPage: 50,
       newTodayTotal: 50,
       enabled: true,
-      dayStartMs: DAY,
+      freshSinceMs: DAY,
     });
     assert.equal(section.kind, 'boundary');
     assert.equal(section.dividerBefore, 0);
@@ -72,7 +107,7 @@ describe('dailyMatchSection', () => {
       perPage: 50,
       newTodayTotal: 50,
       enabled: true,
-      dayStartMs: DAY,
+      freshSinceMs: DAY,
     });
     assert.equal(section.kind, 'past-boundary');
     assert.equal(section.dividerBefore, null);
@@ -86,7 +121,7 @@ describe('dailyMatchSection', () => {
       perPage: 50,
       newTodayTotal: 0,
       enabled: true,
-      dayStartMs: DAY,
+      freshSinceMs: DAY,
     });
     assert.equal(section.kind, 'none-today');
     assert.equal(section.showNoneBanner, true);
@@ -100,7 +135,7 @@ describe('dailyMatchSection', () => {
     const section = dailyMatchSection({
       deals: [older, today],
       enabled: false,
-      dayStartMs: DAY,
+      freshSinceMs: DAY,
       newTodayTotal: 1,
     });
     assert.equal(section.kind, 'off');

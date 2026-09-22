@@ -1,7 +1,37 @@
 /**
- * Table/card split: deals first seen since local midnight, then older deals.
- * Inbox and custom sorts leave the list alone.
+ * Table/card split: deals first seen since the user last opened Matches,
+ * then older deals. Inbox and custom sorts leave the list alone.
+ * The cutoff is fixed for the browser tab so a refresh does not move the bar.
  */
+
+export const FEED_FRESH_SESSION_KEY = 'vettr_feed_fresh_since'
+
+/**
+ * Cutoff for the fresh section. Prefer the value already chosen for this tab,
+ * then the last saved visit, then local midnight on a first visit.
+ */
+export function feedFreshCutoff({ previousViewedAt = null, sessionCutoff = null, now = new Date() } = {}) {
+  const sessionMs = sessionCutoff ? new Date(sessionCutoff).getTime() : NaN
+  if (Number.isFinite(sessionMs)) return new Date(sessionMs).toISOString()
+  const previousMs = previousViewedAt ? new Date(previousViewedAt).getTime() : NaN
+  if (Number.isFinite(previousMs)) return new Date(previousMs).toISOString()
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  return start.toISOString()
+}
+
+export function freshBreakCopy(notice) {
+  if (notice) {
+    return {
+      title: 'No new matches since you last looked',
+      hint: 'Everything below was already in the feed.',
+    }
+  }
+  return {
+    title: 'Older deals',
+    hint: 'These were already in the feed.',
+  }
+}
 
 export function isDefaultDateSort(sortConfig) {
   const effective = Array.isArray(sortConfig) && sortConfig.length > 0
@@ -22,7 +52,7 @@ export function isFirstSeenOnOrAfter(deal, dayStartMs) {
 
 /**
  * Where to draw the Older deals break on this page.
- * `newTodayTotal` is the filtered count of deals first seen since local midnight.
+ * `newTodayTotal` is the filtered count of deals first seen since `freshSinceMs`.
  */
 export function dailyMatchSection({
   deals,
@@ -30,13 +60,13 @@ export function dailyMatchSection({
   perPage = 50,
   newTodayTotal = null,
   enabled = false,
-  dayStartMs,
+  freshSinceMs,
 }) {
   const list = Array.isArray(deals) ? deals : [];
   let newOnPage = 0;
   let firstOlder = -1;
   for (let i = 0; i < list.length; i += 1) {
-    if (isFirstSeenOnOrAfter(list[i], dayStartMs)) newOnPage += 1;
+    if (isFirstSeenOnOrAfter(list[i], freshSinceMs)) newOnPage += 1;
     else if (firstOlder < 0) firstOlder = i;
   }
   const olderOnPage = list.length - newOnPage;

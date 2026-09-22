@@ -35,6 +35,9 @@ import { useIsMobile, useOrientation, startOfLocalDayISO, matchesMobileViewport 
 import {
   dailyMatchRows,
   dailyMatchSection,
+  FEED_FRESH_SESSION_KEY,
+  feedFreshCutoff,
+  freshBreakCopy,
   isDefaultDateSort,
 } from '../utils/dailyMatchSection';
 import { useTeam } from '../context/TeamContext';
@@ -758,6 +761,29 @@ export default function DealAggregator({
     [filterMatchDealIds]
   );
   const matchFilterMode = matchFilterIds.length > 0;
+  const freshSince = useMemo(() => {
+    if (!settings) return null;
+    let sessionCutoff = null;
+    try {
+      sessionCutoff = sessionStorage.getItem(FEED_FRESH_SESSION_KEY);
+    } catch (err) {
+      console.warn('[DealAggregator] feed fresh session read failed', err);
+    }
+    const cutoff = feedFreshCutoff({
+      previousViewedAt: settings?.preferences?.feedViewedAt,
+      sessionCutoff,
+    });
+    if (!sessionCutoff) {
+      try {
+        sessionStorage.setItem(FEED_FRESH_SESSION_KEY, cutoff);
+      } catch (err) {
+        console.warn('[DealAggregator] feed fresh session write failed', err);
+      }
+    }
+    return cutoff;
+  }, [settings]);
+  const freshSinceMs = freshSince ? new Date(freshSince).getTime() : null;
+
   const groupTodayMatches = useMemo(
     () => (dealViewStyle === 'table' || dealViewStyle === 'card')
       && isDefaultDateSort(sortConfig)
@@ -767,6 +793,18 @@ export default function DealAggregator({
       && !filterNewToday,
     [dealViewStyle, sortConfig, showHiddenDeals, matchFilterMode, poolNewMode, filterNewToday]
   );
+  const feedViewStampRef = useRef(false);
+  useEffect(() => {
+    if (!settings || !freshSince || feedViewStampRef.current) return undefined;
+    feedViewStampRef.current = true;
+    const nextVisitFrom = new Date().toISOString();
+    console.log('[DealAggregator] feed fresh since last look', { freshSince, nextVisitFrom });
+    saveSettings({ preferences: { feedViewedAt: nextVisitFrom } }).catch((err) => {
+      console.error('[DealAggregator] feed viewed stamp failed', err);
+      feedViewStampRef.current = false;
+    });
+    return undefined;
+  }, [settings, freshSince, saveSettings]);
   const matchFilterFinger = matchFilterIds.join(',');
 
   const initialOpenAppliedRef = useRef(false);
@@ -1249,7 +1287,7 @@ export default function DealAggregator({
       firstSeenAfter,
       firstSeenBefore,
       updatedAfter: matchFilterMode ? null : (mobileDailyFilter && !filterNewToday ? startOfLocalDayISO() : null),
-      seenSince: groupTodayMatches ? startOfLocalDayISO() : null,
+      seenSince: groupTodayMatches && freshSince ? freshSince : null,
     });
 
     if (matchFilterMode) {
@@ -1296,7 +1334,7 @@ export default function DealAggregator({
       if (groupTodayMatches) {
         console.log('[DealAggregator] daily matches order', {
           sort: primarySortCol,
-          seenSince: startOfLocalDayISO(),
+          seenSince: freshSince,
           newTodayTotal: Number.isFinite(Number(countedToday)) ? Number(countedToday) : null,
           page: result.pagination?.page,
         });
@@ -1332,14 +1370,14 @@ export default function DealAggregator({
         setIsFetching(false);
       }
     }
-  }, [settings, feedSearchString, sortConfig, hiddenDealIds, showHiddenDeals, currentPage, manualRefreshToken, onMatchCountUpdate, onDealsStatsUpdate, feedSource, poolNewFinger, poolNewMode, poolNewDealsFilter, excludeKeywords, mobileDailyFilter, deckScope, filterNewToday, matchFilterMode, matchFilterIds, matchFilterFinger, groupTodayMatches]);
+  }, [settings, feedSearchString, sortConfig, hiddenDealIds, showHiddenDeals, currentPage, manualRefreshToken, onMatchCountUpdate, onDealsStatsUpdate, feedSource, poolNewFinger, poolNewMode, poolNewDealsFilter, excludeKeywords, mobileDailyFilter, deckScope, filterNewToday, matchFilterMode, matchFilterIds, matchFilterFinger, groupTodayMatches, freshSince]);
 
   // Fetch on mount, filter/sort/page/search change, and manual refresh.
   // Do not refetch on each Hide — client-side filter advances the list without a jump.
   useEffect(() => {
     if (settings) fetchServerDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run when inputs to fetchServerDeals change; avoid tying to unstable parent callbacks
-  }, [feedSearchString, sortConfig, currentPage, showHiddenDeals, buyBoxFeedKey, manualRefreshToken, poolNewFinger, excludeKeywordsFingerprint, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger, groupTodayMatches]);
+  }, [feedSearchString, sortConfig, currentPage, showHiddenDeals, buyBoxFeedKey, manualRefreshToken, poolNewFinger, excludeKeywordsFingerprint, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger, groupTodayMatches, freshSince]);
 
   // Manual refresh for the installed PWA (no browser reload / pull-to-refresh in
   // standalone mode). Clear the ETag cache so we always request a fresh 200.
@@ -1648,20 +1686,14 @@ export default function DealAggregator({
     return list;
   }, [deals, hiddenDealIds, showHiddenDeals, hideSavedDealsInFeed, savedDealIdSet, matchFilterMode]);
 
-  const dayStartMs = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return start.getTime();
-  }, [deals, currentPage]);
-
   const dailySection = useMemo(() => dailyMatchSection({
     deals: dealsToShow,
     page: currentPage,
     perPage: PER_PAGE,
     newTodayTotal,
-    enabled: groupTodayMatches,
-    dayStartMs,
-  }), [dealsToShow, currentPage, newTodayTotal, groupTodayMatches, dayStartMs]);
+    enabled: groupTodayMatches && Number.isFinite(freshSinceMs),
+    freshSinceMs,
+  }), [dealsToShow, currentPage, newTodayTotal, groupTodayMatches, freshSinceMs]);
 
   const dailyRows = useMemo(
     () => (groupTodayMatches ? dailyMatchRows(dealsToShow, dailySection) : null),
@@ -1674,10 +1706,11 @@ export default function DealAggregator({
       newToday: dailySection.newOnPage,
       olderOnPage: dailySection.olderOnPage,
       newTodayTotal,
+      freshSince,
       kind: dailySection.kind,
       page: currentPage,
     });
-  }, [groupTodayMatches, dailySection, newTodayTotal, currentPage]);
+  }, [groupTodayMatches, dailySection, newTodayTotal, freshSince, currentPage]);
 
   useEffect(() => {
     if (!groupTodayMatches) {
@@ -3112,10 +3145,8 @@ export default function DealAggregator({
                         className="older-deals-divider"
                       >
                         <td colSpan={visibleOrderedColumns.length + 1}>
-                          <div className="older-deals-divider__title">{notice ? 'No new matches today' : 'Older deals'}</div>
-                          <div className="older-deals-divider__hint">
-                            {notice ? 'Everything below was already in the feed.' : 'These were already in the feed.'}
-                          </div>
+                          <div className="older-deals-divider__title">{freshBreakCopy(notice).title}</div>
+                          <div className="older-deals-divider__hint">{freshBreakCopy(notice).hint}</div>
                         </td>
                       </tr>
                     );
@@ -3287,10 +3318,8 @@ export default function DealAggregator({
                         className="older-deals-break"
                         role="status"
                       >
-                        <div className="older-deals-divider__title">{notice ? 'No new matches today' : 'Older deals'}</div>
-                        <div className="older-deals-divider__hint">
-                          {notice ? 'Everything below was already in the feed.' : 'These were already in the feed.'}
-                        </div>
+                        <div className="older-deals-divider__title">{freshBreakCopy(notice).title}</div>
+                        <div className="older-deals-divider__hint">{freshBreakCopy(notice).hint}</div>
                       </div>
                     );
                   }
