@@ -32,6 +32,11 @@ import DealSwipeDeck from './DealSwipeDeck';
 import MobileFeedToolbar from './MobileFeedToolbar';
 import GatedPreviewText from './GatedPreviewText';
 import { useIsMobile, useOrientation, startOfLocalDayISO, matchesMobileViewport } from '../hooks/useMediaQuery';
+import {
+  dailyMatchRows,
+  dailyMatchSection,
+  isDefaultDateSort,
+} from '../utils/dailyMatchSection';
 import { useTeam } from '../context/TeamContext';
 import { claimPendingSaveDealDbId } from '../utils/pendingSaveDeal';
 import { collapseListingEl, prefersReducedMotion } from '../utils/listingExit';
@@ -498,6 +503,60 @@ function guestBrokerCell(label, onRequireSignup) {
   );
 }
 
+function OlderDealsSticky({ show, scrollRef, variant }) {
+  const slotRef = useRef(null);
+
+  useEffect(() => {
+    if (!show) return undefined;
+    const container = scrollRef.current;
+    const slot = slotRef.current;
+    if (!container || !slot) return undefined;
+
+    const place = () => {
+      const selfScrolls = container.scrollHeight > container.clientHeight + 8;
+      if (selfScrolls) {
+        const thead = variant === 'table' ? container.querySelector('thead') : null;
+        const top = thead ? Math.ceil(thead.getBoundingClientRect().height) : 0;
+        slot.style.position = 'sticky';
+        slot.style.top = `${top}px`;
+        slot.style.left = '0';
+        slot.style.width = '100%';
+        slot.style.height = '0';
+        slot.style.visibility = 'visible';
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      if (rect.bottom <= 8) {
+        slot.style.visibility = 'hidden';
+        return;
+      }
+      slot.style.visibility = 'visible';
+      slot.style.position = 'fixed';
+      slot.style.top = `${Math.max(rect.top, 0)}px`;
+      slot.style.left = `${rect.left}px`;
+      slot.style.width = `${rect.width}px`;
+      slot.style.height = 'auto';
+    };
+
+    place();
+    const selfScrolls = container.scrollHeight > container.clientHeight + 8;
+    const scrollTarget = selfScrolls ? container : window;
+    scrollTarget.addEventListener('scroll', place, { passive: true });
+    window.addEventListener('resize', place);
+    return () => {
+      scrollTarget.removeEventListener('scroll', place);
+      window.removeEventListener('resize', place);
+    };
+  }, [show, scrollRef, variant]);
+
+  if (!show) return null;
+  return (
+    <div ref={slotRef} className={`older-deals-sticky-slot older-deals-sticky-slot--${variant}`}>
+      <div className="older-deals-sticky" role="status">Older deals</div>
+    </div>
+  );
+}
+
 export default function DealAggregator({
   settings,
   manualRefreshToken,
@@ -597,6 +656,10 @@ export default function DealAggregator({
   const cardColsPopupRef = useRef(null);
   const [buyBoxScrollNonce, setBuyBoxScrollNonce] = useState(0);
   const cardsScrollRef = useRef(null);
+  const tableScrollRef = useRef(null);
+  const olderDividerRef = useRef(null);
+  const [newTodayTotal, setNewTodayTotal] = useState(null);
+  const [olderSticky, setOlderSticky] = useState(false);
   /** Cancel stale scroll-to-top when the user switches buy boxes again quickly. */
   const buyBoxScrollGenRef = useRef(0);
   const pendingBuyBoxScrollRef = useRef(false);
@@ -695,6 +758,15 @@ export default function DealAggregator({
     [filterMatchDealIds]
   );
   const matchFilterMode = matchFilterIds.length > 0;
+  const groupTodayMatches = useMemo(
+    () => (dealViewStyle === 'table' || dealViewStyle === 'card')
+      && isDefaultDateSort(sortConfig)
+      && !showHiddenDeals
+      && !matchFilterMode
+      && !poolNewMode
+      && !filterNewToday,
+    [dealViewStyle, sortConfig, showHiddenDeals, matchFilterMode, poolNewMode, filterNewToday]
+  );
   const matchFilterFinger = matchFilterIds.join(',');
 
   const initialOpenAppliedRef = useRef(false);
@@ -1128,8 +1200,11 @@ export default function DealAggregator({
     const flexPct = Math.min(100, Math.max(0, Number(buyBox.includeNearMatchesPercent) || 0));
     const effectiveSort = sortConfig.length > 0 ? sortConfig : [{ field: 'date', direction: 'desc' }];
     const primary = effectiveSort[0];
-    const primarySortCol = mapSortField(primary.field);
-    const sortSpec = encodeMarketDealsSortSpec(effectiveSort);
+    const dateColumn = groupTodayMatches ? 'first_seen_at' : null;
+    const primarySortCol = primary.field === 'date' && dateColumn
+      ? dateColumn
+      : mapSortField(primary.field);
+    const sortSpec = encodeMarketDealsSortSpec(effectiveSort, dateColumn ? { dateColumn } : undefined);
 
     const hiddenDbIds = [...new Set(hiddenDealIds.map(hiddenDealIdToDbId).filter(Boolean))];
 
@@ -1174,6 +1249,7 @@ export default function DealAggregator({
       firstSeenAfter,
       firstSeenBefore,
       updatedAfter: matchFilterMode ? null : (mobileDailyFilter && !filterNewToday ? startOfLocalDayISO() : null),
+      seenSince: groupTodayMatches ? startOfLocalDayISO() : null,
     });
 
     if (matchFilterMode) {
@@ -1215,6 +1291,16 @@ export default function DealAggregator({
       setDeals(result.deals);
       setTotalFromAPI(result.pagination.total);
       setTotalPages(result.pagination.total_pages);
+      const countedToday = result.pagination?.new_today;
+      setNewTodayTotal(Number.isFinite(Number(countedToday)) ? Number(countedToday) : null);
+      if (groupTodayMatches) {
+        console.log('[DealAggregator] daily matches order', {
+          sort: primarySortCol,
+          seenSince: startOfLocalDayISO(),
+          newTodayTotal: Number.isFinite(Number(countedToday)) ? Number(countedToday) : null,
+          page: result.pagination?.page,
+        });
+      }
 
       onMatchCountUpdate(result.pagination.total);
 
@@ -1246,14 +1332,14 @@ export default function DealAggregator({
         setIsFetching(false);
       }
     }
-  }, [settings, feedSearchString, sortConfig, hiddenDealIds, showHiddenDeals, currentPage, manualRefreshToken, onMatchCountUpdate, onDealsStatsUpdate, feedSource, poolNewFinger, poolNewMode, poolNewDealsFilter, excludeKeywords, mobileDailyFilter, deckScope, filterNewToday, matchFilterMode, matchFilterIds, matchFilterFinger]);
+  }, [settings, feedSearchString, sortConfig, hiddenDealIds, showHiddenDeals, currentPage, manualRefreshToken, onMatchCountUpdate, onDealsStatsUpdate, feedSource, poolNewFinger, poolNewMode, poolNewDealsFilter, excludeKeywords, mobileDailyFilter, deckScope, filterNewToday, matchFilterMode, matchFilterIds, matchFilterFinger, groupTodayMatches]);
 
   // Fetch on mount, filter/sort/page/search change, and manual refresh.
   // Do not refetch on each Hide — client-side filter advances the list without a jump.
   useEffect(() => {
     if (settings) fetchServerDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run when inputs to fetchServerDeals change; avoid tying to unstable parent callbacks
-  }, [feedSearchString, sortConfig, currentPage, showHiddenDeals, buyBoxFeedKey, manualRefreshToken, poolNewFinger, excludeKeywordsFingerprint, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger]);
+  }, [feedSearchString, sortConfig, currentPage, showHiddenDeals, buyBoxFeedKey, manualRefreshToken, poolNewFinger, excludeKeywordsFingerprint, deckScope, mobileDailyFilter, filterNewToday, matchFilterFinger, groupTodayMatches]);
 
   // Manual refresh for the installed PWA (no browser reload / pull-to-refresh in
   // standalone mode). Clear the ETag cache so we always request a fresh 200.
@@ -1561,6 +1647,69 @@ export default function DealAggregator({
     }
     return list;
   }, [deals, hiddenDealIds, showHiddenDeals, hideSavedDealsInFeed, savedDealIdSet, matchFilterMode]);
+
+  const dayStartMs = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return start.getTime();
+  }, [deals, currentPage]);
+
+  const dailySection = useMemo(() => dailyMatchSection({
+    deals: dealsToShow,
+    page: currentPage,
+    perPage: PER_PAGE,
+    newTodayTotal,
+    enabled: groupTodayMatches,
+    dayStartMs,
+  }), [dealsToShow, currentPage, newTodayTotal, groupTodayMatches, dayStartMs]);
+
+  const dailyRows = useMemo(
+    () => (groupTodayMatches ? dailyMatchRows(dealsToShow, dailySection) : null),
+    [groupTodayMatches, dealsToShow, dailySection]
+  );
+
+  useEffect(() => {
+    if (!groupTodayMatches) return;
+    console.log('[DealAggregator] daily match section', {
+      newToday: dailySection.newOnPage,
+      olderOnPage: dailySection.olderOnPage,
+      newTodayTotal,
+      kind: dailySection.kind,
+      page: currentPage,
+    });
+  }, [groupTodayMatches, dailySection, newTodayTotal, currentPage]);
+
+  useEffect(() => {
+    if (!groupTodayMatches) {
+      setOlderSticky(false);
+      return undefined;
+    }
+    if (dailySection.stickyWithoutDivider) {
+      setOlderSticky(true);
+      return undefined;
+    }
+    if (dailySection.kind !== 'boundary') {
+      setOlderSticky(false);
+      return undefined;
+    }
+    const marker = olderDividerRef.current;
+    if (!marker) {
+      setOlderSticky(false);
+      return undefined;
+    }
+    const container = dealViewStyle === 'table' ? tableScrollRef.current : cardsScrollRef.current;
+    const selfScrolls = Boolean(container && container.scrollHeight > container.clientHeight + 8);
+    const root = selfScrolls ? container : null;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const rootTop = entry.rootBounds?.top ?? 0;
+      const above = entry.boundingClientRect.bottom <= rootTop + 1;
+      setOlderSticky(!entry.isIntersecting && above);
+    }, { root, threshold: 0 });
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [groupTodayMatches, dailySection, dealViewStyle, dealsToShow]);
 
   /** Inbox triage: if this Matches page is empty after dismisses, advance. */
   useEffect(() => {
@@ -2916,7 +3065,8 @@ export default function DealAggregator({
         )}
 
         {dealViewStyle === 'table' && (
-        <div className="aggregator-table-scroll">
+        <div className="aggregator-table-scroll" ref={tableScrollRef}>
+          <OlderDealsSticky show={olderSticky} scrollRef={tableScrollRef} variant="table" />
           <table className="aggregator-table">
             <thead>
               <tr>
@@ -2952,7 +3102,25 @@ export default function DealAggregator({
                   </td>
                 </tr>
               ) : (
-                dealsToShow.map((deal) => {
+                (dailyRows || dealsToShow.map((deal) => ({ type: 'deal', deal }))).map((row) => {
+                  if (row.type !== 'deal') {
+                    const notice = row.type === 'notice';
+                    return (
+                      <tr
+                        key={row.id}
+                        ref={notice ? undefined : olderDividerRef}
+                        className="older-deals-divider"
+                      >
+                        <td colSpan={visibleOrderedColumns.length + 1}>
+                          <div className="older-deals-divider__title">{notice ? 'No new matches today' : 'Older deals'}</div>
+                          <div className="older-deals-divider__hint">
+                            {notice ? 'Everything below was already in the feed.' : 'These were already in the feed.'}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const deal = row.deal;
                   const isHidden = isDealHidden(deal, hiddenDealIds);
                   const dealSaved = isDealSavedInWorkspace(deal);
                   return (
@@ -3100,6 +3268,7 @@ export default function DealAggregator({
 
         {dealViewStyle === 'card' && (
           <div className="aggregator-cards-scroll" ref={cardsScrollRef}>
+            <OlderDealsSticky show={olderSticky} scrollRef={cardsScrollRef} variant="card" />
             <div className="aggregator-cards-grid" data-cols={isMobileViewport ? 1 : cardColumnsPerRow}>
               {deals.length === 0 ? (
                 <div className="aggregator-cards-empty">No deals found. Try adjusting your filters or search.</div>
@@ -3108,7 +3277,24 @@ export default function DealAggregator({
                   {emptyFeedMessage}
                 </div>
               ) : (
-                dealsToShow.map((deal) => {
+                (dailyRows || dealsToShow.map((deal) => ({ type: 'deal', deal }))).map((row) => {
+                  if (row.type !== 'deal') {
+                    const notice = row.type === 'notice';
+                    return (
+                      <div
+                        key={row.id}
+                        ref={notice ? undefined : olderDividerRef}
+                        className="older-deals-break"
+                        role="status"
+                      >
+                        <div className="older-deals-divider__title">{notice ? 'No new matches today' : 'Older deals'}</div>
+                        <div className="older-deals-divider__hint">
+                          {notice ? 'Everything below was already in the feed.' : 'These were already in the feed.'}
+                        </div>
+                      </div>
+                    );
+                  }
+                  const deal = row.deal;
                   const isHidden = isDealHidden(deal, hiddenDealIds);
                   const dealSaved = isDealSavedInWorkspace(deal);
                   return (

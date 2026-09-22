@@ -1617,6 +1617,54 @@ button.aggregator-welcome__buybox {
   font-size: 11px;
 }
 
+.older-deals-divider td,
+.older-deals-break {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.older-deals-break {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.older-deals-divider__title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.older-deals-divider__hint {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.older-deals-sticky-slot {
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.older-deals-sticky {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
+}
+
 .aggregator-table-scroll {
   /* overflow-x:auto forces overflow-y to compute to auto (CSS overflow rules). That makes
      this element the sticky scrollport while it’s as tall as the table, so vertical scroll

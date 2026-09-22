@@ -73,6 +73,7 @@ export function normalizeMarketDeal(row) {
     sourceType: row.source || 'unknown',
     discoveredAt: row.source_added_at ? new Date(row.source_added_at).getTime() : Date.now(),
     sourceUpdatedAt: row.source_updated_at ? new Date(row.source_updated_at).getTime() : null,
+    firstSeenAt: row.first_seen_at ? new Date(row.first_seen_at).toISOString() : null,
   };
 }
 
@@ -93,6 +94,7 @@ const SORT_FIELD_MAP = {
   yearsEstablished: 'years_established',
   source_added_at: 'source_added_at',
   source_updated_at: 'source_updated_at',
+  first_seen_at: 'first_seen_at',
 };
 
 export function mapSortField(frontendField) {
@@ -103,13 +105,14 @@ export function mapSortField(frontendField) {
  * Encode full table sort stack for `sort_spec` (comma-separated col:dir).
  * Dedupes DB columns so two UI fields mapping to the same column only sort once.
  */
-export function encodeMarketDealsSortSpec(sortConfig) {
+export function encodeMarketDealsSortSpec(sortConfig, options = {}) {
   if (!Array.isArray(sortConfig) || sortConfig.length === 0) return '';
+  const dateColumn = options.dateColumn || null;
   const used = new Set();
   const parts = [];
   for (const s of sortConfig.slice(0, 6)) {
     if (!s?.field) continue;
-    const col = mapSortField(s.field);
+    const col = s.field === 'date' && dateColumn ? dateColumn : mapSortField(s.field);
     if (used.has(col)) continue;
     used.add(col);
     const dir = s.direction === 'asc' ? 'asc' : 'desc';
@@ -143,6 +146,8 @@ export function buildMarketDealsParams({
   firstSeenBefore = null,
   /** Listings added or updated since this ISO timestamp (matches backend updated_after). */
   updatedAfter = null,
+  /** Local-midnight ISO. Count only — does not filter the page. */
+  seenSince = null,
 } = {}) {
   const params = new URLSearchParams();
   params.set('page', String(page));
@@ -227,6 +232,11 @@ export function buildMarketDealsParams({
   if (updatedAfter) {
     const t = new Date(updatedAfter);
     if (!Number.isNaN(t.getTime())) params.set('updated_after', t.toISOString());
+  }
+
+  if (seenSince) {
+    const t = new Date(seenSince);
+    if (!Number.isNaN(t.getTime())) params.set('seen_since', t.toISOString());
   }
 
   return params;

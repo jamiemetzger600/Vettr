@@ -36,18 +36,18 @@ function ifNoneMatchSatisfied(header, serverEtag) {
   return false;
 }
 
-function buildMarketDealsListEtag(total, maxActivity, page, perPage, orderBySql) {
+function buildMarketDealsListEtag(total, maxActivity, page, perPage, orderBySql, seenSince) {
   const maxIso =
     maxActivity instanceof Date && !Number.isNaN(maxActivity.getTime())
       ? maxActivity.toISOString()
       : '';
-  const payload = `${total}|${maxIso}|${page}|${perPage}|${orderBySql}`;
+  const payload = `${total}|${maxIso}|${page}|${perPage}|${orderBySql}|${seenSince || ''}`;
   const hash = crypto.createHash('sha256').update(payload).digest('base64url').slice(0, 24);
   return `W/"${hash}"`;
 }
 
 const ALLOWED_SORTS = [
-  'source_added_at', 'source_updated_at', 'asking_price',
+  'source_added_at', 'source_updated_at', 'first_seen_at', 'asking_price',
   'annual_revenue', 'annual_profit', 'profit_multiple',
   'revenue_multiple', 'years_established', 'name',
 ];
@@ -125,6 +125,7 @@ router.get('/', optionalAuth, async (req, res) => {
       ids,
       first_seen_after,
       first_seen_before,
+      seen_since,
     } = req.query;
 
     const showHidden = req.query.show_hidden === '1' || req.query.show_hidden === 'true';
@@ -395,16 +396,40 @@ router.get('/', optionalAuth, async (req, res) => {
     const safePerPage = Math.min(Math.max(Number(per_page) || DEFAULT_PER_PAGE, 1), MAX_PER_PAGE);
     const offset = (safePage - 1) * safePerPage;
 
+    let seenSinceIso = null;
+    if (seen_since) {
+      const seenTs = new Date(seen_since);
+      if (!Number.isNaN(seenTs.getTime())) seenSinceIso = seenTs.toISOString();
+    }
+    const aggParams = [...params];
+    let newTodaySelect = 'NULL::int AS new_today';
+    if (seenSinceIso) {
+      const seenIdx = aggParams.length + 1;
+      // Same DISTINCT ON collapse as the list, so the break lines up with what the page shows.
+      newTodaySelect = `(
+        SELECT COUNT(*)::int FROM (
+          SELECT DISTINCT ON (${dedupeKeySql}) first_seen_at
+          FROM market_deals ${where}
+          ORDER BY ${dedupeKeySql}, ${preferBizBuySellSql}, source_added_at DESC NULLS LAST, id DESC
+        ) collapsed_seen
+        WHERE collapsed_seen.first_seen_at >= $${seenIdx}
+      ) AS new_today`;
+      aggParams.push(seenSinceIso);
+      console.log('[market-deals] seen_since count', { seenSinceIso, param: seenIdx });
+    }
+
     const aggResult = await pool.query(
       `SELECT COUNT(DISTINCT ${dedupeKeySql})::int AS total,
-              MAX(GREATEST(source_added_at, source_updated_at)) AS max_activity
+              MAX(GREATEST(source_added_at, source_updated_at)) AS max_activity,
+              ${newTodaySelect}
        FROM market_deals ${where}`,
-      params
+      aggParams
     );
     const total = Number(aggResult.rows[0]?.total) || 0;
     const maxActivity = aggResult.rows[0]?.max_activity;
+    const newTodayInFeed = seenSinceIso ? Number(aggResult.rows[0]?.new_today) || 0 : null;
 
-    const etag = buildMarketDealsListEtag(total, maxActivity, safePage, safePerPage, orderBySql);
+    const etag = buildMarketDealsListEtag(total, maxActivity, safePage, safePerPage, orderBySql, seenSinceIso);
     if (ifNoneMatchSatisfied(req.get('if-none-match'), etag)) {
       res.set('ETag', etag);
       res.set('Cache-Control', 'public, max-age=30');
@@ -440,6 +465,7 @@ router.get('/', optionalAuth, async (req, res) => {
         per_page: safePerPage,
         total,
         total_pages: Math.ceil(total / safePerPage),
+        ...(newTodayInFeed != null ? { new_today: newTodayInFeed } : {}),
       },
       ...(maxUpdatedAt && { max_updated_at: maxUpdatedAt }),
     });
