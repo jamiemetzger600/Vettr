@@ -169,10 +169,145 @@ a {
 }
 .landing-footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: center;
   padding-top: 12px;
   color: var(--text-secondary);
+}
+
+.landing-footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.landing-footer a:hover {
+  color: var(--text-primary);
+}
+
+/* Legal pages (Terms / Privacy) */
+.legal-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+  color: var(--text-primary);
+}
+
+.legal-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.legal-page__brand {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.legal-page__nav {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.legal-page__nav a,
+.legal-page__footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+.legal-page__nav a:hover,
+.legal-page__footer a:hover {
+  color: var(--text-primary);
+}
+
+.legal-doc {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 24px;
+  line-height: 1.65;
+}
+
+.legal-doc h1 {
+  font-size: 1.75rem;
+  margin: 0 0 8px;
+}
+
+.legal-doc h2 {
+  font-size: 1.15rem;
+  margin: 1.75rem 0 0.6rem;
+}
+
+.legal-doc h3 {
+  font-size: 1rem;
+  margin: 1.1rem 0 0.4rem;
+  color: var(--text-primary);
+}
+
+.legal-doc p,
+.legal-doc li {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.legal-doc ul {
+  margin: 0.4rem 0 0.8rem;
+  padding-left: 1.25rem;
+}
+
+.legal-doc a {
+  color: var(--primary);
+}
+
+.legal-doc__meta {
+  margin-bottom: 12px;
+}
+
+.legal-doc__notice {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.legal-page__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.settings-legal-links a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.auth-agree {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.auth-agree a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.not-found-panel h2 {
+  margin-top: 0;
 }
 
 /* Auth Pages */
@@ -519,6 +654,10 @@ a {
   color: var(--primary);
   text-decoration: none;
   font-weight: 600;
+}
+
+.auth-footer + .auth-footer {
+  margin-top: 10px;
 }
 
 /* App Shell */

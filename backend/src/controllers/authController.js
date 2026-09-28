@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import pool from '../db/pool.js';
 import { setAuthCookie, clearAuthCookie } from '../lib/authCookies.js';
 import { sendEmail, isSmtpConfigured } from '../services/emailService.js';
+import { normalizeEmail, isValidEmail, INVALID_EMAIL_MESSAGE } from '../../../shared/emailValidation.js';
 
 const SALT_ROUNDS = 10;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
@@ -18,10 +19,15 @@ function isDbActiveTimeQuotaError(error) {
 
 // Register new user
 export const register = async (req, res) => {
-  const { email, password } = req.body;
+  const { password } = req.body;
+  const email = normalizeEmail(req.body?.email);
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: INVALID_EMAIL_MESSAGE });
   }
 
   if (password.length < 8) {
@@ -32,7 +38,7 @@ export const register = async (req, res) => {
     // Check if user exists
     const existingUser = await pool.query(
       'SELECT id FROM users WHERE email = $1',
-      [email.toLowerCase()]
+      [email]
     );
 
     if (existingUser.rows.length > 0) {
@@ -45,7 +51,7 @@ export const register = async (req, res) => {
     // Create user
     const result = await pool.query(
       'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
-      [email.toLowerCase(), passwordHash]
+      [email, passwordHash]
     );
 
     const user = result.rows[0];
@@ -91,7 +97,9 @@ export const register = async (req, res) => {
 
 // Login
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { password } = req.body;
+  // Normalize so mixed-case addresses still match stored lowercase emails
+  const email = normalizeEmail(req.body?.email);
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
@@ -101,7 +109,7 @@ export const login = async (req, res) => {
     // Get user
     const result = await pool.query(
       'SELECT id, email, password_hash, created_at FROM users WHERE email = $1',
-      [email.toLowerCase()]
+      [email]
     );
 
     if (result.rows.length === 0) {
@@ -182,11 +190,15 @@ function webAppBase() {
 }
 
 export const forgotPassword = async (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
   const generic = { message: 'If that email is registered, we sent a reset link.' };
 
   if (!email) {
     return res.status(400).json({ error: 'Email required' });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: INVALID_EMAIL_MESSAGE });
   }
 
   try {

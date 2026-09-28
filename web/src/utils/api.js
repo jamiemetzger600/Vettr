@@ -104,6 +104,13 @@ async function apiRequest(endpoint, options = {}) {
         if (response.status === 401 && isAuthAttempt) {
           throw new Error(error.error || 'Invalid email or password');
         }
+        if (response.status === 429) {
+          const err = new Error(
+            error.error || 'Too many attempts. Please wait a few minutes and try again.'
+          );
+          err.status = 429;
+          throw err;
+        }
         if (response.status === 502 || response.status === 503 || response.status === 504) {
           recordApiFailure({
             method: options.method || 'GET',

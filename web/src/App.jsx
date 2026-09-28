@@ -17,6 +17,9 @@ import UnderwritingHubPage from './pages/underwriting/UnderwritingHubPage';
 import UnderwritingAppPage from './pages/underwriting/UnderwritingAppPage';
 import TeamInviteAcceptPage from './pages/TeamInviteAcceptPage';
 import AdminFeedbackPage from './pages/AdminFeedbackPage';
+import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
+import NotFoundPage from './pages/NotFoundPage';
 import FeedbackShell from './components/feedback/FeedbackShell';
 import { userAPI } from './utils/api';
 import { syncPushIfGranted } from './utils/webNotifications';
@@ -154,6 +157,9 @@ function AppRoutes() {
         />
         <Route path="/" element={<LandingPage />} />
         <Route path="/submit-deal" element={<SubmitDealPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </FeedbackShell>
   );

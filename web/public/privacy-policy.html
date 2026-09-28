@@ -3,47 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vettr Chrome Extension — Privacy Policy</title>
+  <title>Vettr Privacy Policy</title>
+  <meta http-equiv="refresh" content="0;url=/privacy">
+  <link rel="canonical" href="/privacy">
+  <script>
+    // Keep Chrome Web Store / extension links working; SPA route is /privacy.
+    location.replace('/privacy' + (location.search || '') + (location.hash || ''));
+  </script>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #1e293b; }
-    h1 { font-size: 1.5rem; }
-    h2 { font-size: 1.1rem; margin-top: 1.5rem; }
-    a { color: #2563eb; }
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.5; color: #e4e4e4; background: #1a1a1a; }
+    a { color: #c4c4c4; }
   </style>
 </head>
 <body>
-  <h1>Vettr Chrome Extension — Privacy Policy</h1>
-  <p><strong>Last updated:</strong> September 2026</p>
-
-  <p>Vettr (“we”) provides a Chrome extension to help business buyers aggregate listings, analyze deals, and save opportunities. This policy describes what the extension stores and sends.</p>
-
-  <h2>Data stored locally on your device</h2>
-  <ul>
-    <li>Saved deals, notes, calculator inputs, buy box settings, and data-source configuration</li>
-    <li>Your Vettr sign-in session token after you log in (used only to sync My Deals with your Vettr account)</li>
-  </ul>
-
-  <h2>Data sent to Vettr servers</h2>
-  <p>When you sign in, the extension may send saved deals and related notes/status to the Vettr API so they appear in your account on <a href="https://vettr.pages.dev">vettr.pages.dev</a>. We do not sell your data.</p>
-
-  <h2>Third-party services</h2>
-  <ul>
-    <li><strong>Google Sheets API</strong> — only if you connect a private Google Sheet as a data source (OAuth via Chrome identity)</li>
-    <li><strong>Public listing sites &amp; sheet URLs you configure</strong> — fetched in your browser to import deals you choose</li>
-  </ul>
-
-  <h2>Permissions</h2>
-  <ul>
-    <li><strong>Storage</strong> — save deals and preferences locally</li>
-    <li><strong>Active tab / host access</strong> — show the deal calculator on listing pages and read page data you analyze</li>
-    <li><strong>Identity</strong> — optional Google sign-in for private spreadsheets</li>
-    <li><strong>Notifications</strong> — optional alerts when new deals match your buy box</li>
-  </ul>
-
-  <h2>Contact</h2>
-  <p>Questions: use the support contact on the <a href="https://vettr.pages.dev">Vettr website</a> or your account settings.</p>
-
-  <h2>Changes</h2>
-  <p>We may update this policy; the extension version and this page will reflect material changes.</p>
+  <p>Vettr&rsquo;s Privacy Policy has moved to <a href="/privacy">/privacy</a>.</p>
 </body>
 </html>

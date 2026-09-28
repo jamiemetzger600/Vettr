@@ -27,6 +27,10 @@ validateConfig(); // Exits in production if required env vars missing (see CONFI
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
+// Trust reverse proxies (Cloudflare Worker + tunnel) so req.ip / X-Forwarded-* work.
+// Auth rate limits also read CF-Connecting-IP directly (see lib/clientIp.js).
+app.set('trust proxy', true);
+
 // Gzip compress all responses — reduces egress by 70-85% on JSON payloads
 app.use(compression());
 
@@ -66,7 +70,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.140' });
+  res.json({ status: 'ok', version: '5.0.141' });
 });
 
 // Routes

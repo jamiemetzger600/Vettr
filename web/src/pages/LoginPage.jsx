@@ -121,6 +121,11 @@ export default function LoginPage() {
             {' · '}
             <Link to="/">What is Vettr?</Link>
           </p>
+          <p className="auth-footer">
+            <Link to="/terms">Terms</Link>
+            {' · '}
+            <Link to="/privacy">Privacy</Link>
+          </p>
         </form>
       </div>
     </div>

@@ -51,14 +51,32 @@ export default {
     const incoming = new URL(request.url);
     const target = new URL(incoming.pathname + incoming.search, origin);
 
+    // Preserve real client IP for Express rate limiting behind the tunnel.
+    // Without this, every user shares the tunnel/Worker hop IP.
+    const clientIp =
+      request.headers.get('CF-Connecting-IP')
+      || request.headers.get('True-Client-IP')
+      || '';
+
     const headers = new Headers(request.headers);
     headers.delete('host');
     headers.set('host', target.host);
-    // Cloudflare / proxy hop-by-hop cleanup
+    // Cloudflare / proxy hop-by-hop cleanup (re-set client IP below)
     headers.delete('cf-connecting-ip');
     headers.delete('cf-ray');
     headers.delete('cf-visitor');
     headers.delete('true-client-ip');
+    if (clientIp) {
+      // Dedicated header survives tunnel hop (CF may rewrite CF-Connecting-IP).
+      headers.set('X-Vettr-Client-IP', clientIp);
+      headers.set('CF-Connecting-IP', clientIp);
+      headers.set('X-Real-IP', clientIp);
+      const priorXff = request.headers.get('X-Forwarded-For');
+      headers.set(
+        'X-Forwarded-For',
+        priorXff ? `${clientIp}, ${priorXff}` : clientIp
+      );
+    }
 
     const init = {
       method: request.method,

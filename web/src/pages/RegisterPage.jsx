@@ -5,6 +5,7 @@ import { mergeGuestSettingsIntoAccount } from '../utils/mergeGuestSettings';
 import { parseAuthReturnParams } from '../hooks/useGuestAccess';
 import { getSignupCopy } from '../utils/guestEntitlements';
 import { logGuestEvent } from '../utils/guestAnalytics';
+import { isValidEmail, INVALID_EMAIL_MESSAGE } from '../utils/emailValidation';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -39,6 +40,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!isValidEmail(email)) { setError(INVALID_EMAIL_MESSAGE); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
     setLoading(true);
@@ -89,11 +91,22 @@ export default function RegisterPage() {
             <label htmlFor="confirmPassword">Confirm Password</label>
             <input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required placeholder="Re-enter password" />
           </div>
+          <p className="auth-agree">
+            By creating an account you agree to the{' '}
+            <Link to="/terms">Terms</Link>
+            {' '}and{' '}
+            <Link to="/privacy">Privacy Policy</Link>.
+          </p>
           <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Creating account...' : 'Sign Up'}</button>
           <p className="auth-footer">Already have an account? <Link to={`/login${location.search}`}>Sign in</Link></p>
           <p className="auth-footer"><Link to="/dashboard">Browse without signing in</Link>
             {' · '}
             <Link to="/">What is Vettr?</Link>
+          </p>
+          <p className="auth-footer">
+            <Link to="/terms">Terms</Link>
+            {' · '}
+            <Link to="/privacy">Privacy</Link>
           </p>
         </form>
       </div>
