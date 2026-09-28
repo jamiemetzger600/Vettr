@@ -88,6 +88,8 @@ export default function LandingPage() {
           </>
         )}
         <Link to="/submit-deal">Brokers: submit a deal</Link>
+        <Link to="/terms">Terms</Link>
+        <Link to="/privacy">Privacy</Link>
       </footer>
     </div>
   );

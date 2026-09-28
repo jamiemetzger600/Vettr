@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { isValidEmail, INVALID_EMAIL_MESSAGE } from '../utils/emailValidation';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -13,6 +14,10 @@ export default function ForgotPasswordPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!isValidEmail(email)) {
+      setError(INVALID_EMAIL_MESSAGE);
+      return;
+    }
     setLoading(true);
     try {
       await authAPI.forgotPassword(email);
@@ -70,6 +75,11 @@ export default function ForgotPasswordPage() {
                 {loading ? 'Sending…' : 'Send reset link'}
               </button>
               <p className="auth-footer"><Link to="/login">Back to sign in</Link></p>
+              <p className="auth-footer">
+                <Link to="/terms">Terms</Link>
+                {' · '}
+                <Link to="/privacy">Privacy</Link>
+              </p>
             </>
           )}
         </form>

@@ -674,6 +674,15 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        <div className="settings-section">
+          <h2>Legal</h2>
+          <p className="settings-legal-links">
+            <Link to="/terms">Terms of Service</Link>
+            {' · '}
+            <Link to="/privacy">Privacy Policy</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

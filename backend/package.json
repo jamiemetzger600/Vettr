@@ -1,6 +1,6 @@
 {
   "name": "vettr-backend",
-  "version": "5.0.140",
+  "version": "5.0.141",
   "description": "Backend API for Vettr mobile web and native apps",
   "main": "src/index.js",
   "type": "module",
@@ -24,6 +24,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.7.0",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.7",
