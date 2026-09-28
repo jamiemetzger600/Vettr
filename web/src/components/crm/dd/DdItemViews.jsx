@@ -89,14 +89,42 @@ export function DdIconCard({
   );
 }
 
-export function DdListHead() {
+const LIST_SORT_COLUMNS = [
+  { key: 'item', label: 'Item' },
+  { key: 'due', label: 'Due' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'status', label: 'Status' }
+];
+
+function sortHint(key, dir) {
+  if (key === 'due') return dir === 'desc' ? 'latest first' : 'soonest first';
+  if (key === 'assigned') return dir === 'desc' ? 'name Z to A' : 'unassigned first';
+  if (key === 'status') return dir === 'desc' ? 'finished first' : 'not started first';
+  return dir === 'desc' ? 'Z to A' : 'A to Z';
+}
+
+export function DdListHead({ sortKey = null, sortDir = 'asc', onSort }) {
   return (
     <div className="dd-list-head" role="row">
       <span className="dd-list-head__check" />
-      <span>Item</span>
-      <span>Due</span>
-      <span>Assigned</span>
-      <span>Status</span>
+      {LIST_SORT_COLUMNS.map((col) => {
+        const active = sortKey === col.key;
+        const ariaSort = active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none';
+        const nextDir = active && sortDir === 'asc' ? 'desc' : 'asc';
+        return (
+          <button
+            key={col.key}
+            type="button"
+            className={`dd-list-head__sort${active ? ' dd-list-head__sort--active' : ''}`}
+            aria-sort={ariaSort}
+            title={active ? `${col.label}, ${sortHint(col.key, sortDir)}` : `Sort by ${col.label}`}
+            onClick={() => onSort?.(col.key, active ? nextDir : 'asc')}
+          >
+            {col.label}
+            {active ? <span aria-hidden="true">{sortDir === 'desc' ? ' ↓' : ' ↑'}</span> : null}
+          </button>
+        );
+      })}
       <span />
     </div>
   );

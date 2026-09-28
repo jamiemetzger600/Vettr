@@ -11,7 +11,7 @@ import {
   createQuickFollowUp,
   updateTask
 } from '../services/crmTaskService.js';
-import { getDdOverdueForToday, getRecentPortalComments } from '../services/ddChecklistService.js';
+import { getDdOverdueForToday, getRecentPortalComments, listActiveDdDeals } from '../services/ddChecklistService.js';
 import { getCrmFunnelAnalytics } from '../services/crmAnalyticsService.js';
 import { listDealDocuments, addDealDocument } from '../services/crmDocumentService.js';
 import {
@@ -250,6 +250,10 @@ export const getCrmToday = async (req, res) => {
       console.warn('[crm] findNearingDdDeals skipped:', err.message);
       return [];
     });
+    const activeDd = await listActiveDdDeals(userId).catch((err) => {
+      console.warn('[crm] listActiveDdDeals skipped:', err.message);
+      return [];
+    });
     const nudges = await listNudgeQueue(userId).catch((err) => {
       console.warn('[crm] listNudgeQueue skipped:', err.message);
       return [];
@@ -273,6 +277,7 @@ export const getCrmToday = async (req, res) => {
       recentActivities: recentActivities.rows,
       dormantDeals,
       nearingDd,
+      activeDd,
       nudges,
       tasks: taskSummary,
       staleListings,

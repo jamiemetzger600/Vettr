@@ -3,6 +3,7 @@ const STORAGE_KEY = 'vettr.dashboard.location.v1';
 const VALID_TABS = new Set(['aggregator', 'crm']);
 const VALID_CRM_VIEWS = new Set([
   'home',
+  'diligence',
   'cards',
   'list',
   'tasks',

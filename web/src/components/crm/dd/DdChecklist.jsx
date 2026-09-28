@@ -61,6 +61,74 @@ function iconMeta(item, assigneeLabel) {
   return due ? `${name.split(' ')[0]} · ${due}` : name.split(' ')[0];
 }
 
+const STATUS_SORT_RANK = {
+  not_started: 0,
+  blocked: 1,
+  waiting_on_other: 2,
+  in_progress: 3,
+  complete: 4,
+  na: 5
+};
+
+function compareDdItems(a, b, sort, assigneeLabel) {
+  const key = sort?.key;
+  const desc = sort?.dir === 'desc';
+  const tie = (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.id).localeCompare(String(b.id));
+  if (key === 'item') {
+    const cmp = String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
+    return (cmp || tie) * (desc ? -1 : 1);
+  }
+  if (key === 'due') {
+    const ad = a.due_at ? Date.parse(a.due_at) : NaN;
+    const bd = b.due_at ? Date.parse(b.due_at) : NaN;
+    const aMissing = Number.isNaN(ad);
+    const bMissing = Number.isNaN(bd);
+    if (aMissing || bMissing) {
+      if (aMissing && bMissing) return tie;
+      return aMissing ? 1 : -1;
+    }
+    return ((ad - bd) || tie) * (desc ? -1 : 1);
+  }
+  if (key === 'assigned') {
+    const an = assigneeLabel(a.assignees?.[0]) || '';
+    const bn = assigneeLabel(b.assignees?.[0]) || '';
+    if (!an || !bn) {
+      if (!an && !bn) return tie;
+      if (desc) return !an ? 1 : -1;
+      return !an ? -1 : 1;
+    }
+    const cmp = an.localeCompare(bn, undefined, { sensitivity: 'base' });
+    return (cmp || tie) * (desc ? -1 : 1);
+  }
+  if (key === 'status') {
+    const cmp = (STATUS_SORT_RANK[a.status] ?? 99) - (STATUS_SORT_RANK[b.status] ?? 99);
+    return (cmp || tie) * (desc ? -1 : 1);
+  }
+  return tie;
+}
+
+function sortDdItems(items, sort, assigneeLabel) {
+  const list = [...(items || [])];
+  if (!sort?.key) return list;
+  list.sort((a, b) => compareDdItems(a, b, sort, assigneeLabel));
+  return list;
+}
+
+function sortDdGroups(groups, sort, assigneeLabel) {
+  const list = [...(groups || [])];
+  if (!sort?.key) return list;
+  list.sort((ga, gb) => {
+    const ia = sortDdItems(ga.items, sort, assigneeLabel)[0];
+    const ib = sortDdItems(gb.items, sort, assigneeLabel)[0];
+    if (!ia && !ib) return String(ga.name || '').localeCompare(String(gb.name || ''));
+    if (!ia) return 1;
+    if (!ib) return -1;
+    return compareDdItems(ia, ib, sort, assigneeLabel)
+      || String(ga.name || '').localeCompare(String(gb.name || ''));
+  });
+  return list;
+}
+
 export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
   const [checklist, setChecklist] = useState(null);
   const [members, setMembers] = useState([]);
@@ -90,6 +158,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
   });
   const [showShareLinks, setShowShareLinks] = useState(false);
   const [view, setView] = useState(readStoredView);
+  const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [anchorId, setAnchorId] = useState(null);
   const [bulkDue, setBulkDue] = useState('');
@@ -947,8 +1016,20 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
-        {view === 'list' ? <DdListHead /> : null}
-        {(checklist.groups || []).map((group) => {
+        {view === 'list' ? (
+          <DdListHead
+            sortKey={listSort.key}
+            sortDir={listSort.dir}
+            onSort={(key, dir) => {
+              const next = dir === 'asc' && listSort.key === key && listSort.dir === 'desc'
+                ? { key: null, dir: 'asc' }
+                : { key, dir };
+              console.log('[DdChecklist] list sort', next.key || 'checklist order', next.dir);
+              setListSort(next);
+            }}
+          />
+        ) : null}
+        {sortDdGroups(checklist.groups, view === 'list' ? listSort : null, assigneeLabel).map((group) => {
           const done = (group.items || []).filter((i) => i.status === 'complete' || i.status === 'na').length;
           const total = (group.items || []).length;
           const groupIds = (group.items || []).map((i) => String(i.id));
@@ -1005,7 +1086,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
               ) : null}
               {view === 'cards' ? (
                 <ul className="dd-icon-grid">
-                  {(group.items || []).map((item) => (
+                  {sortDdItems(group.items, view === 'cards' ? null : listSort, assigneeLabel).map((item) => (
                     <DdIconCard
                       key={item.id}
                       item={item}
@@ -1017,7 +1098,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
                 </ul>
               ) : (
                 <ul className="dd-item-list dd-item-list--table">
-                  {(group.items || []).map((item) => {
+                  {sortDdItems(group.items, listSort, assigneeLabel).map((item) => {
                     const isOn = selected.has(String(item.id));
                     return (
                       <li

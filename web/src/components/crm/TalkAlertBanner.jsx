@@ -120,8 +120,40 @@ export default function TalkAlertBanner({
     refresh({ notifyBrowser: false });
   };
 
+  const dismissAll = async () => {
+    const ids = visible.map((a) => a.id);
+    console.log('[TalkAlertBanner] dismiss all', ids);
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    onUnreadChangeRef.current?.(0);
+    try {
+      const result = await crmAPI.markAllAlertsRead();
+      console.log('[TalkAlertBanner] dismiss all marked', result?.read ?? 0);
+    } catch (err) {
+      console.warn('[TalkAlertBanner] dismiss all failed', err.message);
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+    }
+    refresh({ notifyBrowser: false });
+  };
+
   return (
     <div className="talk-alert-banner" role="status" aria-live="polite">
+      <button
+        type="button"
+        className="talk-alert-banner__close"
+        onClick={dismissAll}
+        aria-label="Dismiss all alerts"
+        title="Dismiss all alerts"
+      >
+        ×
+      </button>
       <div className="talk-alert-banner__body">
         <strong className="talk-alert-banner__title">{top.title}</strong>
         {metaText ? (

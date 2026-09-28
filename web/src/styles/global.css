@@ -8375,6 +8375,48 @@ button.aggregator-welcome__buybox {
   text-align: center;
 }
 
+.crm-diligence__header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.crm-diligence__header p {
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.crm-diligence__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.crm-diligence__item {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.crm-diligence__item:hover {
+  border-color: var(--primary);
+}
+.crm-diligence__name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.crm-diligence__meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .crm-object-nav__hint {
   margin: 12px 4px 0;
   font-size: 11px;
@@ -10080,6 +10122,23 @@ button.aggregator-welcome__buybox {
   border-bottom: 1px solid var(--border);
   margin-bottom: 10px;
 }
+.dd-list-head__sort {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.dd-list-head__sort:hover,
+.dd-list-head__sort--active {
+  color: var(--text-primary);
+}
 
 .dd-item-list--table {
   gap: 4px;
@@ -11636,6 +11695,31 @@ button.aggregator-welcome__buybox {
   flex-direction: column;
   gap: 6px;
   flex-shrink: 0;
+  margin-top: 22px;
+}
+.talk-alert-banner__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+}
+.talk-alert-banner__close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
 @media (max-width: 640px) {
@@ -11659,9 +11743,13 @@ button.aggregator-welcome__buybox {
   .talk-alert-banner {
     flex-direction: column;
   }
+  .talk-alert-banner__body {
+    padding-right: 28px;
+  }
   .talk-alert-banner__actions {
     flex-direction: row;
     width: 100%;
+    margin-top: 0;
   }
 }
 

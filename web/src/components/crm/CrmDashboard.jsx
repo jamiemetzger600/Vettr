@@ -10,6 +10,7 @@ import CrmDealPeek from './CrmDealPeek';
 import CrmObjectNav from './CrmObjectNav';
 import CrmCommandMenu from './CrmCommandMenu';
 import CrmTaskList from './CrmTaskList';
+import CrmDiligenceList from './CrmDiligenceList';
 import CrmContactList from './CrmContactList';
 import CrmAnalytics from './CrmAnalytics';
 import CrmCompareDeals from './CrmCompareDeals';
@@ -27,7 +28,7 @@ import { useAuth } from '../../context/AuthContext';
 import { parseCompareIds, serializeCompareIds } from '../../utils/dealCompare';
 
 const EMPTY_COMPARE_IDS = [];
-const VALID_VIEWS = new Set(['home', 'cards', 'list', 'tasks', 'contacts', 'calendar', 'analytics', 'compare']);
+const VALID_VIEWS = new Set(['home', 'diligence', 'cards', 'list', 'tasks', 'contacts', 'calendar', 'analytics', 'compare']);
 
 function normalizeCrmView(view) {
   if (!view) return 'cards';
@@ -523,11 +524,14 @@ export default function CrmDashboard({
         )
       : null;
 
+  const activeDdDeals = Array.isArray(today?.activeDd) ? today.activeDd : [];
+
   const navBadges = {
     badge: today?.badgeCount ?? 0,
     deals: dealList.length,
     cards: dealList.filter((d) => !isPassedOnDeal(normalizeDeal(d))).length,
-    tasks: openTaskCount
+    tasks: openTaskCount,
+    diligence: activeDdDeals.length
   };
 
   const peekNextAction =
@@ -610,6 +614,13 @@ export default function CrmDashboard({
           onDismiss={() => setStagePrompt(null)}
         />
       ) : null}
+
+      {crmView === 'diligence' && (
+        <CrmDiligenceList
+          deals={activeDdDeals}
+          onSelectDeal={handleSelectDeal}
+        />
+      )}
 
       {crmView === 'home' && (
         <>

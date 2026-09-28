@@ -165,6 +165,29 @@ export async function getRecentPortalComments(userId, days = 7) {
   return result.rows;
 }
 
+/** Saved deals whose diligence checklist is still open. */
+export async function listActiveDdDeals(userId) {
+  const result = await pool.query(
+    `SELECT sd.id AS saved_deal_id,
+            sd.name AS deal_name,
+            c.started_at,
+            c.target_date,
+            COUNT(i.id)::int AS total_items,
+            COUNT(i.id) FILTER (WHERE i.status NOT IN ('complete', 'na'))::int AS open_items
+     FROM dd_checklists c
+     JOIN saved_deals sd ON sd.id = c.saved_deal_id
+     LEFT JOIN dd_groups g ON g.checklist_id = c.id
+     LEFT JOIN dd_items i ON i.group_id = g.id
+     WHERE ${VISIBLE_DEALS_SQL}
+       AND c.completed_at IS NULL
+     GROUP BY sd.id, sd.name, c.started_at, c.target_date
+     ORDER BY c.started_at DESC NULLS LAST, sd.name ASC`,
+    [userId]
+  );
+  console.log(`[dd] active checklists user=${userId} count=${result.rows.length}`);
+  return result.rows;
+}
+
 async function seedTemplateTree(templateId, groups) {
   for (let gi = 0; gi < groups.length; gi++) {
     const group = groups[gi];
