@@ -54,6 +54,22 @@ describe('dailyMatchSection', () => {
     assert.equal(isFirstSeenOnOrAfter(deal(null), DAY), false);
   });
 
+  it('keeps a re-imported older listing below listings added since the last look', () => {
+    const cutoff = Date.parse('2026-09-22T07:00:00.000Z');
+    const reimported = {
+      id: 1,
+      discoveredAt: '2026-08-21T07:00:00.000Z',
+      firstSeenAt: '2026-09-28T17:30:00.000Z',
+    };
+    const addedSince = {
+      id: 2,
+      discoveredAt: '2026-09-27T07:00:00.000Z',
+      firstSeenAt: '2026-09-27T11:00:00.000Z',
+    };
+    assert.equal(isFirstSeenOnOrAfter(reimported, cutoff), false);
+    assert.equal(isFirstSeenOnOrAfter(addedSince, cutoff), true);
+  });
+
   it('keeps a week of unseen deals above the bar', () => {
     const weekAgo = Date.parse('2026-09-15T15:00:00.000Z')
     const midweek = deal('2026-09-18T16:00:00.000Z')

@@ -408,11 +408,11 @@ router.get('/', optionalAuth, async (req, res) => {
       // Same DISTINCT ON collapse as the list, so the break lines up with what the page shows.
       newTodaySelect = `(
         SELECT COUNT(*)::int FROM (
-          SELECT DISTINCT ON (${dedupeKeySql}) first_seen_at
+          SELECT DISTINCT ON (${dedupeKeySql}) source_added_at
           FROM market_deals ${where}
           ORDER BY ${dedupeKeySql}, ${preferBizBuySellSql}, source_added_at DESC NULLS LAST, id DESC
         ) collapsed_seen
-        WHERE collapsed_seen.first_seen_at >= $${seenIdx}
+        WHERE collapsed_seen.source_added_at >= $${seenIdx}
       ) AS new_today`;
       aggParams.push(seenSinceIso);
       console.log('[market-deals] seen_since count', { seenSinceIso, param: seenIdx });

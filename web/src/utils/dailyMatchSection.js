@@ -44,7 +44,8 @@ export function isDefaultDateSort(sortConfig) {
 }
 
 export function isFirstSeenOnOrAfter(deal, dayStartMs) {
-  const raw = deal?.firstSeenAt;
+  // Date Added is what the column shows. A later re-import must not count as a new listing.
+  const raw = deal?.discoveredAt ?? deal?.firstSeenAt;
   if (raw == null || raw === '') return false;
   const seen = new Date(raw).getTime();
   return Number.isFinite(seen) && seen >= dayStartMs;
@@ -52,7 +53,7 @@ export function isFirstSeenOnOrAfter(deal, dayStartMs) {
 
 /**
  * Where to draw the Older deals break on this page.
- * `newTodayTotal` is the filtered count of deals first seen since `freshSinceMs`.
+ * `newTodayTotal` is the filtered count of deals whose Date Added is on or after `freshSinceMs`.
  */
 export function dailyMatchSection({
   deals,

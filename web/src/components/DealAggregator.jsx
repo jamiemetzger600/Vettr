@@ -1238,11 +1238,8 @@ export default function DealAggregator({
     const flexPct = Math.min(100, Math.max(0, Number(buyBox.includeNearMatchesPercent) || 0));
     const effectiveSort = sortConfig.length > 0 ? sortConfig : [{ field: 'date', direction: 'desc' }];
     const primary = effectiveSort[0];
-    const dateColumn = groupTodayMatches ? 'first_seen_at' : null;
-    const primarySortCol = primary.field === 'date' && dateColumn
-      ? dateColumn
-      : mapSortField(primary.field);
-    const sortSpec = encodeMarketDealsSortSpec(effectiveSort, dateColumn ? { dateColumn } : undefined);
+    const primarySortCol = mapSortField(primary.field);
+    const sortSpec = encodeMarketDealsSortSpec(effectiveSort);
 
     const hiddenDbIds = [...new Set(hiddenDealIds.map(hiddenDealIdToDbId).filter(Boolean))];
 

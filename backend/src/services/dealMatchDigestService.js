@@ -16,18 +16,19 @@ export function formatMoney(n) {
 }
 
 /**
- * Load newly seen market listings since `sinceDate`. Caller should reuse one batch per job.
+ * Load listings whose Date Added is since `sinceDate`.
+ * Re-imports keep an older Date Added, so they are not treated as new.
  */
 export async function loadNewMarketDeals(sinceDate) {
   const since = sinceDate instanceof Date ? sinceDate : new Date(sinceDate);
   const result = await pool.query(
     `SELECT id, name, listing_url, asking_price, annual_revenue, annual_profit,
-            city, state, industries, first_seen_at, remote_relocatable
+            city, state, industries, first_seen_at, source_added_at, remote_relocatable
      FROM market_deals
      WHERE is_active = true
-       AND first_seen_at IS NOT NULL
-       AND first_seen_at >= $1
-     ORDER BY first_seen_at DESC
+       AND source_added_at IS NOT NULL
+       AND source_added_at >= $1
+     ORDER BY source_added_at DESC
      LIMIT $2`,
     [since.toISOString(), NEW_DEALS_CAP]
   );
