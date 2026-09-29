@@ -125,7 +125,6 @@ export function DdListHead({ sortKey = null, sortDir = 'asc', onSort }) {
           </button>
         );
       })}
-      <span />
     </div>
   );
 }

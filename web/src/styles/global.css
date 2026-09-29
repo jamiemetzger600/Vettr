@@ -10196,7 +10196,7 @@ button.aggregator-welcome__buybox {
 .dd-list-head,
 .dd-list-row {
   display: grid;
-  grid-template-columns: 28px minmax(140px, 1.5fr) 132px minmax(120px, 0.9fr) 120px 64px;
+  grid-template-columns: 28px minmax(180px, 1.8fr) 128px minmax(110px, 0.8fr) 132px;
   gap: 8px;
   align-items: center;
 }
@@ -10410,6 +10410,39 @@ button.aggregator-welcome__buybox {
   color: var(--accent, #7eb8ff);
 }
 
+.dd-item__badge--btn {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.dd-dep__link {
+  appearance: none;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.dd-list-row:hover .dd-dep__link,
+.dd-list-row:focus-within .dd-dep__link {
+  opacity: 1;
+}
+
+.dd-dep__link:hover {
+  color: var(--text-primary);
+}
+
 .dd-portal-gate {
   display: flex;
   flex-direction: column;
@@ -10608,6 +10641,10 @@ button.aggregator-welcome__buybox {
 
 .dd-dep__chip {
   cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: var(--bg-tertiary);
 }
 
@@ -12816,6 +12853,10 @@ button.aggregator-welcome__buybox {
   .dd-list-row {
     grid-template-columns: 28px 1fr;
     align-items: start;
+  }
+
+  .dd-dep__link {
+    opacity: 1;
   }
 
   .dd-list-row .dd-item__due-input,

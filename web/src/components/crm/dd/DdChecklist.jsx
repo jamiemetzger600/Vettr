@@ -179,6 +179,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   });
   const [view, setView] = useState(readStoredView);
   const [workView, setWorkView] = useState(readWorkView);
+  const [linkingId, setLinkingId] = useState(null);
   const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [anchorId, setAnchorId] = useState(null);
@@ -1461,10 +1462,30 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
                         <div className="dd-list-row__item">
                           <div className="dd-list-row__name">
                             <span className="dd-item__title">{item.title}</span>
-                            {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
+                            {item.requests_document ? (
+                              <button
+                                type="button"
+                                className="dd-item__badge dd-item__badge--btn"
+                                onClick={() => handleDocLink(item.id)}
+                              >
+                                Doc
+                              </button>
+                            ) : null}
                             {locked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
+                            {canWrite && String(linkingId) !== String(item.id) ? (
+                              <button
+                                type="button"
+                                className="dd-dep__link"
+                                onClick={() => {
+                                  console.log('[DdChecklist] open predecessor', item.id, item.title);
+                                  setLinkingId(item.id);
+                                }}
+                              >
+                                Depends on
+                              </button>
+                            ) : null}
                           </div>
-                          {(item.predecessors || []).length || canWrite ? (
+                          {(item.predecessors || []).length || String(linkingId) === String(item.id) ? (
                             <div className="dd-dep">
                               {(item.predecessors || []).map((pred) => (
                                 <button
@@ -1478,18 +1499,24 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
                                   After {pred.title}
                                 </button>
                               ))}
-                              {canWrite ? (
+                              {String(linkingId) === String(item.id) ? (
                                 <select
                                   className="modal-input dd-dep__add"
                                   value=""
+                                  autoFocus
                                   aria-label={`Predecessor for ${item.title}`}
+                                  onBlur={() => setLinkingId(null)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') setLinkingId(null);
+                                  }}
                                   onChange={(e) => {
                                     const value = e.target.value;
                                     e.target.value = '';
+                                    setLinkingId(null);
                                     handleLinkPredecessor(item.id, value);
                                   }}
                                 >
-                                  <option value="">Add predecessor…</option>
+                                  <option value="">Choose a task…</option>
                                   {dependencyChoices
                                     .filter((choice) => String(choice.id) !== String(item.id) && !linked.has(String(choice.id)))
                                     .map((choice) => (
@@ -1528,11 +1555,6 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
                             </option>
                           ))}
                         </select>
-                        {item.requests_document ? (
-                          <button type="button" className="btn-secondary btn-secondary--sm" onClick={() => handleDocLink(item.id)}>+ Doc</button>
-                        ) : (
-                          <span />
-                        )}
                         {renderItemExtras(item)}
                       </li>
                     );
