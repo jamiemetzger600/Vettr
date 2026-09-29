@@ -4,6 +4,8 @@ import { formatDate } from '../../../utils/normalizeDeal';
 import { applyClickSelection } from './ddSelection.js';
 import useDdMarquee from './useDdMarquee.js';
 import { DdFolderIcon, DdIconCard, DdListHead } from './DdItemViews.jsx';
+import DdGantt from './DdGantt.jsx';
+import { blockedLabel, blockedTooltip, canSetStatus } from './ddBlocked.js';
 
 const DEFAULT_MILESTONES = [
   { title: 'Request data room / remaining docs', dueAt: '' },
@@ -43,7 +45,7 @@ function modeLabel(mode) {
 function readStoredView() {
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    return v === 'list' || v === 'cards' ? v : 'cards';
+    return v === 'list' || v === 'cards' || v === 'gantt' ? v : 'cards';
   } catch {
     return 'cards';
   }
@@ -58,7 +60,9 @@ function dueToIso(dateStr) {
 function iconMeta(item, assigneeLabel) {
   const name = assigneeLabel(item.assignees?.[0]) || 'Unassigned';
   const due = item.due_at ? formatDate(item.due_at) : '';
-  return due ? `${name.split(' ')[0]} · ${due}` : name.split(' ')[0];
+  const blocked = blockedLabel(item);
+  const base = due ? `${name.split(' ')[0]} · ${due}` : name.split(' ')[0];
+  return blocked ? `${base} · ${blocked}` : base;
 }
 
 const STATUS_SORT_RANK = {
@@ -235,6 +239,16 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     return ids;
   }, [checklist]);
 
+  const dependencyChoices = useMemo(() => {
+    const rows = [];
+    for (const group of checklist?.groups || []) {
+      for (const item of group.items || []) {
+        rows.push({ id: item.id, title: item.title, group: group.name });
+      }
+    }
+    return rows;
+  }, [checklist]);
+
   const handleViewChange = (next) => {
     setView(next);
     try { localStorage.setItem(VIEW_KEY, next); } catch { /* ignore */ }
@@ -316,12 +330,51 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     }
   };
 
+  const handleMilestoneDate = async (stageId, dueOn) => {
+    if (!canWrite) return;
+    try {
+      const data = await crmAPI.setDdMilestone(dealId, { stageId, dueOn: dueOn || null });
+      setChecklist(data.checklist);
+      console.log('[DdChecklist] milestone', stageId, dueOn || 'cleared');
+    } catch (err) {
+      alert(err.message || 'Failed to set milestone date');
+    }
+  };
+
   const handleDueChange = async (itemId, dueAt) => {
     try {
       const data = await crmAPI.patchDdItem(dealId, itemId, { dueAt: dueAt || null });
       setChecklist(data.checklist);
     } catch (err) {
       alert('Failed to set due date: ' + err.message);
+    }
+  };
+
+  const handleLinkPredecessor = async (successorId, predecessorId) => {
+    if (!canWrite || !predecessorId) return;
+    try {
+      const data = await crmAPI.linkDdDependency(dealId, {
+        predecessorId: Number(predecessorId),
+        successorId: Number(successorId)
+      });
+      setChecklist(data.checklist);
+      console.log('[DdChecklist] linked', { predecessorId, successorId });
+    } catch (err) {
+      alert(err.message || 'Failed to link predecessor');
+    }
+  };
+
+  const handleUnlinkPredecessor = async (successorId, predecessorId) => {
+    if (!canWrite) return;
+    try {
+      const data = await crmAPI.unlinkDdDependency(dealId, {
+        predecessorId: Number(predecessorId),
+        successorId: Number(successorId)
+      });
+      setChecklist(data.checklist);
+      console.log('[DdChecklist] unlinked', { predecessorId, successorId });
+    } catch (err) {
+      alert(err.message || 'Failed to remove predecessor');
     }
   };
 
@@ -833,6 +886,15 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
             >
               List
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'gantt'}
+              className={view === 'gantt' ? 'active' : ''}
+              onClick={() => handleViewChange('gantt')}
+            >
+              Gantt
+            </button>
           </div>
           {canWrite ? (
             <>
@@ -1111,7 +1173,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
             </>
           ) : null}
         </div>
-      ) : (
+      ) : view === 'gantt' ? null : (
         <p className="crm-muted dd-select-hint">
           Drag to select · Shift-click a range · ⌘-click to toggle · then assign dates and people
         </p>
@@ -1153,6 +1215,16 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
         </div>
       ) : null}
 
+      {view === 'gantt' ? (
+        <DdGantt
+          groups={checklist.groups}
+          startedAt={checklist.started_at}
+          targetDate={checklist.target_date}
+          milestones={checklist.milestones || []}
+          onMilestoneDate={canWrite ? handleMilestoneDate : null}
+          showAudienceToggle
+        />
+      ) : (
       <div
         ref={workspaceRef}
         className={`dd-workspace dd-workspace--${view}`}
@@ -1245,12 +1317,15 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
                 <ul className="dd-item-list dd-item-list--table">
                   {sortDdItems(group.items, listSort, assigneeLabel).map((item) => {
                     const isOn = selected.has(String(item.id));
+                    const locked = Boolean(item.blocked);
+                    const linked = new Set((item.predecessors || []).map((row) => String(row.id)));
                     return (
                       <li
                         key={item.id}
                         data-dd-item-id={item.id}
-                        className={`dd-list-row${isOn ? ' is-selected' : ''}`}
+                        className={`dd-list-row${isOn ? ' is-selected' : ''}${locked ? ' dd-list-row--locked' : ''}`}
                         aria-selected={isOn}
+                        title={blockedTooltip(item) || undefined}
                       >
                         <label className="dd-list-row__check">
                           <input
@@ -1268,8 +1343,48 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
                           />
                         </label>
                         <div className="dd-list-row__item">
-                          <span className="dd-item__title">{item.title}</span>
-                          {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
+                          <div className="dd-list-row__name">
+                            <span className="dd-item__title">{item.title}</span>
+                            {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
+                            {locked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
+                          </div>
+                          {(item.predecessors || []).length || canWrite ? (
+                            <div className="dd-dep">
+                              {(item.predecessors || []).map((pred) => (
+                                <button
+                                  key={pred.id}
+                                  type="button"
+                                  className="dd-dep__chip"
+                                  disabled={!canWrite}
+                                  title={`Remove predecessor ${pred.title}`}
+                                  onClick={() => handleUnlinkPredecessor(item.id, pred.id)}
+                                >
+                                  After {pred.title}
+                                </button>
+                              ))}
+                              {canWrite ? (
+                                <select
+                                  className="modal-input dd-dep__add"
+                                  value=""
+                                  aria-label={`Predecessor for ${item.title}`}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    e.target.value = '';
+                                    handleLinkPredecessor(item.id, value);
+                                  }}
+                                >
+                                  <option value="">Add predecessor…</option>
+                                  {dependencyChoices
+                                    .filter((choice) => String(choice.id) !== String(item.id) && !linked.has(String(choice.id)))
+                                    .map((choice) => (
+                                      <option key={choice.id} value={choice.id}>
+                                        {choice.group}: {choice.title}
+                                      </option>
+                                    ))}
+                                </select>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                         <input
                           type="date"
@@ -1288,7 +1403,13 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
                           aria-label={`Status for ${item.title}`}
                         >
                           {DD_STATUSES.map((s) => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
+                            <option
+                              key={s.value}
+                              value={s.value}
+                              disabled={s.value !== item.status && !canSetStatus(item, s.value)}
+                            >
+                              {s.label}
+                            </option>
                           ))}
                         </select>
                         {item.requests_document ? (
@@ -1317,6 +1438,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
           />
         ) : null}
       </div>
+      )}
     </div>
   );
 }

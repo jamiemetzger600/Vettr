@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ddPublicAPI } from '../utils/api';
 import { formatDate } from '../utils/normalizeDeal';
+import DdGantt from '../components/crm/dd/DdGantt.jsx';
+import { blockedLabel, blockedTooltip, canSetStatus } from '../components/crm/dd/ddBlocked.js';
 
 function storageKey(token) {
   return `vettr-dd-portal:${token}`;
@@ -51,7 +53,8 @@ const STATUS_SECTIONS = [
 
 function loadPortalView(token) {
   try {
-    return localStorage.getItem(`${PORTAL_VIEW_KEY}:${token}`) === 'list' ? 'list' : 'kanban';
+    const stored = localStorage.getItem(`${PORTAL_VIEW_KEY}:${token}`);
+    return stored === 'list' || stored === 'gantt' ? stored : 'kanban';
   } catch {
     return 'kanban';
   }
@@ -372,7 +375,7 @@ export default function DdPortalPage() {
     }));
 
   return (
-    <div className={`dd-portal dd-portal--board${boardView === 'list' ? ' dd-portal--list' : ''}`}>
+    <div className={`dd-portal dd-portal--board${boardView === 'list' ? ' dd-portal--list' : ''}${boardView === 'gantt' ? ' dd-portal--gantt' : ''}`}>
       <header className="dd-portal__header">
         <img src="/vettr-logo.png" alt="Vettr" className="dd-portal__logo" width={160} height={46} />
         <h1>{data.dealName}</h1>
@@ -408,6 +411,15 @@ export default function DdPortalPage() {
             onClick={() => handleBoardView('list')}
           >
             List
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={boardView === 'gantt'}
+            className={boardView === 'gantt' ? 'active' : ''}
+            onClick={() => handleBoardView('gantt')}
+          >
+            Gantt
           </button>
         </div>
         <label>
@@ -463,7 +475,16 @@ export default function DdPortalPage() {
         ) : null}
       </div>
 
-      {boardView === 'list' ? (
+      {boardView === 'gantt' ? (
+        <DdGantt
+          groups={visibleGroups}
+          startedAt={data.checklist?.started_at}
+          targetDate={data.checklist?.target_date}
+          milestones={data.checklist?.milestones || []}
+          audience={data.mode === 'collaborative' ? 'internal' : 'external'}
+          showAudienceToggle={data.mode === 'collaborative'}
+        />
+      ) : boardView === 'list' ? (
         <PortalList
           groups={groupItemsForList(visibleGroups)}
           collaborative={data.mode === 'collaborative'}
@@ -490,12 +511,14 @@ export default function DdPortalPage() {
                 {items.map((item) => (
                   <li
                     key={item.id}
-                    className="dd-portal-card"
+                    className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}`}
                     data-status={item.status}
+                    title={blockedTooltip(item) || undefined}
                   >
                     <div className="dd-portal-card__top">
                       <strong>{item.title}</strong>
                       {item.requests_document ? <span className="dd-item__badge">Document</span> : null}
+                      {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
                     </div>
                     {item.status === 'waiting_on_other' ? (
                       <div className="dd-portal-card__blocked" role="status">
@@ -510,10 +533,11 @@ export default function DdPortalPage() {
                           onChange={(e) => handleStatus(item.id, e.target.value)}
                           className="modal-input"
                           aria-label={`Status for ${item.title}`}
+                          title={blockedTooltip(item) || undefined}
                         >
                           <option value="not_started">Not started</option>
-                          <option value="in_progress">In progress</option>
-                          <option value="complete">Complete</option>
+                          <option value="in_progress" disabled={!canSetStatus(item, 'in_progress') && item.status !== 'in_progress'}>In progress</option>
+                          <option value="complete" disabled={!canSetStatus(item, 'complete') && item.status !== 'complete'}>Complete</option>
                           <option value="waiting_on_other">Blocked / waiting</option>
                           <option value="na">Not applicable</option>
                         </select>
@@ -634,9 +658,17 @@ function PortalList({
                       const notesOpen = noteItemId === item.id;
                       const noteCount = (item.comments || []).length;
                       return (
-                        <li key={item.id} className="dd-portal-list__row" data-status={item.status}>
+                        <li
+                          key={item.id}
+                          className={`dd-portal-list__row${item.blocked ? ' dd-portal-list__row--locked' : ''}`}
+                          data-status={item.status}
+                          title={blockedTooltip(item) || undefined}
+                        >
                           <div className="dd-portal-list__line">
-                            <span className="dd-portal-list__title">{item.title}</span>
+                            <span className="dd-portal-list__title">
+                              {item.title}
+                              {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
+                            </span>
                             {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
                             {collaborative ? (
                               <>
@@ -661,10 +693,11 @@ function PortalList({
                                   onChange={(e) => onStatus(item.id, e.target.value)}
                                   className="modal-input"
                                   aria-label={`Status for ${item.title}`}
+                                  title={blockedTooltip(item) || undefined}
                                 >
                                   <option value="not_started">Not started</option>
-                                  <option value="in_progress">In progress</option>
-                                  <option value="complete">Complete</option>
+                                  <option value="in_progress" disabled={!canSetStatus(item, 'in_progress') && item.status !== 'in_progress'}>In progress</option>
+                                  <option value="complete" disabled={!canSetStatus(item, 'complete') && item.status !== 'complete'}>Complete</option>
                                   <option value="waiting_on_other">Blocked / waiting</option>
                                   <option value="na">Not applicable</option>
                                 </select>

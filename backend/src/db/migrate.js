@@ -1256,6 +1256,33 @@ const migrations = [
           SELECT 1 FROM dd_checklists c WHERE c.saved_deal_id = tasks.saved_deal_id
         );
     `
+  },
+  {
+    name: 'dd_item_dependencies_v5_143',
+    up: `
+      CREATE TABLE IF NOT EXISTS dd_item_dependencies (
+        id SERIAL PRIMARY KEY,
+        predecessor_id INTEGER NOT NULL REFERENCES dd_items(id) ON DELETE CASCADE,
+        successor_id INTEGER NOT NULL REFERENCES dd_items(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (predecessor_id, successor_id),
+        CHECK (predecessor_id <> successor_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_dd_item_dep_successor ON dd_item_dependencies(successor_id);
+      CREATE INDEX IF NOT EXISTS idx_dd_item_dep_predecessor ON dd_item_dependencies(predecessor_id);
+    `
+  },
+  {
+    name: 'dd_stage_milestones_v5_144',
+    up: `
+      CREATE TABLE IF NOT EXISTS dd_stage_milestones (
+        checklist_id INTEGER NOT NULL REFERENCES dd_checklists(id) ON DELETE CASCADE,
+        stage_id VARCHAR(40) NOT NULL,
+        due_on DATE,
+        PRIMARY KEY (checklist_id, stage_id)
+      );
+    `
   }
 ];
 

@@ -14,7 +14,10 @@ import {
   addDdItemDocument,
   addPublicDdComment,
   addPublicDdDocument,
-  sendDdChecklistSummary
+  sendDdChecklistSummary,
+  linkDdDependency,
+  unlinkDdDependency,
+  setStageMilestone
 } from '../services/ddChecklistService.js';
 
 function publicGuestMeta(req) {
@@ -40,6 +43,7 @@ function sendPublicError(res, error) {
   }
   if (error.status === 403) return res.status(403).json({ error: error.message });
   if (error.status === 400) return res.status(400).json({ error: error.message });
+  if (error.status === 409) return res.status(409).json({ error: error.message });
   return null;
 }
 
@@ -92,6 +96,8 @@ export const patchDealDdItem = async (req, res) => {
     res.json({ checklist });
   } catch (error) {
     if (error.status === 404) return res.status(404).json({ error: error.message });
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 409) return res.status(409).json({ error: error.message });
     console.error('[dd] patchDealDdItem error:', error);
     res.status(500).json({ error: 'Server error' });
   }
@@ -104,6 +110,7 @@ export const patchDealDdItemsBulk = async (req, res) => {
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ error: error.message });
     if (error.status === 404) return res.status(404).json({ error: error.message });
+    if (error.status === 409) return res.status(409).json({ error: error.message });
     console.error('[dd] patchDealDdItemsBulk error:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
@@ -167,6 +174,42 @@ export const patchPublicDdItemHandler = async (req, res) => {
   } catch (error) {
     if (sendPublicError(res, error)) return;
     console.error('[dd] patchPublicDdItem error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const patchDdMilestone = async (req, res) => {
+  try {
+    const checklist = await setStageMilestone(req.user.userId, req.params.id, req.body || {});
+    res.json({ checklist });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error('[dd] patchDdMilestone error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const postDdDependency = async (req, res) => {
+  try {
+    const checklist = await linkDdDependency(req.user.userId, req.params.id, req.body || {});
+    res.status(201).json({ checklist });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error('[dd] postDdDependency error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const deleteDdDependency = async (req, res) => {
+  try {
+    const checklist = await unlinkDdDependency(req.user.userId, req.params.id, req.body || {});
+    res.json({ checklist });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error('[dd] deleteDdDependency error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

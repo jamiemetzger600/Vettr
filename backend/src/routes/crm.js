@@ -74,7 +74,10 @@ import {
   postDdSummaryEmail,
   postDdGroup,
   postDdItem,
-  postDdItemDocument
+  postDdItemDocument,
+  postDdDependency,
+  deleteDdDependency,
+  patchDdMilestone
 } from '../controllers/ddController.js';
 import {
   getDealUnderwriting,
@@ -166,6 +169,9 @@ router.get('/deals/:id/dd/templates', getDealDdTemplates);
 router.post('/deals/:id/dd/start', startDealDd);
 router.patch('/deals/:id/dd/items', patchDealDdItemsBulk);
 router.patch('/deals/:id/dd/items/:itemId', patchDealDdItem);
+router.patch('/deals/:id/dd/milestones', patchDdMilestone);
+router.post('/deals/:id/dd/dependencies', postDdDependency);
+router.delete('/deals/:id/dd/dependencies', deleteDdDependency);
 router.post('/deals/:id/dd/groups', postDdGroup);
 router.post('/deals/:id/dd/groups/:groupId/items', postDdItem);
 router.post('/deals/:id/dd/items/:itemId/documents', postDdItemDocument);

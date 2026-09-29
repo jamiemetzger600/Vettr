@@ -12,6 +12,14 @@ import { notificationOpenLabel, notificationPath } from '../lib/notificationLink
 import { actorDisplayName } from '../lib/teamActivity.js';
 import { sendEmail, isSmtpConfigured } from './emailService.js';
 import { buildDdSummaryEmail, parseRecipientEmails } from '../lib/ddSummaryEmail.js';
+import {
+  wouldCreateCycle,
+  blockedPredecessors,
+  cascadeDueShifts,
+  statusRequiresPredecessors,
+  isUnblocking
+} from '../lib/ddDependencies.js';
+import { isStageId, stageIdForGroup } from '../lib/ddStages.js';
 import { createTask } from './crmTaskService.js';
 import { sendPushToUser } from './pushService.js';
 import { createUserAlert } from './userAlertService.js';
@@ -427,6 +435,8 @@ export async function getChecklistForDeal(userId, savedDealId) {
     groups.push({ ...g, items });
   }
 
+  await attachDependencyGraph(checklistId, groups);
+
   const shareLinks = await pool.query(
     `SELECT id, label, mode, expires_at, revoked_at, show_deal_name, created_at,
             group_ids,
@@ -468,9 +478,18 @@ export async function getChecklistForDeal(userId, savedDealId) {
     });
   }
 
+  const milestoneRes = await pool.query(
+    `SELECT stage_id, due_on FROM dd_stage_milestones WHERE checklist_id = $1`,
+    [checklistId]
+  );
+
   return {
     ...cl.rows[0],
     groups,
+    milestones: milestoneRes.rows.map((row) => ({
+      stageId: row.stage_id,
+      dueOn: dateOnly(row.due_on)
+    })),
     progress: {
       totalItems,
       completeItems,
@@ -596,10 +615,193 @@ export async function startChecklistFromTemplate(userId, savedDealId, {
   return getChecklistForDeal(userId, savedDealId);
 }
 
+function dependencySummary(item) {
+  if (!item) return null;
+  return {
+    id: Number(item.id),
+    title: item.title,
+    status: item.status,
+    dueAt: item.due_at || null
+  };
+}
+
+async function loadChecklistEdges(checklistId) {
+  const res = await pool.query(
+    `SELECT d.predecessor_id, d.successor_id
+     FROM dd_item_dependencies d
+     JOIN dd_items s ON s.id = d.successor_id
+     JOIN dd_groups g ON g.id = s.group_id
+     WHERE g.checklist_id = $1`,
+    [checklistId]
+  );
+  return res.rows.map((row) => ({
+    predecessorId: Number(row.predecessor_id),
+    successorId: Number(row.successor_id)
+  }));
+}
+
+async function attachDependencyGraph(checklistId, groups) {
+  const edges = await loadChecklistEdges(checklistId);
+  const items = groups.flatMap((group) => group.items || []);
+  const byId = new Map(items.map((item) => [Number(item.id), item]));
+  for (const item of items) {
+    const predecessors = edges
+      .filter((edge) => edge.successorId === Number(item.id))
+      .map((edge) => dependencySummary(byId.get(edge.predecessorId)))
+      .filter(Boolean);
+    const successors = edges
+      .filter((edge) => edge.predecessorId === Number(item.id))
+      .map((edge) => dependencySummary(byId.get(edge.successorId)))
+      .filter(Boolean);
+    const open = predecessors.filter((row) => !isUnblocking(row.status));
+    item.predecessors = predecessors;
+    item.successors = successors;
+    item.blockedBy = open;
+    item.blocked = open.length > 0;
+  }
+  console.log('[dd] dependency graph', { checklistId, edges: edges.length });
+}
+
+async function assertSuccessorsUnblocked(savedDealId, itemIds, nextStatus) {
+  if (!statusRequiresPredecessors(nextStatus)) return;
+  const ids = [...new Set(itemIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return;
+  const res = await pool.query(
+    `SELECT s.id AS successor_id, p.id, p.title, p.status
+     FROM dd_item_dependencies d
+     JOIN dd_items s ON s.id = d.successor_id
+     JOIN dd_items p ON p.id = d.predecessor_id
+     JOIN dd_groups g ON g.id = s.group_id
+     JOIN dd_checklists c ON c.id = g.checklist_id
+     WHERE c.saved_deal_id = $1 AND s.id = ANY($2::int[])`,
+    [savedDealId, ids]
+  );
+  const itemsById = new Map(res.rows.map((row) => [Number(row.id), {
+    id: Number(row.id),
+    title: row.title,
+    status: row.status
+  }]));
+  const edges = res.rows.map((row) => ({
+    predecessorId: Number(row.id),
+    successorId: Number(row.successor_id)
+  }));
+  const titles = new Set();
+  for (const id of ids) {
+    for (const row of blockedPredecessors(id, edges, itemsById)) titles.add(row.title);
+  }
+  if (!titles.size) return;
+  const err = new Error(`Blocked by: ${[...titles].join(', ')}`);
+  err.status = 409;
+  console.log('[dd] status blocked', { savedDealId, itemIds: ids, nextStatus, titles: [...titles] });
+  throw err;
+}
+
+async function shiftDependentDueDates(savedDealId, changes, db = pool) {
+  const useful = (changes || []).filter((change) => change?.previousDue && change?.nextDue);
+  if (!useful.length) return [];
+  const graph = await db.query(
+    `SELECT i.id, i.due_at, g.checklist_id
+     FROM dd_items i
+     JOIN dd_groups g ON g.id = i.group_id
+     JOIN dd_checklists c ON c.id = g.checklist_id
+     WHERE c.saved_deal_id = $1`,
+    [savedDealId]
+  );
+  if (!graph.rows.length) return [];
+  const checklistId = graph.rows[0].checklist_id;
+  const edgeRes = await db.query(
+    `SELECT d.predecessor_id, d.successor_id
+     FROM dd_item_dependencies d
+     JOIN dd_items s ON s.id = d.successor_id
+     JOIN dd_groups g ON g.id = s.group_id
+     WHERE g.checklist_id = $1`,
+    [checklistId]
+  );
+  const updates = cascadeDueShifts({
+    dues: new Map(graph.rows.map((row) => [Number(row.id), row.due_at])),
+    edges: edgeRes.rows.map((row) => ({
+      predecessorId: Number(row.predecessor_id),
+      successorId: Number(row.successor_id)
+    })),
+    changes: useful
+  });
+  for (const row of updates) {
+    await db.query('UPDATE dd_items SET due_at = $1::timestamptz WHERE id = $2', [row.dueAt, row.id]);
+  }
+  return updates;
+}
+
+async function checklistItemPair(savedDealId, predecessorId, successorId) {
+  const pred = Number(predecessorId);
+  const succ = Number(successorId);
+  if (!Number.isInteger(pred) || !Number.isInteger(succ) || pred <= 0 || succ <= 0) {
+    const err = new Error('predecessorId and successorId are required');
+    err.status = 400;
+    throw err;
+  }
+  const found = await pool.query(
+    `SELECT i.id, g.checklist_id
+     FROM dd_items i
+     JOIN dd_groups g ON g.id = i.group_id
+     JOIN dd_checklists c ON c.id = g.checklist_id
+     WHERE c.saved_deal_id = $1 AND i.id = ANY($2::int[])`,
+    [savedDealId, [pred, succ]]
+  );
+  if (found.rows.length !== 2 || found.rows[0].checklist_id !== found.rows[1].checklist_id) {
+    const err = new Error('Both tasks must be on this checklist');
+    err.status = 404;
+    throw err;
+  }
+  return { pred, succ, checklistId: found.rows[0].checklist_id };
+}
+
+export async function linkDdDependency(userId, savedDealId, { predecessorId, successorId } = {}) {
+  await assertDealOwned(userId, savedDealId);
+  const { pred, succ, checklistId } = await checklistItemPair(savedDealId, predecessorId, successorId);
+  const edges = await loadChecklistEdges(checklistId);
+  if (wouldCreateCycle(edges, pred, succ)) {
+    const err = new Error('That link would loop back to the same task');
+    err.status = 400;
+    console.log('[dd] dependency rejected cycle', { savedDealId, predecessorId: pred, successorId: succ });
+    throw err;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO dd_item_dependencies (predecessor_id, successor_id) VALUES ($1, $2)`,
+      [pred, succ]
+    );
+  } catch (err) {
+    if (err.code === '23505') {
+      const dup = new Error('Those tasks are already linked');
+      dup.status = 400;
+      throw dup;
+    }
+    throw err;
+  }
+  console.log('[dd] dependency linked', { savedDealId, predecessorId: pred, successorId: succ });
+  return getChecklistForDeal(userId, savedDealId);
+}
+
+export async function unlinkDdDependency(userId, savedDealId, { predecessorId, successorId } = {}) {
+  await assertDealOwned(userId, savedDealId);
+  const { pred, succ } = await checklistItemPair(savedDealId, predecessorId, successorId);
+  const removed = await pool.query(
+    `DELETE FROM dd_item_dependencies WHERE predecessor_id = $1 AND successor_id = $2`,
+    [pred, succ]
+  );
+  if (!removed.rowCount) {
+    const err = new Error('Dependency not found');
+    err.status = 404;
+    throw err;
+  }
+  console.log('[dd] dependency removed', { savedDealId, predecessorId: pred, successorId: succ });
+  return getChecklistForDeal(userId, savedDealId);
+}
+
 export async function patchDdItem(userId, savedDealId, itemId, patch, actor = {}) {
   await assertDealOwned(userId, savedDealId);
   const itemRow = await pool.query(
-    `SELECT i.id, i.status, i.title, g.checklist_id, c.saved_deal_id
+    `SELECT i.id, i.status, i.title, i.due_at, g.checklist_id, c.saved_deal_id
      FROM dd_items i
      JOIN dd_groups g ON g.id = i.group_id
      JOIN dd_checklists c ON c.id = g.checklist_id
@@ -614,6 +816,9 @@ export async function patchDdItem(userId, savedDealId, itemId, patch, actor = {}
 
   const item = itemRow.rows[0];
   const status = patch.status ?? item.status;
+  if (patch.status != null && statusRequiresPredecessors(status)) {
+    await assertSuccessorsUnblocked(savedDealId, [Number(itemId)], status);
+  }
   const dueAt = patch.dueAt !== undefined ? patch.dueAt : undefined;
   const completedAt =
     status === 'complete' && item.status !== 'complete' ? new Date().toISOString() : undefined;
@@ -632,6 +837,17 @@ export async function patchDdItem(userId, savedDealId, itemId, patch, actor = {}
   vals.push(itemId);
 
   await pool.query(`UPDATE dd_items SET ${sets.join(', ')} WHERE id = $${idx}`, vals);
+
+  if (dueAt !== undefined) {
+    const shifted = await shiftDependentDueDates(savedDealId, [{
+      id: Number(itemId),
+      previousDue: item.due_at,
+      nextDue: dueAt
+    }]);
+    if (shifted.length) {
+      console.log('[dd] cascade due', { itemId, count: shifted.length });
+    }
+  }
 
   // Clear assignee(s)
   if (patch.assignee === null) {
@@ -702,9 +918,12 @@ export async function patchDdItemsBulk(userId, savedDealId, { itemIds, dueAt, as
     err.status = 400;
     throw err;
   }
+  if (hasStatus && statusRequiresPredecessors(status)) {
+    await assertSuccessorsUnblocked(savedDealId, ids, status);
+  }
 
   const found = await pool.query(
-    `SELECT i.id, i.title, i.status
+    `SELECT i.id, i.title, i.status, i.due_at
      FROM dd_items i
      JOIN dd_groups g ON g.id = i.group_id
      JOIN dd_checklists c ON c.id = g.checklist_id
@@ -726,6 +945,14 @@ export async function patchDdItemsBulk(userId, savedDealId, { itemIds, dueAt, as
         'UPDATE dd_items SET due_at = $1::timestamptz WHERE id = ANY($2::int[])',
         [dueAt, ids]
       );
+      const shifted = await shiftDependentDueDates(savedDealId, found.rows.map((row) => ({
+        id: Number(row.id),
+        previousDue: row.due_at,
+        nextDue: dueAt
+      })), client);
+      if (shifted.length) {
+        console.log('[dd] cascade due', { savedDealId, count: shifted.length, bulk: true });
+      }
     }
     if (hasStatus) {
       await client.query(
@@ -913,6 +1140,91 @@ export async function addDdGroup(userId, savedDealId, { name }) {
   return getChecklistForDeal(userId, savedDealId);
 }
 
+function dateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${value.getFullYear()}-${month}-${day}`;
+  }
+  return String(value).slice(0, 10);
+}
+
+function calendarDueAt(dueOn) {
+  return `${dueOn}T12:00:00.000Z`;
+}
+
+export async function setStageMilestone(userId, savedDealId, { stageId, dueOn } = {}) {
+  await assertDealOwned(userId, savedDealId);
+  if (!isStageId(stageId)) {
+    const err = new Error('Unknown milestone');
+    err.status = 400;
+    throw err;
+  }
+  const date = dueOn ? String(dueOn).slice(0, 10) : '';
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const err = new Error('Milestone date is invalid');
+    err.status = 400;
+    throw err;
+  }
+
+  const checklist = await pool.query(
+    'SELECT id FROM dd_checklists WHERE saved_deal_id = $1',
+    [savedDealId]
+  );
+  if (!checklist.rows.length) {
+    const err = new Error('DD checklist not found');
+    err.status = 404;
+    throw err;
+  }
+  const checklistId = checklist.rows[0].id;
+
+  if (!date) {
+    await pool.query(
+      'DELETE FROM dd_stage_milestones WHERE checklist_id = $1 AND stage_id = $2',
+      [checklistId, stageId]
+    );
+  } else {
+    await pool.query(
+      `INSERT INTO dd_stage_milestones (checklist_id, stage_id, due_on)
+       VALUES ($1, $2, $3::date)
+       ON CONFLICT (checklist_id, stage_id) DO UPDATE SET due_on = EXCLUDED.due_on`,
+      [checklistId, stageId, date]
+    );
+  }
+
+  if (stageId === 'close') {
+    await pool.query(
+      'UPDATE dd_checklists SET target_date = $1::date WHERE id = $2',
+      [date || null, checklistId]
+    );
+  }
+
+  const groups = await pool.query(
+    'SELECT id, name FROM dd_groups WHERE checklist_id = $1',
+    [checklistId]
+  );
+  const groupIds = groups.rows
+    .filter((group) => stageIdForGroup(group.name) === stageId)
+    .map((group) => group.id);
+  if (date && groupIds.length) {
+    const updated = await pool.query(
+      `UPDATE dd_items SET due_at = $1::timestamptz WHERE group_id = ANY($2::int[])`,
+      [calendarDueAt(date), groupIds]
+    );
+    console.log('[dd] stage milestone inherited', {
+      savedDealId,
+      stageId,
+      dueOn: date,
+      items: updated.rowCount
+    });
+  } else {
+    console.log('[dd] stage milestone', { savedDealId, stageId, dueOn: date || null });
+  }
+
+  return getChecklistForDeal(userId, savedDealId);
+}
+
 export async function addDdItem(userId, savedDealId, groupId, { title, requestsDocument = false }) {
   await assertDealOwned(userId, savedDealId);
   const trimmed = (title || '').trim();
@@ -921,15 +1233,38 @@ export async function addDdItem(userId, savedDealId, groupId, { title, requestsD
     err.status = 400;
     throw err;
   }
+  const group = await pool.query(
+    `SELECT g.id, g.name, g.checklist_id
+     FROM dd_groups g
+     JOIN dd_checklists c ON c.id = g.checklist_id
+     WHERE g.id = $1 AND c.saved_deal_id = $2`,
+    [groupId, savedDealId]
+  );
+  if (!group.rows.length) {
+    const err = new Error('DD group not found');
+    err.status = 404;
+    throw err;
+  }
+  const stageId = stageIdForGroup(group.rows[0].name);
+  const milestone = await pool.query(
+    `SELECT due_on FROM dd_stage_milestones WHERE checklist_id = $1 AND stage_id = $2`,
+    [group.rows[0].checklist_id, stageId]
+  );
+  const inherited = milestone.rows[0]?.due_on
+    ? calendarDueAt(dateOnly(milestone.rows[0].due_on))
+    : null;
   const maxOrder = await pool.query(
     'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM dd_items WHERE group_id = $1',
     [groupId]
   );
   await pool.query(
-    `INSERT INTO dd_items (group_id, title, requests_document, sort_order, status)
-     VALUES ($1, $2, $3, $4, 'not_started')`,
-    [groupId, trimmed, !!requestsDocument, maxOrder.rows[0].next]
+    `INSERT INTO dd_items (group_id, title, requests_document, sort_order, status, due_at)
+     VALUES ($1, $2, $3, $4, 'not_started', $5)`,
+    [groupId, trimmed, !!requestsDocument, maxOrder.rows[0].next, inherited]
   );
+  if (inherited) {
+    console.log('[dd] new item inherited milestone', { savedDealId, groupId, stageId, dueAt: inherited });
+  }
   return getChecklistForDeal(userId, savedDealId);
 }
 

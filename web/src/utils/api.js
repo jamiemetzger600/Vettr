@@ -621,6 +621,24 @@ export const crmAPI = {
       body: JSON.stringify(payload)
     }),
 
+  setDdMilestone: (savedDealId, payload) =>
+    apiRequest(`/crm/deals/${savedDealId}/dd/milestones`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+
+  linkDdDependency: (savedDealId, payload) =>
+    apiRequest(`/crm/deals/${savedDealId}/dd/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
+  unlinkDdDependency: (savedDealId, payload) =>
+    apiRequest(`/crm/deals/${savedDealId}/dd/dependencies`, {
+      method: 'DELETE',
+      body: JSON.stringify(payload)
+    }),
+
   patchDdItemsBulk: (savedDealId, payload) =>
     apiRequest(`/crm/deals/${savedDealId}/dd/items`, {
       method: 'PATCH',
