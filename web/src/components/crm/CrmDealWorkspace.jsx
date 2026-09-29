@@ -12,7 +12,6 @@ import {
   mergeListingEditsIntoDeal
 } from '../../utils/savedDealListingEdits';
 import CrmDealTasks from './CrmDealTasks';
-import DdChecklist from './dd/DdChecklist';
 import UnderwritingCrmLaunch from './underwriting/UnderwritingCrmLaunch';
 import DealThread from './DealThread';
 import CrmDealContacts from './CrmDealContacts';
@@ -78,7 +77,8 @@ export default function CrmDealWorkspace({
   onStageChanged = null,
   focusSectionId = null,
   dealIds = null,
-  onNavigateDeal = null
+  onNavigateDeal = null,
+  onOpenDd = null
 }) {
   const { user } = useAuth();
   const { teams, activeTeamId } = useTeam();
@@ -196,6 +196,10 @@ export default function CrmDealWorkspace({
     setActiveTab(tabId);
     const tab = RECORD_TABS.find((t) => t.id === tabId);
     setLocalFocusSection(tab?.sections?.[0] || null);
+    if (tabId === 'dd') {
+      console.log('[CrmDealWorkspace] open DD workspace', dealId);
+      onOpenDd?.(dealId, { canWrite: writeEnabled });
+    }
   };
 
   const handleRefresh = async () => {
@@ -506,7 +510,20 @@ export default function CrmDealWorkspace({
       label: 'Due Diligence',
       icon: 'checklist',
       render: () => (
-        <DdChecklist dealId={dealId} onRefresh={onRefresh} canWrite={writeEnabled} />
+        <div className="dd-checklist">
+          <h3>Due Diligence</h3>
+          <p className="crm-muted">Checklist, kanban, and Gantt open in the full workspace.</p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              console.log('[CrmDealWorkspace] reopen DD workspace', dealId);
+              onOpenDd?.(dealId, { canWrite: writeEnabled });
+            }}
+          >
+            Open workspace
+          </button>
+        </div>
       )
     },
     {

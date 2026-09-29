@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { barStyle, buildGanttModel, formatGanttDay, localTodayMs, milestoneHeaders, viewerTimeZone } from './ddGantt.js';
+import { barStyle, buildGanttModel, formatGanttDay, localTodayMs, milestoneHeaders, stageBar, viewerTimeZone } from './ddGantt.js';
 
 const STATUS_LABEL = {
   not_started: 'Not started',
@@ -78,11 +78,20 @@ export default function DdGantt({
     [groups, startedAt, targetDate, milestones, todayMs]
   );
   const headers = useMemo(
-    () => milestoneHeaders(model.stages, model.rangeStart, model.rangeEnd),
-    [model.stages, model.rangeStart, model.rangeEnd]
+    () => milestoneHeaders(model.stages, model.rangeStart, model.rangeEnd, model.todayMs),
+    [model.stages, model.rangeStart, model.rangeEnd, model.todayMs]
   );
-  const todayStyle = barStyle(model.todayMs, model.todayMs, model.rangeStart, model.rangeEnd);
+  const stacked = headers.some((header) => header.lane === 1);
   const todayLabel = formatGanttDay(model.todayMs);
+
+  useEffect(() => {
+    console.log('[DdGantt] axis', {
+      zone: viewerTimeZone(),
+      today: todayLabel,
+      close: formatGanttDay(model.rangeEnd),
+      headers: headers.map((header) => `${header.label} ${header.date} @ ${header.left}`)
+    });
+  }, [headers, model.rangeEnd, todayLabel]);
 
   const toggleStage = (stage) => {
     setOpen((current) => {
@@ -133,24 +142,25 @@ export default function DdGantt({
 
       <div className="dd-gantt__chart">
         <div className="dd-gantt__scale" aria-hidden="true">
-          <span className="dd-gantt__label">Milestone</span>
-          <span className="dd-gantt__track dd-gantt__track--scale">
+          <span className="dd-gantt__label">Stage</span>
+          <span className={`dd-gantt__track dd-gantt__track--scale${stacked ? ' is-stacked' : ''}`}>
             {headers.map((header) => (
-              <span key={header.id} className="dd-gantt__tick" style={{ left: header.left }}>
+              <span
+                key={header.id}
+                className={`dd-gantt__tick dd-gantt__tick--${header.align || 'center'}${header.lane ? ' dd-gantt__tick--lane-1' : ''}`}
+                style={{ left: header.left }}
+              >
                 <span>{header.label}</span>
                 <span className="dd-gantt__tick-date">{header.date}</span>
               </span>
             ))}
-            {todayStyle ? (
-              <span className="dd-gantt__today" style={{ left: todayStyle.left }} title={`Today ${todayLabel}`} />
-            ) : null}
           </span>
           <span />
         </div>
 
         {model.stages.map((stage) => {
           const expanded = open.has(stage.id);
-          const style = barStyle(stage.start, stage.end, model.rangeStart, model.rangeEnd);
+          const style = stageBar(stage.milestoneAt, model.rangeStart, model.rangeEnd);
           return (
             <div key={stage.id} className={`dd-gantt__stage${expanded ? ' is-open' : ''}`}>
               <div className="dd-gantt__row">
@@ -175,10 +185,9 @@ export default function DdGantt({
                 </span>
                 <button type="button" className="dd-gantt__track-btn" aria-label={`${expanded ? 'Hide' : 'View'} tasks in ${stage.label}`} onClick={() => toggleStage(stage)}>
                   <span className="dd-gantt__track">
-                    {headers.map((header) => (
+                    {headers.filter((header) => header.align === 'center').map((header) => (
                       <span key={header.id} className="dd-gantt__grid" style={{ left: header.left }} />
                     ))}
-                    {todayStyle ? <span className="dd-gantt__today" style={{ left: todayStyle.left }} /> : null}
                     {style ? (
                       <span className={`dd-gantt__bar dd-gantt__bar--stage dd-gantt__bar--${stage.tone}`} style={style} />
                     ) : (

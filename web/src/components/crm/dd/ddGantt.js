@@ -157,22 +157,19 @@ export function buildGanttModel({
     };
   });
 
-  const points = [];
-  for (const stage of stages) {
-    if (stage.milestoneAt != null) points.push(stage.milestoneAt);
-    for (const task of stage.tasks) {
-      if (task.due != null) points.push(task.due);
-    }
+  const closeMs = stages.find((stage) => stage.id === 'close')?.milestoneAt ?? targetMs;
+  const milestoneTimes = stages.map((stage) => stage.milestoneAt).filter((ms) => ms != null);
+  const latestMilestone = milestoneTimes.length ? Math.max(...milestoneTimes) : null;
+  const rangeStart = todayMs;
+  let rangeEnd = closeMs != null && closeMs > todayMs ? closeMs : null;
+  if (rangeEnd == null && latestMilestone != null && latestMilestone > todayMs) {
+    rangeEnd = latestMilestone;
   }
-  const started = toDayMs(startedAt);
-  if (started != null) points.push(started);
-  if (!points.length) {
-    points.push(todayMs, todayMs + 28 * DAY);
+  if (rangeEnd == null || rangeEnd <= rangeStart) {
+    rangeEnd = rangeStart + 60 * DAY;
   }
-  const rangeStart = Math.min(...points) - DAY;
-  const rangeEnd = Math.max(...points) + 2 * DAY;
 
-  return { stages, rangeStart, rangeEnd, todayMs };
+  return { stages, rangeStart, rangeEnd, todayMs, closeMs };
 }
 
 export function barStyle(start, end, rangeStart, rangeEnd) {
@@ -188,19 +185,67 @@ export function barStyle(start, end, rangeStart, rangeEnd) {
   };
 }
 
-export function milestoneHeaders(stages, rangeStart, rangeEnd) {
+/**
+ * Timeline reads left to right: Today, then dated milestones, then Close.
+ * Milestones that share a date stack onto a second label row.
+ */
+export function milestoneHeaders(stages, rangeStart, rangeEnd, todayMs = rangeStart) {
   const span = rangeEnd - rangeStart;
   if (span <= 0) return [];
-  return (stages || []).flatMap((stage) => {
-    const at = stage.milestoneAt ?? stage.end ?? stage.start;
-    if (at == null) return [];
-    return [{
+  const headers = [{
+    id: 'today',
+    label: 'Today',
+    date: formatGanttDay(todayMs),
+    left: '0%',
+    align: 'start',
+    lane: 0
+  }];
+
+  const endStage = (stages || []).find((stage) => (
+    stage.milestoneAt != null && Math.abs(stage.milestoneAt - rangeEnd) < DAY
+  ));
+  const mids = [];
+  for (const stage of stages || []) {
+    if (stage.milestoneAt == null) continue;
+    if (endStage && stage.id === endStage.id) continue;
+    const ratio = (stage.milestoneAt - rangeStart) / span;
+    const clamped = Math.min(0.96, Math.max(0.04, ratio));
+    mids.push({
       id: stage.id,
       label: stage.label,
-      date: formatGanttDay(at),
-      left: `${(((at - rangeStart) / span) * 100).toFixed(2)}%`
-    }];
+      date: formatGanttDay(stage.milestoneAt),
+      ratio: clamped,
+      left: `${(clamped * 100).toFixed(2)}%`,
+      align: 'center',
+      lane: 0
+    });
+  }
+  mids.sort((a, b) => a.ratio - b.ratio);
+  let previous = -1;
+  for (const header of mids) {
+    const crowded = previous >= 0 && header.ratio - previous < 0.16;
+    const nearEnd = header.ratio > 0.82;
+    header.lane = crowded || nearEnd ? 1 : 0;
+    previous = header.ratio;
+  }
+  headers.push(...mids);
+
+  const endIsClose = !endStage || endStage.id === 'close';
+  headers.push({
+    id: endStage?.id || 'close',
+    label: endIsClose ? 'Close' : endStage.label,
+    date: formatGanttDay(rangeEnd),
+    left: '100%',
+    align: 'end',
+    lane: 0
   });
+  return headers;
+}
+
+export function stageBar(milestoneAt, rangeStart, rangeEnd) {
+  if (milestoneAt == null || rangeEnd <= rangeStart) return null;
+  const end = Math.min(Math.max(milestoneAt, rangeStart), rangeEnd);
+  return barStyle(rangeStart, end, rangeStart, rangeEnd);
 }
 
 export function monthTicks(rangeStart, rangeEnd) {

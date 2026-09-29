@@ -8660,6 +8660,94 @@ button.aggregator-welcome__buybox {
   color: var(--text-primary);
 }
 
+.dd-workspace-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.dd-workspace-modal__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.dd-workspace-modal__eyebrow {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.dd-workspace-modal__bar h2 {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dd-workspace-modal__bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dd-workspace-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 28px;
+}
+
+.dd-workspace-modal__body:has(.dd-checklist--workspace) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dd-checklist--workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.dd-workspace-split__chart {
+  flex: 0 0 auto;
+  max-height: 34vh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.dd-checklist--workspace .dd-workspace,
+.dd-checklist--workspace .dd-workspace-kanban {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dd-workspace-kanban.dd-portal-board {
+  padding-bottom: 8px;
+}
+
+.dd-checklist--workspace .dd-portal-column {
+  max-height: min(520px, 48vh);
+}
+
 .crm-people-tab__broker-hint {
   margin: 0 0 12px;
   font-size: 13px;
@@ -10598,6 +10686,7 @@ button.aggregator-welcome__buybox {
 
 .dd-gantt__track-btn {
   display: block;
+  width: 100%;
   min-width: 0;
 }
 
@@ -10640,15 +10729,21 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-gantt__track {
+  display: block;
   position: relative;
+  width: 100%;
   height: 22px;
   border-radius: 6px;
   background: var(--bg-tertiary);
 }
 
 .dd-gantt__track--scale {
-  height: 34px;
+  height: 36px;
   background: transparent;
+}
+
+.dd-gantt__track--scale.is-stacked {
+  height: 58px;
 }
 
 .dd-gantt__tick,
@@ -10679,6 +10774,20 @@ button.aggregator-welcome__buybox {
   transform: translateX(-50%);
   font-size: 10px;
   color: var(--text-secondary);
+}
+
+.dd-gantt__tick--start {
+  align-items: flex-start;
+  transform: none;
+}
+
+.dd-gantt__tick--end {
+  align-items: flex-end;
+  transform: translateX(-100%);
+}
+
+.dd-gantt__tick--lane-1 {
+  top: 28px;
 }
 
 .dd-gantt__grid {

@@ -11,6 +11,7 @@ import CrmObjectNav from './CrmObjectNav';
 import CrmCommandMenu from './CrmCommandMenu';
 import CrmTaskList from './CrmTaskList';
 import CrmDiligenceList from './CrmDiligenceList';
+import DdWorkspaceModal from './dd/DdWorkspaceModal';
 import CrmContactList from './CrmContactList';
 import CrmAnalytics from './CrmAnalytics';
 import CrmCompareDeals from './CrmCompareDeals';
@@ -70,6 +71,7 @@ export default function CrmDashboard({
   const [today, setToday] = useState(null);
   const [peekDealId, setPeekDealId] = useState(null);
   const [recordDealId, setRecordDealId] = useState(null);
+  const [ddWorkspace, setDdWorkspace] = useState(null);
   const [workspaceFocusSection, setWorkspaceFocusSection] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -353,6 +355,19 @@ export default function CrmDashboard({
     setWorkspaceFocusSection(null);
   }, []);
 
+  const openDdWorkspace = useCallback((dealId, opts = {}) => {
+    console.log('[CrmDashboard] DD workspace', dealId || 'picker');
+    setDdWorkspace({
+      dealId: dealId ? String(dealId) : null,
+      canWrite: opts.canWrite !== false
+    });
+  }, []);
+
+  const closeDdWorkspace = useCallback(() => {
+    console.log('[CrmDashboard] DD workspace closed');
+    setDdWorkspace(null);
+  }, []);
+
   // Escape: record first, then peek. Body scroll lock only for full record.
   useEffect(() => {
     if (!recordDealId && !peekDealId) return undefined;
@@ -437,6 +452,7 @@ export default function CrmDashboard({
     const dealId = stagePrompt.dealId;
     setStagePrompt(null);
     openRecord(dealId, { focusSection: 'crm-dd' });
+    openDdWorkspace(dealId);
   };
 
   const handleBlankUnderwriting =
@@ -464,6 +480,7 @@ export default function CrmDashboard({
       setShowCsvImport(true);
     } else if (item.action === 'view' && item.view) {
       setCrmView(item.view);
+      if (item.view === 'diligence') openDdWorkspace(recordDealId);
     }
   };
 
@@ -517,6 +534,7 @@ export default function CrmDashboard({
                 focusSectionId={workspaceFocusSection}
                 dealIds={filteredDealIds}
                 onNavigateDeal={(id) => openRecord(id)}
+                onOpenDd={openDdWorkspace}
               />
             </aside>
           </div>,
@@ -618,7 +636,7 @@ export default function CrmDashboard({
       {crmView === 'diligence' && (
         <CrmDiligenceList
           deals={activeDdDeals}
-          onSelectDeal={handleSelectDeal}
+          onSelectDeal={(id) => openDdWorkspace(id)}
         />
       )}
 
@@ -767,7 +785,10 @@ export default function CrmDashboard({
         <>
           <CrmObjectNav
             crmView={crmView}
-            onViewChange={setCrmView}
+            onViewChange={(view) => {
+              setCrmView(view);
+              if (view === 'diligence') openDdWorkspace(recordDealId);
+            }}
             badges={navBadges}
             isMobile
             onSearchFocus={() => setCmdkOpen(true)}
@@ -781,6 +802,7 @@ export default function CrmDashboard({
             onViewChange={(view) => {
               setCrmView(view);
               setPeekDealId(null);
+              if (view === 'diligence') openDdWorkspace(recordDealId);
             }}
             badges={navBadges}
             onSearchFocus={() => setCmdkOpen(true)}
@@ -829,6 +851,24 @@ export default function CrmDashboard({
             document.body
           )
         : null}
+
+      {ddWorkspace ? (
+        <DdWorkspaceModal
+          dealId={ddWorkspace.dealId}
+          dealName={(() => {
+            const id = ddWorkspace.dealId;
+            if (!id) return '';
+            if (recordDeal && String(recordDeal.id) === String(id)) return recordDeal.name || '';
+            const row = activeDdDeals.find((d) => String(d.saved_deal_id) === String(id));
+            return row?.deal_name || '';
+          })()}
+          canWrite={ddWorkspace.canWrite !== false}
+          deals={activeDdDeals}
+          onSelectDeal={(id) => openDdWorkspace(id, { canWrite: ddWorkspace.canWrite !== false })}
+          onClose={closeDdWorkspace}
+          onRefresh={handleRefresh}
+        />
+      ) : null}
 
       <CrmCommandMenu
         isOpen={cmdkOpen}

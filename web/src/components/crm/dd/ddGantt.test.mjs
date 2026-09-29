@@ -43,8 +43,13 @@ test('stage bars use task dates and the target close', () => {
   assert.equal(byId.close.tasks.some((task) => task.milestone && task.title === 'Target close'), true);
   assert.equal(byId.diligence.start, new Date(2026, 8, 20).getTime());
   assert.equal(byId.diligence.end, new Date(2026, 9, 2).getTime());
-  assert.ok(model.rangeStart < byId.diligence.start);
-  assert.ok(model.rangeEnd > new Date(2026, 10, 15).getTime());
+  assert.equal(model.rangeStart, new Date(2026, 8, 20).getTime());
+  assert.equal(model.rangeEnd, new Date(2026, 10, 15).getTime());
+  const headers = milestoneHeaders(model.stages, model.rangeStart, model.rangeEnd, model.todayMs);
+  assert.equal(headers[0].label, 'Today');
+  assert.equal(headers[0].left, '0%');
+  assert.equal(headers[headers.length - 1].label, 'Close');
+  assert.equal(headers[headers.length - 1].left, '100%');
 });
 
 test('a milestone date is the stage header and the tasks inherit that day', () => {

@@ -23,6 +23,7 @@ const DD_STATUSES = [
 ];
 
 const VIEW_KEY = 'vettr.ddChecklist.view';
+const WORK_VIEW_KEY = 'vettr.ddChecklist.workspaceView';
 
 function displayNameFromEmail(email) {
   const local = String(email || '').split('@')[0] || 'Member';
@@ -48,6 +49,14 @@ function readStoredView() {
     return v === 'list' || v === 'cards' || v === 'gantt' ? v : 'cards';
   } catch {
     return 'cards';
+  }
+}
+
+function readWorkView() {
+  try {
+    return localStorage.getItem(WORK_VIEW_KEY) === 'list' ? 'list' : 'kanban';
+  } catch {
+    return 'kanban';
   }
 }
 
@@ -133,7 +142,7 @@ function sortDdGroups(groups, sort, assigneeLabel) {
   return list;
 }
 
-export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
+export default function DdChecklist({ dealId, onRefresh, canWrite = true, workspace = false }) {
   const [checklist, setChecklist] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +178,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     result: ''
   });
   const [view, setView] = useState(readStoredView);
+  const [workView, setWorkView] = useState(readWorkView);
   const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [anchorId, setAnchorId] = useState(null);
@@ -253,6 +263,12 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     setView(next);
     try { localStorage.setItem(VIEW_KEY, next); } catch { /* ignore */ }
     console.log('[DdChecklist] view', next);
+  };
+
+  const handleWorkViewChange = (next) => {
+    setWorkView(next);
+    try { localStorage.setItem(WORK_VIEW_KEY, next); } catch { /* ignore */ }
+    console.log('[DdChecklist] workspace view', next);
   };
 
   const handleSelectionChange = useCallback((next, nextAnchor) => {
@@ -715,6 +731,65 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     );
   };
 
+  const renderKanbanBoard = () => (
+    <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
+      {(checklist?.groups || []).map((group) => {
+        const items = group.items || [];
+        const complete = items.filter((item) => item.status === 'complete' || item.status === 'na').length;
+        return (
+          <section key={group.id} className="dd-portal-column">
+            <header className="dd-portal-column__header">
+              <h2>{group.name}</h2>
+              <span>{complete}/{items.length}</span>
+            </header>
+            <ul className="dd-portal-column__cards">
+              {items.map((item) => (
+                <li
+                  key={item.id}
+                  className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}`}
+                  data-status={item.status}
+                  title={blockedTooltip(item) || undefined}
+                >
+                  <div className="dd-portal-card__top">
+                    <strong>{item.title}</strong>
+                    {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
+                    {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
+                  </div>
+                  <input
+                    type="date"
+                    className="modal-input dd-item__due-input"
+                    value={item.due_at ? item.due_at.slice(0, 10) : ''}
+                    onChange={(e) => handleDueChange(item.id, dueToIso(e.target.value))}
+                    aria-label={`Due date for ${item.title}`}
+                    disabled={!canWrite}
+                  />
+                  {renderAssigneeSelect(item, 'modal-input')}
+                  <select
+                    className="modal-input dd-item__status"
+                    value={item.status}
+                    onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                    disabled={!canWrite}
+                    aria-label={`Status for ${item.title}`}
+                  >
+                    {DD_STATUSES.map((s) => (
+                      <option
+                        key={s.value}
+                        value={s.value}
+                        disabled={s.value !== item.status && !canSetStatus(item, s.value)}
+                      >
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+
   const renderItemExtras = (item) => (
     <>
       {(item.comments || []).length > 0 ? (
@@ -854,9 +929,10 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
 
   const progress = checklist.progress || {};
   const selectedCount = selected.size;
+  const paneView = workspace ? workView : view;
 
   return (
-    <div className="dd-checklist">
+    <div className={`dd-checklist${workspace ? ' dd-checklist--workspace' : ''}`}>
       <header className="dd-checklist__header">
         <div>
           <h3>Due Diligence</h3>
@@ -868,33 +944,58 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
         </div>
         <div className="dd-checklist__actions">
           <div className="dd-view-toggle panel-position-toggle" role="tablist" aria-label="Due diligence view">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'cards'}
-              className={view === 'cards' ? 'active' : ''}
-              onClick={() => handleViewChange('cards')}
-            >
-              Cards
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'list'}
-              className={view === 'list' ? 'active' : ''}
-              onClick={() => handleViewChange('list')}
-            >
-              List
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'gantt'}
-              className={view === 'gantt' ? 'active' : ''}
-              onClick={() => handleViewChange('gantt')}
-            >
-              Gantt
-            </button>
+            {workspace ? (
+              <>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workView === 'kanban'}
+                  className={workView === 'kanban' ? 'active' : ''}
+                  onClick={() => handleWorkViewChange('kanban')}
+                >
+                  Kanban
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workView === 'list'}
+                  className={workView === 'list' ? 'active' : ''}
+                  onClick={() => handleWorkViewChange('list')}
+                >
+                  List
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'cards'}
+                  className={view === 'cards' ? 'active' : ''}
+                  onClick={() => handleViewChange('cards')}
+                >
+                  Cards
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'list'}
+                  className={view === 'list' ? 'active' : ''}
+                  onClick={() => handleViewChange('list')}
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'gantt'}
+                  className={view === 'gantt' ? 'active' : ''}
+                  onClick={() => handleViewChange('gantt')}
+                >
+                  Gantt
+                </button>
+              </>
+            )}
           </div>
           {canWrite ? (
             <>
@@ -1215,7 +1316,20 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
         </div>
       ) : null}
 
-      {view === 'gantt' ? (
+      {workspace ? (
+        <div className="dd-workspace-split__chart">
+          <DdGantt
+            groups={checklist.groups}
+            startedAt={checklist.started_at}
+            targetDate={checklist.target_date}
+            milestones={checklist.milestones || []}
+            onMilestoneDate={canWrite ? handleMilestoneDate : null}
+            showAudienceToggle
+          />
+        </div>
+      ) : null}
+
+      {!workspace && paneView === 'gantt' ? (
         <DdGantt
           groups={checklist.groups}
           startedAt={checklist.started_at}
@@ -1224,16 +1338,18 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
           onMilestoneDate={canWrite ? handleMilestoneDate : null}
           showAudienceToggle
         />
+      ) : paneView === 'kanban' ? (
+        renderKanbanBoard()
       ) : (
       <div
         ref={workspaceRef}
-        className={`dd-workspace dd-workspace--${view}`}
+        className={`dd-workspace dd-workspace--${paneView}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
-        {view === 'list' ? (
+        {paneView === 'list' ? (
           <DdListHead
             sortKey={listSort.key}
             sortDir={listSort.dir}
@@ -1246,7 +1362,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
             }}
           />
         ) : null}
-        {sortDdGroups(checklist.groups, view === 'list' ? listSort : null, assigneeLabel).map((group) => {
+        {sortDdGroups(checklist.groups, paneView === 'list' ? listSort : null, assigneeLabel).map((group) => {
           const done = (group.items || []).filter((i) => i.status === 'complete' || i.status === 'na').length;
           const total = (group.items || []).length;
           const groupIds = (group.items || []).map((i) => String(i.id));
@@ -1301,9 +1417,9 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
                   </button>
                 </div>
               ) : null}
-              {view === 'cards' ? (
+              {paneView === 'cards' ? (
                 <ul className="dd-icon-grid">
-                  {sortDdItems(group.items, view === 'cards' ? null : listSort, assigneeLabel).map((item) => (
+                  {sortDdItems(group.items, paneView === 'cards' ? null : listSort, assigneeLabel).map((item) => (
                     <DdIconCard
                       key={item.id}
                       item={item}
