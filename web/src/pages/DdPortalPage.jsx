@@ -38,6 +38,59 @@ function shareLabelSuffix(mode, label) {
   return value && value.toLowerCase() !== modeLabel.toLowerCase() ? ` · ${value}` : '';
 }
 
+const PORTAL_VIEW_KEY = 'vettr-dd-portal-view';
+
+const STATUS_SECTIONS = [
+  { value: 'not_started', label: 'Not started' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'waiting_on_other', label: 'Blocked / waiting' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'na', label: 'Not applicable' }
+];
+
+function loadPortalView(token) {
+  try {
+    return localStorage.getItem(`${PORTAL_VIEW_KEY}:${token}`) === 'list' ? 'list' : 'kanban';
+  } catch {
+    return 'kanban';
+  }
+}
+
+function assigneeNames(item) {
+  const names = (item.assignees || [])
+    .map((assignee) => String(assignee.name || assignee.email || '').trim())
+    .filter(Boolean);
+  return names.length ? names.join(', ') : 'Unassigned';
+}
+
+function groupItemsForList(groups) {
+  return (groups || [])
+    .map((group) => {
+      const items = group.items || [];
+      const statuses = STATUS_SECTIONS.map((status) => {
+        const matching = items.filter((item) => (item.status || 'not_started') === status.value);
+        const byAssignee = new Map();
+        for (const item of matching) {
+          const name = assigneeNames(item);
+          if (!byAssignee.has(name)) byAssignee.set(name, []);
+          byAssignee.get(name).push(item);
+        }
+        const assignees = [...byAssignee.entries()]
+          .sort(([a], [b]) => {
+            if (a === 'Unassigned') return -1;
+            if (b === 'Unassigned') return 1;
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+          })
+          .map(([name, rows]) => ({ name, items: rows }));
+        return { ...status, assignees, count: matching.length };
+      }).filter((status) => status.count > 0);
+      const complete = items.filter((item) => item.status === 'complete').length;
+      return { ...group, statuses, itemCount: items.length, complete };
+    })
+    .filter((group) => group.itemCount > 0);
+}
+
 function itemAssignedToGuest(item, guestName, guestEmail) {
   const email = String(guestEmail || '').trim().toLowerCase();
   const name = String(guestName || '').trim().toLowerCase();
@@ -66,6 +119,7 @@ export default function DdPortalPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [assignmentFilter, setAssignmentFilter] = useState('all');
+  const [boardView, setBoardView] = useState(() => loadPortalView(token));
 
   const guestHeaders = useMemo(
     () => ({
@@ -172,6 +226,16 @@ export default function DdPortalPage() {
     } catch (err) {
       alert(err.message);
     }
+  };
+
+  const handleBoardView = (next) => {
+    setBoardView(next);
+    try {
+      localStorage.setItem(`${PORTAL_VIEW_KEY}:${token}`, next);
+    } catch {
+      /* private mode */
+    }
+    console.log('[DdPortal] view', next);
   };
 
   const handleDocument = async (itemId) => {
@@ -290,7 +354,7 @@ export default function DdPortalPage() {
     }));
 
   return (
-    <div className="dd-portal dd-portal--board">
+    <div className={`dd-portal dd-portal--board${boardView === 'list' ? ' dd-portal--list' : ''}`}>
       <header className="dd-portal__header">
         <img src="/vettr-logo.png" alt="Vettr" className="dd-portal__logo" width={160} height={46} />
         <h1>{data.dealName}</h1>
@@ -308,6 +372,26 @@ export default function DdPortalPage() {
       </header>
 
       <div className="dd-portal-board-tools">
+        <div className="dd-portal-view-toggle panel-position-toggle" role="tablist" aria-label="Checklist layout">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={boardView === 'kanban'}
+            className={boardView === 'kanban' ? 'active' : ''}
+            onClick={() => handleBoardView('kanban')}
+          >
+            Kanban
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={boardView === 'list'}
+            className={boardView === 'list' ? 'active' : ''}
+            onClick={() => handleBoardView('list')}
+          >
+            List
+          </button>
+        </div>
         <label>
           <span>Category</span>
           <select
@@ -361,6 +445,14 @@ export default function DdPortalPage() {
         ) : null}
       </div>
 
+      {boardView === 'list' ? (
+        <PortalList
+          groups={groupItemsForList(visibleGroups)}
+          collaborative={data.mode === 'collaborative'}
+          onStatus={handleStatus}
+          empty={visibleGroups.every((group) => group.items.length === 0)}
+        />
+      ) : (
       <main className="dd-portal-board" aria-label="Due diligence checklist board">
         {visibleGroups.map((group) => {
           const items = group.items || [];
@@ -464,6 +556,67 @@ export default function DdPortalPage() {
           </div>
         ) : null}
       </main>
+      )}
     </div>
+  );
+}
+
+function PortalList({ groups, collaborative, onStatus, empty }) {
+  if (empty) {
+    return (
+      <div className="dd-portal-board__empty">
+        No checklist items match these filters.
+      </div>
+    );
+  }
+
+  return (
+    <main className="dd-portal-list" aria-label="Due diligence checklist list">
+      {groups.map((group) => (
+        <section key={group.id} className="dd-portal-list__group">
+          <header className="dd-portal-list__head">
+            <h2>{group.name}</h2>
+            <span>{group.complete}/{group.itemCount}</span>
+          </header>
+          {group.statuses.map((status) => (
+            <div key={status.value} className="dd-portal-list__status">
+              <h3>
+                {status.label}
+                <span>{status.count}</span>
+              </h3>
+              {status.assignees.map((assignee) => (
+                <div key={assignee.name} className="dd-portal-list__assignee">
+                  <h4>
+                    {assignee.name}
+                    <span>{assignee.items.length}</span>
+                  </h4>
+                  <ul>
+                    {assignee.items.map((item) => (
+                      <li key={item.id} className="dd-portal-list__row" data-status={item.status}>
+                        <span className="dd-portal-list__title">{item.title}</span>
+                        {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
+                        {collaborative ? (
+                          <select
+                            value={item.status}
+                            onChange={(e) => onStatus(item.id, e.target.value)}
+                            className="modal-input"
+                            aria-label={`Status for ${item.title}`}
+                          >
+                            <option value="not_started">Not started</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="complete">Complete</option>
+                            <option value="waiting_on_other">Blocked / waiting</option>
+                          </select>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ))}
+        </section>
+      ))}
+    </main>
   );
 }

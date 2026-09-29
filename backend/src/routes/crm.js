@@ -71,6 +71,7 @@ import {
   patchDealDdItemsBulk,
   postDdShareLink,
   deleteDdShareLink,
+  postDdSummaryEmail,
   postDdGroup,
   postDdItem,
   postDdItemDocument
@@ -169,6 +170,7 @@ router.post('/deals/:id/dd/groups', postDdGroup);
 router.post('/deals/:id/dd/groups/:groupId/items', postDdItem);
 router.post('/deals/:id/dd/items/:itemId/documents', postDdItemDocument);
 router.post('/deals/:id/dd/share-links', postDdShareLink);
+router.post('/deals/:id/dd/summary-email', postDdSummaryEmail);
 router.delete('/deals/:id/dd/share-links/:linkId', deleteDdShareLink);
 
 router.get('/underwriting', getUnderwritingHub);

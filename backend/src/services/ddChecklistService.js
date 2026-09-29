@@ -10,7 +10,8 @@ import {
 import { matchIndustryKey, isFranchiseTagged, INDUSTRY_LABELS } from '../lib/industryMatcher.js';
 import { notificationOpenLabel, notificationPath } from '../lib/notificationLinks.js';
 import { actorDisplayName } from '../lib/teamActivity.js';
-import { sendEmail } from './emailService.js';
+import { sendEmail, isSmtpConfigured } from './emailService.js';
+import { buildDdSummaryEmail, parseRecipientEmails } from '../lib/ddSummaryEmail.js';
 import { createTask } from './crmTaskService.js';
 import { sendPushToUser } from './pushService.js';
 import { createUserAlert } from './userAlertService.js';
@@ -837,6 +838,55 @@ async function notifyBulkAssigneeEmail(email, name, titles, savedDealId) {
      )`,
     [email, savedDealId]
   );
+}
+
+export async function sendDdChecklistSummary(userId, savedDealId, { audience, recipients }) {
+  const deal = await assertDealOwned(userId, savedDealId, { write: true });
+  const checklist = await getChecklistForDeal(userId, savedDealId);
+  if (!checklist) {
+    const err = new Error('Start a DD checklist first');
+    err.status = 400;
+    throw err;
+  }
+  const kind = audience === 'external' ? 'external' : audience === 'internal' ? 'internal' : null;
+  if (!kind) {
+    const err = new Error('Choose internal or external');
+    err.status = 400;
+    throw err;
+  }
+  const emails = parseRecipientEmails(recipients);
+  const mail = buildDdSummaryEmail({
+    audience: kind,
+    dealName: deal.name,
+    groups: checklist.groups || []
+  });
+  if (!isSmtpConfigured()) {
+    console.warn('[dd] summary email skipped — SMTP not configured', {
+      savedDealId,
+      audience: kind,
+      recipients: emails.length
+    });
+    return { audience: kind, delivered: [], failed: [], notConfigured: true, subject: mail.subject };
+  }
+  const delivered = [];
+  const failed = [];
+  for (const to of emails) {
+    try {
+      const result = await sendEmail({ to, subject: mail.subject, html: mail.html });
+      if (result?.sent) delivered.push(to);
+      else failed.push(to);
+    } catch (err) {
+      console.error('[dd] summary email failed', { to, message: err.message });
+      failed.push(to);
+    }
+  }
+  console.log('[dd] summary email', {
+    savedDealId,
+    audience: kind,
+    delivered: delivered.length,
+    failed: failed.length
+  });
+  return { audience: kind, delivered, failed, notConfigured: false, subject: mail.subject };
 }
 
 export async function addDdGroup(userId, savedDealId, { name }) {

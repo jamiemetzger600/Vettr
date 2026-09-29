@@ -13,7 +13,8 @@ import {
   addDdItem,
   addDdItemDocument,
   addPublicDdComment,
-  addPublicDdDocument
+  addPublicDdDocument,
+  sendDdChecklistSummary
 } from '../services/ddChecklistService.js';
 
 function publicGuestMeta(req) {
@@ -116,6 +117,18 @@ export const postDdShareLink = async (req, res) => {
     if (error.status === 400) return res.status(400).json({ error: error.message });
     if (error.status === 404) return res.status(404).json({ error: error.message });
     console.error('[dd] postDdShareLink error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const postDdSummaryEmail = async (req, res) => {
+  try {
+    const result = await sendDdChecklistSummary(req.user.userId, req.params.id, req.body || {});
+    res.json(result);
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error('[dd] postDdSummaryEmail error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

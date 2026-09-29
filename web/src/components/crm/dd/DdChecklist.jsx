@@ -157,6 +157,13 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     selectedGroupIds: []
   });
   const [showShareLinks, setShowShareLinks] = useState(false);
+  const [summaryForm, setSummaryForm] = useState({
+    open: false,
+    audience: 'internal',
+    recipients: '',
+    sending: false,
+    result: ''
+  });
   const [view, setView] = useState(readStoredView);
   const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
@@ -485,8 +492,82 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
     }
   };
 
+  const assigneeEmailList = () => {
+    const emails = new Set();
+    for (const group of checklist?.groups || []) {
+      for (const item of group.items || []) {
+        for (const assignee of item.assignees || []) {
+          const email = String(assignee.email || '').trim();
+          if (email) emails.add(email);
+        }
+      }
+    }
+    return [...emails].join('\n');
+  };
+
+  const openSummaryForm = () => {
+    setShareForm((f) => ({ ...f, open: false }));
+    const assigned = assigneeEmailList();
+    setSummaryForm({
+      open: true,
+      audience: 'internal',
+      recipients: assigned,
+      sending: false,
+      result: ''
+    });
+    console.log('[DdChecklist] open summary email', { dealId, assigned: Boolean(assigned) });
+  };
+
+  const setSummaryAudience = (audience) => {
+    setSummaryForm((f) => {
+      const assigned = assigneeEmailList();
+      let recipients = f.recipients;
+      if (audience === 'internal' && !recipients.trim()) recipients = assigned;
+      if (audience === 'external' && recipients.trim() === assigned.trim()) recipients = '';
+      return { ...f, audience, recipients, result: '' };
+    });
+  };
+
+  const handleSummarySend = async () => {
+    const recipients = summaryForm.recipients;
+    if (!recipients.trim()) {
+      alert('Add at least one email address');
+      return;
+    }
+    setSummaryForm((f) => ({ ...f, sending: true, result: '' }));
+    try {
+      const result = await crmAPI.sendDdSummaryEmail(dealId, {
+        audience: summaryForm.audience,
+        recipients
+      });
+      console.log('[DdChecklist] summary email', result);
+      if (result.notConfigured) {
+        setSummaryForm((f) => ({
+          ...f,
+          sending: false,
+          result: 'Email is not configured on this server, so nothing was sent.'
+        }));
+        return;
+      }
+      const sent = result.delivered?.length || 0;
+      const failed = result.failed?.length || 0;
+      setSummaryForm((f) => ({
+        ...f,
+        sending: false,
+        result: failed
+          ? `Sent to ${sent}. Could not send to ${failed}.`
+          : `Sent to ${sent} ${sent === 1 ? 'person' : 'people'}.`
+      }));
+    } catch (err) {
+      console.error('[DdChecklist] summary email failed', err);
+      setSummaryForm((f) => ({ ...f, sending: false, result: '' }));
+      alert(err.message || 'Failed to send the summary');
+    }
+  };
+
   const openShareForm = (mode = 'view_only') => {
     const allIds = (checklist?.groups || []).map((g) => g.id);
+    setSummaryForm((f) => ({ ...f, open: false }));
     setShareForm({
       open: true,
       mode,
@@ -754,9 +835,14 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
             </button>
           </div>
           {canWrite ? (
-            <button type="button" className="btn-secondary" onClick={() => openShareForm('view_only')}>
-              Share link…
-            </button>
+            <>
+              <button type="button" className="btn-secondary" onClick={() => openShareForm('view_only')}>
+                Share link…
+              </button>
+              <button type="button" className="btn-secondary" onClick={openSummaryForm}>
+                Email summary…
+              </button>
+            </>
           ) : (
             <span className="crm-muted">Viewer — read only</span>
           )}
@@ -777,6 +863,65 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true }) {
           ) : null}
         </div>
       </header>
+
+      {summaryForm.open ? (
+        <div className="dd-share-form">
+          <div className="dd-portal-view-toggle panel-position-toggle" role="tablist" aria-label="Summary audience">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={summaryForm.audience === 'internal'}
+              className={summaryForm.audience === 'internal' ? 'active' : ''}
+              onClick={() => setSummaryAudience('internal')}
+            >
+              Internal
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={summaryForm.audience === 'external'}
+              className={summaryForm.audience === 'external' ? 'active' : ''}
+              onClick={() => setSummaryAudience('external')}
+            >
+              External
+            </button>
+          </div>
+          <p className="crm-muted">
+            {summaryForm.audience === 'internal'
+              ? 'Who owns each open item. Unassigned work is listed first. Assignee emails are filled in when they exist.'
+              : 'For a bank, broker, or seller. Shows documents still needed, notes, due dates, and status. No assignee names.'}
+          </p>
+          <label>
+            Send to
+            <textarea
+              className="modal-input"
+              rows={3}
+              value={summaryForm.recipients}
+              onChange={(e) => setSummaryForm((f) => ({ ...f, recipients: e.target.value, result: '' }))}
+              placeholder="name@firm.com"
+              aria-label="Summary recipients"
+            />
+          </label>
+          {summaryForm.result ? <p className="crm-muted">{summaryForm.result}</p> : null}
+          <div className="dd-share-form__actions">
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={summaryForm.sending}
+              onClick={handleSummarySend}
+            >
+              {summaryForm.sending ? 'Sending…' : 'Send summary'}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setSummaryForm((f) => ({ ...f, open: false }))}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {shareForm.open ? (
         <div className="dd-share-form">

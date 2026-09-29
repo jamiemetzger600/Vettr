@@ -645,6 +645,12 @@ export const crmAPI = {
       body: JSON.stringify(payload)
     }),
 
+  sendDdSummaryEmail: (savedDealId, payload) =>
+    apiRequest(`/crm/deals/${savedDealId}/dd/summary-email`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
   createDdShareLink: (savedDealId, payload) =>
     apiRequest(`/crm/deals/${savedDealId}/dd/share-links`, {
       method: 'POST',
