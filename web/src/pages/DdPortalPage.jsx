@@ -197,6 +197,24 @@ export default function DdPortalPage() {
     setReloadKey((k) => k + 1);
   };
 
+  const handleAssign = async (itemId, email) => {
+    if (data?.mode !== 'collaborative') return;
+    const member = (data?.teamMembers || []).find(
+      (person) => String(person.email).toLowerCase() === String(email).toLowerCase()
+    );
+    const assignee = email
+      ? { email: member?.email || email, name: member?.displayName || null }
+      : null;
+    try {
+      const res = await ddPublicAPI.patchItem(token, itemId, { assignee }, guestHeaders);
+      setData((prev) => ({ ...prev, checklist: res.checklist }));
+      console.log('[DdPortal] assigned', { itemId, assignee: assignee?.email || 'cleared' });
+    } catch (err) {
+      console.error('[DdPortal] assign failed', err);
+      alert(err.message);
+    }
+  };
+
   const handleStatus = async (itemId, status) => {
     if (data?.mode !== 'collaborative') return;
     try {
@@ -449,7 +467,12 @@ export default function DdPortalPage() {
         <PortalList
           groups={groupItemsForList(visibleGroups)}
           collaborative={data.mode === 'collaborative'}
+          members={data.teamMembers || []}
+          commentDrafts={commentDrafts}
           onStatus={handleStatus}
+          onAssign={handleAssign}
+          onComment={handleComment}
+          onCommentDraft={(itemId, value) => setCommentDrafts((drafts) => ({ ...drafts, [itemId]: value }))}
           empty={visibleGroups.every((group) => group.items.length === 0)}
         />
       ) : (
@@ -492,6 +515,7 @@ export default function DdPortalPage() {
                           <option value="in_progress">In progress</option>
                           <option value="complete">Complete</option>
                           <option value="waiting_on_other">Blocked / waiting</option>
+                          <option value="na">Not applicable</option>
                         </select>
                         {item.requests_document ? (
                           <button type="button" className="btn-secondary" onClick={() => handleDocument(item.id)}>
@@ -561,7 +585,18 @@ export default function DdPortalPage() {
   );
 }
 
-function PortalList({ groups, collaborative, onStatus, empty }) {
+function PortalList({
+  groups,
+  collaborative,
+  members,
+  commentDrafts,
+  onStatus,
+  onAssign,
+  onComment,
+  onCommentDraft,
+  empty
+}) {
+  const [noteItemId, setNoteItemId] = useState(null);
   if (empty) {
     return (
       <div className="dd-portal-board__empty">
@@ -591,25 +626,90 @@ function PortalList({ groups, collaborative, onStatus, empty }) {
                     <span>{assignee.items.length}</span>
                   </h4>
                   <ul>
-                    {assignee.items.map((item) => (
-                      <li key={item.id} className="dd-portal-list__row" data-status={item.status}>
-                        <span className="dd-portal-list__title">{item.title}</span>
-                        {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
-                        {collaborative ? (
-                          <select
-                            value={item.status}
-                            onChange={(e) => onStatus(item.id, e.target.value)}
-                            className="modal-input"
-                            aria-label={`Status for ${item.title}`}
-                          >
-                            <option value="not_started">Not started</option>
-                            <option value="in_progress">In progress</option>
-                            <option value="complete">Complete</option>
-                            <option value="waiting_on_other">Blocked / waiting</option>
-                          </select>
-                        ) : null}
-                      </li>
-                    ))}
+                    {assignee.items.map((item) => {
+                      const currentEmail = item.assignees?.[0]?.email || '';
+                      const known = (members || []).some(
+                        (member) => String(member.email).toLowerCase() === String(currentEmail).toLowerCase()
+                      );
+                      const notesOpen = noteItemId === item.id;
+                      const noteCount = (item.comments || []).length;
+                      return (
+                        <li key={item.id} className="dd-portal-list__row" data-status={item.status}>
+                          <div className="dd-portal-list__line">
+                            <span className="dd-portal-list__title">{item.title}</span>
+                            {item.due_at ? <span className="dd-item__due">Due {formatDate(item.due_at)}</span> : null}
+                            {collaborative ? (
+                              <>
+                                <select
+                                  value={known ? currentEmail : (currentEmail ? currentEmail : '')}
+                                  onChange={(e) => onAssign(item.id, e.target.value)}
+                                  className="modal-input dd-portal-list__assign"
+                                  aria-label={`Assignee for ${item.title}`}
+                                >
+                                  <option value="">Unassigned</option>
+                                  {(members || []).map((member) => (
+                                    <option key={member.email} value={member.email}>
+                                      {member.displayName || member.email}
+                                    </option>
+                                  ))}
+                                  {currentEmail && !known ? (
+                                    <option value={currentEmail}>{assigneeNames(item)}</option>
+                                  ) : null}
+                                </select>
+                                <select
+                                  value={item.status}
+                                  onChange={(e) => onStatus(item.id, e.target.value)}
+                                  className="modal-input"
+                                  aria-label={`Status for ${item.title}`}
+                                >
+                                  <option value="not_started">Not started</option>
+                                  <option value="in_progress">In progress</option>
+                                  <option value="complete">Complete</option>
+                                  <option value="waiting_on_other">Blocked / waiting</option>
+                                  <option value="na">Not applicable</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  className="dd-portal-list__note-btn"
+                                  aria-expanded={notesOpen}
+                                  onClick={() => {
+                                    setNoteItemId(notesOpen ? null : item.id);
+                                    console.log('[DdPortal] notes', { itemId: item.id, open: !notesOpen });
+                                  }}
+                                >
+                                  {noteCount ? `Notes ${noteCount}` : 'Note'}
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                          {collaborative && notesOpen ? (
+                            <div className="dd-portal-list__notes">
+                              {(item.comments || []).map((comment) => (
+                                <p key={comment.id} className="dd-portal-list__note">
+                                  <span>{comment.authorName || 'Guest'}</span>
+                                  {comment.body}
+                                </p>
+                              ))}
+                              <div className="dd-portal-list__composer">
+                                <input
+                                  className="modal-input"
+                                  placeholder="Add a note"
+                                  aria-label={`Note for ${item.title}`}
+                                  value={commentDrafts[item.id] || ''}
+                                  onChange={(e) => onCommentDraft(item.id, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') onComment(item.id);
+                                  }}
+                                />
+                                <button type="button" className="btn-secondary" onClick={() => onComment(item.id)}>
+                                  Post
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ))}

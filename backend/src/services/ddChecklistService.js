@@ -1271,6 +1271,32 @@ export async function revokeShareLink(userId, savedDealId, linkId) {
   return { revoked: true };
 }
 
+function displayNameFromEmail(email) {
+  const local = String(email || '').split('@')[0] || 'Member';
+  return local
+    .replace(/[._-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim() || 'Member';
+}
+
+async function listTeamMembersForDeal(savedDealId) {
+  const result = await pool.query(
+    `SELECT u.id, u.email, tm.role
+     FROM saved_deals sd
+     JOIN team_members tm ON tm.team_id = sd.team_id AND tm.status = 'active'
+     JOIN users u ON u.id = tm.user_id
+     WHERE sd.id = $1
+     ORDER BY u.email`,
+    [savedDealId]
+  );
+  return result.rows.map((member) => ({
+    id: member.id,
+    email: member.email,
+    role: member.role,
+    displayName: displayNameFromEmail(member.email)
+  }));
+}
+
 export async function getPublicChecklistByToken(token, meta = {}) {
   const row = await loadActiveShareLink(token);
   await assertSharePassword(row, meta.password);
@@ -1280,14 +1306,22 @@ export async function getPublicChecklistByToken(token, meta = {}) {
 
   const full = await getChecklistForDeal(row.user_id, row.saved_deal_id);
   const checklist = filterChecklistByGroupIds(full, row.group_ids);
+  const collaborative = row.mode === 'collaborative';
+  const teamMembers = collaborative ? await listTeamMembersForDeal(row.saved_deal_id) : [];
+  console.log('[dd] public checklist', {
+    savedDealId: row.saved_deal_id,
+    mode: row.mode,
+    teamMembers: teamMembers.length
+  });
 
   return {
     mode: row.mode,
     label: row.label,
     showDealName: row.show_deal_name,
     dealName: row.show_deal_name ? row.deal_name : 'Due Diligence',
-    requiresGuestIdentity: row.mode === 'collaborative',
+    requiresGuestIdentity: collaborative,
     scopedGroupCount: row.group_ids?.length || 0,
+    teamMembers,
     checklist
   };
 }
@@ -1302,7 +1336,30 @@ export async function patchPublicDdItem(token, itemId, patch, meta = {}) {
   }
   await assertItemInShareScope(row, itemId);
   const guest = guestFromRequest(meta);
-  await logShareAccess(row.id, 'status_change', guest);
+  if (patch.assignee !== undefined && patch.assignee !== null) {
+    const email = String(patch.assignee.email || '').trim().toLowerCase();
+    const members = await listTeamMembersForDeal(row.saved_deal_id);
+    const member = members.find((person) => String(person.email).toLowerCase() === email);
+    if (!member) {
+      const err = new Error('Assignee must be a team member');
+      err.status = 400;
+      throw err;
+    }
+    patch = {
+      ...patch,
+      assignee: {
+        email: member.email,
+        name: member.displayName,
+        roleLabel: member.role || null
+      }
+    };
+  }
+  await logShareAccess(row.id, patch.assignee !== undefined ? 'assign' : 'status_change', guest);
+  console.log('[dd] public item patch', {
+    itemId,
+    status: patch.status || null,
+    assignee: patch.assignee === null ? 'cleared' : patch.assignee?.email || null
+  });
   const checklist = await patchDdItem(row.user_id, row.saved_deal_id, itemId, patch, {
     actorUserId: null,
     actorName: guest.guestName,
