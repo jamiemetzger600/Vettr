@@ -1274,6 +1274,20 @@ const migrations = [
     `
   },
   {
+    name: 'dd_milestone_notices_v5_145',
+    up: `
+      CREATE TABLE IF NOT EXISTS dd_milestone_notices (
+        checklist_id INTEGER NOT NULL REFERENCES dd_checklists(id) ON DELETE CASCADE,
+        stage_id VARCHAR(40) NOT NULL,
+        edge VARCHAR(8) NOT NULL,
+        lead_days INTEGER NOT NULL,
+        milestone_on DATE NOT NULL,
+        sent_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (checklist_id, stage_id, edge, lead_days, milestone_on)
+      );
+    `
+  },
+  {
     name: 'dd_stage_milestones_v5_144',
     up: `
       CREATE TABLE IF NOT EXISTS dd_stage_milestones (

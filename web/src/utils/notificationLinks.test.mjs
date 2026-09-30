@@ -54,4 +54,8 @@ assert(ddComplete.includes('crmDeal=88'), `DD completion opens deal: ${ddComplet
 assert(ddComplete.includes('section=crm-dd'), `DD completion opens checklist: ${ddComplete}`);
 assert(notificationOpenLabel('dd_completed') === 'Open DD', 'DD completion button label');
 
+const ddMilestone = notificationPath({ alertType: 'dd_milestone', savedDealId: 88 });
+assert(ddMilestone.includes('section=crm-dd'), `milestone notice opens checklist: ${ddMilestone}`);
+assert(notificationOpenLabel('dd_milestone') === 'Open DD', 'milestone notice button label');
+
 console.log('alertBannerPreview tests passed');

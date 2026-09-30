@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { processDueReminders } from './crmReminderService.js';
+import { processDdMilestoneNotices } from './ddMilestoneNoticeService.js';
 import {
   runMorningDigests,
   runInstantDealMatches,
@@ -51,6 +52,11 @@ cron.schedule('*/15 * * * *', async () => {
   } catch (error) {
     console.error('[scheduler] CRM reminder job error', error);
   }
+  try {
+    await processDdMilestoneNotices();
+  } catch (error) {
+    console.error('[scheduler] DD milestone notice error', error);
+  }
 });
 
 console.log('[scheduler] initialized');
@@ -58,3 +64,4 @@ console.log(`   - Daily email/push summary: 9:00 AM ${TZ}`);
 console.log(`   - Weekly (weekly-frequency users): Monday 9:00 AM ${TZ}`);
 console.log('   - Instant matches + team activity: every 15 minutes');
 console.log('   - CRM task reminders: every 15 minutes');
+console.log('   - DD milestone notices (1 week, 3 days, 1 day): every 15 minutes');

@@ -1,11 +1,12 @@
-/** Stage lanes for the diligence Gantt. Order is the closing sequence. */
+/** Stage lanes for the diligence Gantt. Close Date is last: it ends the transaction. */
 export const GANTT_STAGES = [
+  { id: 'loi', label: 'LOI' },
+  { id: 'psa', label: 'PSA' },
   { id: 'diligence', label: 'Due Diligence' },
   { id: 'qoe', label: 'QofE' },
   { id: 'bank', label: 'Bank Underwriting' },
-  { id: 'psa', label: 'PSA' },
-  { id: 'close', label: 'Close Date' },
-  { id: 'custom', label: 'User submitted' }
+  { id: 'custom', label: 'User submitted' },
+  { id: 'close', label: 'Close Date' }
 ];
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -27,6 +28,7 @@ export function stageIdForGroup(name) {
   const n = String(name || '').trim().toLowerCase();
   if (!n) return 'custom';
   if (/qoe|qofe|quality of earnings|\bfinancial\b/.test(n)) return 'qoe';
+  if (/\bloi\b|letter of intent/.test(n)) return 'loi';
   if (/\bsba\b|\bbank\b|underwriting|\blender\b/.test(n)) return 'bank';
   if (/\bpsa\b|purchase and sale|purchase & sale|asset purchase/.test(n)) return 'psa';
   if (/close date|\bclosing\b|\bclose\b/.test(n)) return 'close';
@@ -269,4 +271,95 @@ export function monthTicks(rangeStart, rangeEnd) {
 export function formatGanttDay(ms) {
   if (ms == null) return '';
   return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+const WEEK = 7 * DAY;
+const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F'];
+
+function mondayOf(ms) {
+  const date = new Date(ms);
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay();
+  const delta = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + delta);
+  return date.getTime();
+}
+
+function weekLabel(mondayMs) {
+  const monday = new Date(mondayMs);
+  const friday = new Date(mondayMs + 4 * DAY);
+  const month = monday.toLocaleDateString('en-US', { month: 'short' });
+  if (monday.getMonth() === friday.getMonth()) {
+    return `${month} ${monday.getDate()}-${friday.getDate()}`;
+  }
+  const fridayMonth = friday.toLocaleDateString('en-US', { month: 'short' });
+  return `${month} ${monday.getDate()} – ${fridayMonth} ${friday.getDate()}`;
+}
+
+/** Monday–Friday columns from the timeline, at least eight weeks so a month reads as four weeks. */
+export function weekColumns(rangeStart, rangeEnd, todayMs = rangeStart) {
+  const origin = mondayOf(rangeStart || Date.now());
+  const lastNeeded = Math.max(rangeEnd || origin, origin + 7 * WEEK);
+  const weeks = [];
+  const monthIndex = new Map();
+  let cursor = origin;
+  while (cursor <= lastNeeded && weeks.length < 36) {
+    const monday = new Date(cursor);
+    const monthKey = `${monday.getFullYear()}-${monday.getMonth()}`;
+    if (!monthIndex.has(monthKey)) monthIndex.set(monthKey, monthIndex.size % 6);
+    weeks.push({
+      id: `${monthKey}-${monday.getDate()}`,
+      start: cursor,
+      label: weekLabel(cursor),
+      monthKey,
+      month: monthIndex.get(monthKey),
+      days: WEEKDAY_LETTERS,
+      today: todayMs >= cursor && todayMs < cursor + WEEK
+    });
+    cursor += WEEK;
+  }
+  return weeks;
+}
+
+/** Checklist bars cover two to four weeks and finish on the due date. */
+export function taskSpan(task) {
+  if (task?.due == null) return null;
+  const end = task.due;
+  if (task.waitUntil != null && task.waitUntil < end) {
+    const gap = end - task.waitUntil;
+    if (gap >= 2 * DAY && gap <= 28 * DAY) return { start: task.waitUntil + DAY, end };
+  }
+  return { start: end - 14 * DAY, end };
+}
+
+/** Split a bar on week boundaries so each piece takes that week's month color. */
+export function barSegments(startMs, endMs, weeks) {
+  if (startMs == null || endMs == null || !weeks?.length) return [];
+  const origin = weeks[0].start;
+  const slots = weeks.length * 5;
+  const slotAt = (ms) => {
+    const delta = ms - origin;
+    const weekIndex = Math.floor(delta / WEEK);
+    const dayOffset = Math.floor((delta - weekIndex * WEEK) / DAY);
+    const weekday = Math.min(4, Math.max(0, dayOffset));
+    return Math.min(slots, Math.max(0, weekIndex * 5 + weekday));
+  };
+  const from = slotAt(Math.min(startMs, endMs));
+  const to = Math.min(slots, slotAt(Math.max(startMs, endMs)) + 1);
+  if (to <= from) return [];
+  const segments = [];
+  for (let i = 0; i < weeks.length; i += 1) {
+    const cellStart = i * 5;
+    const cellEnd = cellStart + 5;
+    const segFrom = Math.max(from, cellStart);
+    const segTo = Math.min(to, cellEnd);
+    if (segTo <= segFrom) continue;
+    segments.push({
+      key: `${weeks[i].id}-${segFrom}`,
+      month: weeks[i].month,
+      left: (segFrom / slots) * 100,
+      width: Math.max(((segTo - segFrom) / slots) * 100, 0.6)
+    });
+  }
+  return segments;
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stageIdForGroup, buildGanttModel, barStyle, milestoneHeaders, localTodayMs } from './ddGantt.js';
+import { stageIdForGroup, buildGanttModel, barStyle, milestoneHeaders, localTodayMs, weekColumns, barSegments, taskSpan } from './ddGantt.js';
 
 test('groups land in the closing stages', () => {
   assert.equal(stageIdForGroup('Tax'), 'diligence');
@@ -11,6 +11,8 @@ test('groups land in the closing stages', () => {
   assert.equal(stageIdForGroup('PSA draft'), 'psa');
   assert.equal(stageIdForGroup('Closing checklist'), 'close');
   assert.equal(stageIdForGroup('Seller follow-ups'), 'custom');
+  assert.equal(stageIdForGroup('LOI'), 'loi');
+  assert.equal(stageIdForGroup('Letter of intent'), 'loi');
 });
 
 test('stage bars use task dates and the target close', () => {
@@ -67,6 +69,20 @@ test('a milestone date is the stage header and the tasks inherit that day', () =
   assert.equal(headers.find((header) => header.id === 'psa').label, 'PSA');
   assert.match(headers.find((header) => header.id === 'psa').date, /Oct 20/);
   assert.equal(model.todayMs, localTodayMs(new Date(2026, 8, 29, 15, 30)));
+});
+
+test('weeks are Monday to Friday and colored by month', () => {
+  const monday = new Date(2026, 2, 30).getTime();
+  const weeks = weekColumns(monday, monday, monday);
+  assert.equal(weeks[0].label, 'Mar 30 – Apr 3');
+  assert.equal(weeks[1].label, 'Apr 6-10');
+  assert.ok(weeks.length >= 8);
+  assert.notEqual(weeks[0].month, weeks[1].month);
+  assert.deepEqual(weeks[0].days, ['M', 'T', 'W', 'T', 'F']);
+  const span = taskSpan({ due: monday + 21 * 86400000 });
+  const segments = barSegments(span.start, span.end, weeks);
+  assert.ok(segments.length >= 2);
+  assert.ok(segments.every((segment) => segment.width > 0));
 });
 
 test('a one-day bar stays inside the timeline', () => {

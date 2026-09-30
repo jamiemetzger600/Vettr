@@ -6,6 +6,7 @@ import useDdMarquee from './useDdMarquee.js';
 import { DdFolderIcon, DdIconCard, DdListHead } from './DdItemViews.jsx';
 import DdGantt from './DdGantt.jsx';
 import { blockedLabel, blockedTooltip, canSetStatus } from './ddBlocked.js';
+import { GANTT_STAGES, stageIdForGroup } from './ddGantt.js';
 
 const DEFAULT_MILESTONES = [
   { title: 'Request data room / remaining docs', dueAt: '' },
@@ -180,6 +181,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   const [view, setView] = useState(readStoredView);
   const [workView, setWorkView] = useState(readWorkView);
   const [linkingId, setLinkingId] = useState(null);
+  const [stageFocus, setStageFocus] = useState(null);
   const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [anchorId, setAnchorId] = useState(null);
@@ -734,7 +736,9 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
 
   const renderKanbanBoard = () => (
     <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
-      {(checklist?.groups || []).map((group) => {
+      {(checklist?.groups || []).filter((group) => (
+        !stageFocus || stageIdForGroup(group.name) === stageFocus
+      )).map((group) => {
         const items = group.items || [];
         const complete = items.filter((item) => item.status === 'complete' || item.status === 'na').length;
         return (
@@ -747,11 +751,28 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}`}
+                  data-dd-item-id={item.id}
+                  className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}${selected.has(String(item.id)) ? ' is-selected' : ''}`}
                   data-status={item.status}
                   title={blockedTooltip(item) || undefined}
                 >
                   <div className="dd-portal-card__top">
+                    <label className="dd-list-row__check">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(String(item.id))}
+                        onChange={(e) => {
+                          const next = new Set(selected);
+                          const key = String(item.id);
+                          if (e.target.checked) next.add(key);
+                          else next.delete(key);
+                          setSelected(next);
+                          setAnchorId(key);
+                          console.log('[DdChecklist] kanban select', key, next.size);
+                        }}
+                        aria-label={`Select ${item.title}`}
+                      />
+                    </label>
                     <strong>{item.title}</strong>
                     {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
                     {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
@@ -931,6 +952,10 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   const progress = checklist.progress || {};
   const selectedCount = selected.size;
   const paneView = workspace ? workView : view;
+  const focusedStage = GANTT_STAGES.find((stage) => stage.id === stageFocus) || null;
+  const groupsForWork = (checklist.groups || []).filter((group) => (
+    !workspace || !stageFocus || stageIdForGroup(group.name) === stageFocus
+  ));
 
   return (
     <div className={`dd-checklist${workspace ? ' dd-checklist--workspace' : ''}`}>
@@ -1197,90 +1222,6 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
         </div>
       ) : null}
 
-      {selectedCount > 0 ? (
-        <div className="dd-bulk-bar">
-          <strong>{selectedCount} selected</strong>
-          <button
-            type="button"
-            className="btn-secondary btn-secondary--sm"
-            onClick={() => {
-              setSelected(new Set(allItemIds));
-              setAnchorId(allItemIds[0] || null);
-            }}
-          >
-            Select all
-          </button>
-          <button
-            type="button"
-            className="btn-secondary btn-secondary--sm"
-            onClick={() => {
-              setSelected(new Set());
-              setAnchorId(null);
-            }}
-          >
-            Clear
-          </button>
-          {canWrite ? (
-            <>
-              <label className="dd-bulk-bar__field">
-                <span>Due</span>
-                <input
-                  type="date"
-                  className="modal-input"
-                  value={bulkDue}
-                  onChange={(e) => setBulkDue(e.target.value)}
-                  aria-label="Bulk due date"
-                />
-              </label>
-              <label className="dd-bulk-bar__field">
-                <span>Assign</span>
-                <select
-                  className="modal-input"
-                  value={bulkAssignee}
-                  onChange={(e) => setBulkAssignee(e.target.value)}
-                  disabled={members.length === 0}
-                  aria-label="Bulk assignee"
-                >
-                  <option value="">Keep assignee</option>
-                  <option value="__unassign__">Unassigned</option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName || displayNameFromEmail(m.email)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="dd-bulk-bar__field">
-                <span>Status</span>
-                <select
-                  className="modal-input"
-                  value={bulkStatus}
-                  onChange={(e) => setBulkStatus(e.target.value)}
-                  aria-label="Bulk status"
-                >
-                  <option value="">Keep status</option>
-                  {DD_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={bulkSaving}
-                onClick={handleBulkApply}
-              >
-                {bulkSaving ? 'Applying…' : 'Apply'}
-              </button>
-            </>
-          ) : null}
-        </div>
-      ) : view === 'gantt' ? null : (
-        <p className="crm-muted dd-select-hint">
-          Drag to select · Shift-click a range · ⌘-click to toggle · then assign dates and people
-        </p>
-      )}
-
       <div className="dd-add-group">
         <button
           type="button"
@@ -1326,6 +1267,11 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             milestones={checklist.milestones || []}
             onMilestoneDate={canWrite ? handleMilestoneDate : null}
             showAudienceToggle
+            activeStageId={stageFocus}
+            onStageChange={(stageId) => {
+              console.log('[DdChecklist] show stage items', stageId || 'all');
+              setStageFocus(stageId);
+            }}
           />
         </div>
       ) : null}
@@ -1339,8 +1285,6 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
           onMilestoneDate={canWrite ? handleMilestoneDate : null}
           showAudienceToggle
         />
-      ) : paneView === 'kanban' ? (
-        renderKanbanBoard()
       ) : (
       <div
         ref={workspaceRef}
@@ -1350,6 +1294,108 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
+        {focusedStage ? (
+          <p className="dd-stage-focus">
+            <span>{focusedStage.label} tasks</span>
+            <button
+              type="button"
+              className="btn-secondary btn-secondary--sm"
+              onClick={() => {
+                console.log('[DdChecklist] show stage items', 'all');
+                setStageFocus(null);
+              }}
+            >
+              All tasks
+            </button>
+          </p>
+        ) : null}
+        {selectedCount > 0 ? (
+          <div className="dd-bulk-bar">
+            <strong>{selectedCount} selected</strong>
+            <button
+              type="button"
+              className="btn-secondary btn-secondary--sm"
+              onClick={() => {
+                console.log('[DdChecklist] select all', allItemIds.length);
+                setSelected(new Set(allItemIds));
+                setAnchorId(allItemIds[0] || null);
+              }}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              className="btn-secondary btn-secondary--sm"
+              onClick={() => {
+                console.log('[DdChecklist] clear selection');
+                setSelected(new Set());
+                setAnchorId(null);
+              }}
+            >
+              Clear
+            </button>
+            {canWrite ? (
+              <>
+                <label className="dd-bulk-bar__field">
+                  <span>Due</span>
+                  <input
+                    type="date"
+                    className="modal-input"
+                    value={bulkDue}
+                    onChange={(e) => setBulkDue(e.target.value)}
+                    aria-label="Bulk due date"
+                  />
+                </label>
+                <label className="dd-bulk-bar__field">
+                  <span>Assign</span>
+                  <select
+                    className="modal-input"
+                    value={bulkAssignee}
+                    onChange={(e) => setBulkAssignee(e.target.value)}
+                    disabled={members.length === 0}
+                    aria-label="Bulk assignee"
+                  >
+                    <option value="">Keep assignee</option>
+                    <option value="__unassign__">Unassigned</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.displayName || displayNameFromEmail(m.email)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="dd-bulk-bar__field">
+                  <span>Status</span>
+                  <select
+                    className="modal-input"
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value)}
+                    aria-label="Bulk status"
+                  >
+                    <option value="">Keep status</option>
+                    {DD_STATUSES.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={bulkSaving}
+                  onClick={handleBulkApply}
+                >
+                  {bulkSaving ? 'Applying…' : 'Apply'}
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <p className="crm-muted dd-select-hint">
+            Drag to select · Shift-click a range · ⌘-click to toggle · then assign dates and people
+          </p>
+        )}
+        {paneView === 'kanban' ? renderKanbanBoard() : (
+        <>
         {paneView === 'list' ? (
           <DdListHead
             sortKey={listSort.key}
@@ -1363,7 +1409,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             }}
           />
         ) : null}
-        {sortDdGroups(checklist.groups, paneView === 'list' ? listSort : null, assigneeLabel).map((group) => {
+        {sortDdGroups(groupsForWork, paneView === 'list' ? listSort : null, assigneeLabel).map((group) => {
           const done = (group.items || []).filter((i) => i.status === 'complete' || i.status === 'na').length;
           const total = (group.items || []).length;
           const groupIds = (group.items || []).map((i) => String(i.id));
@@ -1564,6 +1610,8 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             </section>
           );
         })}
+        </>
+        )}
         {marquee ? (
           <div
             className="dd-marquee"

@@ -544,6 +544,7 @@ export default function SettingsPage() {
             <h2>CRM</h2>
             <p>
               Task reminders and the daily digest send from your connected Gmail when possible.
+              A diligence milestone also emails the deal team, and sends a desktop alert, 1 week, 3 days, and 1 day before that stage starts or ends.
               Vettr-branded mail (team invites, feedback) still uses server SMTP.
             </p>
             <label className="settings-checkbox-row">
@@ -553,7 +554,7 @@ export default function SettingsPage() {
                 onChange={(e) => handleToggleCrmEmailDigest(e.target.checked)}
               />
               <span>
-                <strong>Daily CRM digest</strong> — fold overdue tasks, due-today items, and DD deadlines into the morning summary email.
+                <strong>Daily CRM digest</strong> — fold overdue tasks, due-today items, DD deadlines, and approaching milestones into the morning summary email.
               </span>
             </label>
             <p style={{ marginTop: 16 }}>

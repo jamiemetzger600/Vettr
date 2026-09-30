@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { barStyle, buildGanttModel, formatGanttDay, localTodayMs, milestoneHeaders, stageBar, viewerTimeZone } from './ddGantt.js';
+import {
+  barSegments,
+  buildGanttModel,
+  formatGanttDay,
+  localTodayMs,
+  taskSpan,
+  viewerTimeZone,
+  weekColumns
+} from './ddGantt.js';
 
 const STATUS_LABEL = {
   not_started: 'Not started',
@@ -10,36 +18,43 @@ const STATUS_LABEL = {
   na: 'N/A'
 };
 
-function TaskRow({ task, rangeStart, rangeEnd, showAssignee }) {
-  const style = barStyle(task.due, task.due, rangeStart, rangeEnd);
-  const link = task.waitUntil != null && task.due != null
-    ? barStyle(Math.min(task.waitUntil, task.due), Math.max(task.waitUntil, task.due) - 86400000, rangeStart, rangeEnd)
-    : null;
+function Track({ weeks, segments }) {
+  return (
+    <div className="dd-gantt__span">
+      {weeks.map((week) => (
+        <div
+          key={week.id}
+          className={`dd-gantt__cell dd-gantt__cell--m${week.month}${week.today ? ' is-today' : ''}`}
+        />
+      ))}
+      {segments.map((segment) => (
+        <span
+          key={segment.key}
+          className={`dd-gantt__block dd-gantt__block--m${segment.month}`}
+          style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ItemRow({ task, weeks, showAssignee }) {
+  const span = taskSpan(task);
+  const segments = span ? barSegments(span.start, span.end, weeks) : [];
   const after = task.after?.length ? `After ${task.after.join(', ')}` : '';
   return (
-    <li className={`dd-gantt__task${task.blocked ? ' is-blocked' : ''}`}>
-      <span className="dd-gantt__label" title={after || task.groupName}>
+    <div className={`dd-gantt__line dd-gantt__line--item${task.blocked ? ' is-blocked' : ''}`}>
+      <div className="dd-gantt__item" title={after || task.groupName}>
         <span className="dd-gantt__title">{task.title}</span>
         <span className="dd-gantt__sub">
-          {task.milestone ? 'Milestone' : task.groupName}
+          {task.groupName}
           {task.due != null ? ` · ${formatGanttDay(task.due)}` : ' · No date'}
           {showAssignee ? ` · ${task.assignee || 'Unassigned'}` : ''}
-          {!task.milestone ? ` · ${STATUS_LABEL[task.status] || 'Not started'}` : ''}
-          {task.docNeeded ? ' · Document needed' : ''}
-          {task.blocked ? ' · Blocked' : ''}
-          {after ? ` · ${after}` : ''}
+          {` · ${STATUS_LABEL[task.status] || 'Not started'}`}
         </span>
-      </span>
-      <span className="dd-gantt__track">
-        {link ? <span className="dd-gantt__link" style={link} /> : null}
-        {style ? (
-          <span
-            className={`dd-gantt__bar dd-gantt__bar--task dd-gantt__bar--${task.milestone ? 'milestone' : task.status}`}
-            style={style}
-          />
-        ) : null}
-      </span>
-    </li>
+      </div>
+      <Track weeks={weeks} segments={segments} />
+    </div>
   );
 }
 
@@ -50,10 +65,12 @@ export default function DdGantt({
   milestones = [],
   onMilestoneDate = null,
   audience = 'internal',
-  showAudienceToggle = false
+  showAudienceToggle = false,
+  activeStageId = null,
+  onStageChange = null
 }) {
   const [mode, setMode] = useState(audience === 'external' ? 'external' : 'internal');
-  const [open, setOpen] = useState(() => new Set());
+  const [open, setOpen] = useState(null);
   const [todayMs, setTodayMs] = useState(() => localTodayMs());
   const shown = showAudienceToggle ? mode : (audience === 'external' ? 'external' : 'internal');
   const showAssignee = shown === 'internal';
@@ -77,30 +94,38 @@ export default function DdGantt({
     }),
     [groups, startedAt, targetDate, milestones, todayMs]
   );
-  const headers = useMemo(
-    () => milestoneHeaders(model.stages, model.rangeStart, model.rangeEnd, model.todayMs),
-    [model.stages, model.rangeStart, model.rangeEnd, model.todayMs]
+  const weeks = useMemo(
+    () => weekColumns(model.rangeStart, model.rangeEnd, model.todayMs),
+    [model.rangeStart, model.rangeEnd, model.todayMs]
   );
-  const stacked = headers.some((header) => header.lane === 1);
   const todayLabel = formatGanttDay(model.todayMs);
 
   useEffect(() => {
-    console.log('[DdGantt] axis', {
+    console.log('[DdGantt] weeks', {
       zone: viewerTimeZone(),
       today: todayLabel,
-      close: formatGanttDay(model.rangeEnd),
-      headers: headers.map((header) => `${header.label} ${header.date} @ ${header.left}`)
+      count: weeks.length,
+      first: weeks[0]?.label,
+      last: weeks[weeks.length - 1]?.label,
+      months: [...new Set(weeks.map((week) => week.monthKey))]
     });
-  }, [headers, model.rangeEnd, todayLabel]);
+  }, [weeks, todayLabel]);
+
+  const isOpen = (stage) => (open == null ? stage.total > 0 : open.has(stage.id));
 
   const toggleStage = (stage) => {
     setOpen((current) => {
-      const next = new Set(current);
+      const base = current ?? new Set(model.stages.filter((row) => row.total > 0).map((row) => row.id));
+      const next = new Set(base);
       if (next.has(stage.id)) next.delete(stage.id);
       else next.add(stage.id);
       console.log('[DdGantt] stage', stage.id, next.has(stage.id) ? 'open' : 'closed', stage.total);
       return next;
     });
+    if (typeof onStageChange === 'function') {
+      const next = activeStageId === stage.id ? null : stage.id;
+      onStageChange(next);
+    }
   };
 
   const setAudience = (next) => {
@@ -113,8 +138,8 @@ export default function DdGantt({
       <div className="dd-gantt__toolbar">
         <p className="crm-muted">
           {showAssignee
-            ? 'Who owns the work in each stage. Open a stage to see its tasks.'
-            : 'Documents, dates, and status. Assignee names stay off this view.'}
+            ? 'Weekly view. Each month has its own color. Open a milestone to see its tasks.'
+            : 'Weekly view. Assignee names stay off this view.'}
         </p>
         {showAudienceToggle ? (
           <div className="dd-portal-view-toggle panel-position-toggle" role="tablist" aria-label="Gantt audience">
@@ -140,87 +165,71 @@ export default function DdGantt({
         ) : null}
       </div>
 
-      <div className="dd-gantt__chart">
-        <div className="dd-gantt__scale" aria-hidden="true">
-          <span className="dd-gantt__label">Stage</span>
-          <span className={`dd-gantt__track dd-gantt__track--scale${stacked ? ' is-stacked' : ''}`}>
-            {headers.map((header) => (
-              <span
-                key={header.id}
-                className={`dd-gantt__tick dd-gantt__tick--${header.align || 'center'}${header.lane ? ' dd-gantt__tick--lane-1' : ''}`}
-                style={{ left: header.left }}
-              >
-                <span>{header.label}</span>
-                <span className="dd-gantt__tick-date">{header.date}</span>
-              </span>
-            ))}
-          </span>
-          <span />
-        </div>
-
-        {model.stages.map((stage) => {
-          const expanded = open.has(stage.id);
-          const style = stageBar(stage.milestoneAt, model.rangeStart, model.rangeEnd);
-          return (
-            <div key={stage.id} className={`dd-gantt__stage${expanded ? ' is-open' : ''}`}>
-              <div className="dd-gantt__row">
-                <span className="dd-gantt__label">
-                  <button type="button" className="dd-gantt__open" aria-expanded={expanded} onClick={() => toggleStage(stage)}>
-                    {stage.label}
-                    <span className="dd-gantt__count">
-                      {stage.total ? `${stage.complete}/${stage.total}` : '0'}
-                    </span>
-                  </button>
-                  {onMilestoneDate ? (
-                    <input
-                      type="date"
-                      className="modal-input dd-gantt__milestone"
-                      value={stage.dueOn || ''}
-                      aria-label={`Due date for ${stage.label}`}
-                      onChange={(e) => onMilestoneDate(stage.id, e.target.value)}
-                    />
-                  ) : stage.dueOn ? (
-                    <span className="dd-gantt__tick-date">{formatGanttDay(stage.milestoneAt)}</span>
-                  ) : null}
-                </span>
-                <button type="button" className="dd-gantt__track-btn" aria-label={`${expanded ? 'Hide' : 'View'} tasks in ${stage.label}`} onClick={() => toggleStage(stage)}>
-                  <span className="dd-gantt__track">
-                    {headers.filter((header) => header.align === 'center').map((header) => (
-                      <span key={header.id} className="dd-gantt__grid" style={{ left: header.left }} />
+      <div className="dd-gantt__scroll">
+        <div className="dd-gantt__sheet" style={{ '--weeks': weeks.length }}>
+          <div className="dd-gantt__line dd-gantt__line--head">
+            <div className="dd-gantt__corner">Milestone</div>
+            <div className="dd-gantt__span dd-gantt__span--head">
+              {weeks.map((week) => (
+                <div key={week.id} className={`dd-gantt__week dd-gantt__week--m${week.month}${week.today ? ' is-today' : ''}`}>
+                  <span className="dd-gantt__week-label">{week.label}</span>
+                  <span className="dd-gantt__days">
+                    {week.days.map((day, index) => (
+                      <span key={`${week.id}-${index}`}>{day}</span>
                     ))}
-                    {style ? (
-                      <span className={`dd-gantt__bar dd-gantt__bar--stage dd-gantt__bar--${stage.tone}`} style={style} />
-                    ) : (
-                      <span className="dd-gantt__nodate">No dates</span>
-                    )}
                   </span>
-                </button>
-                <button type="button" className="dd-gantt__action" onClick={() => toggleStage(stage)}>
-                  {expanded ? 'Hide tasks' : 'View tasks'}
-                </button>
-              </div>
-              {expanded ? (
-                <ul className="dd-gantt__tasks">
-                  {stage.tasks.length === 0 ? (
-                    <li className="dd-gantt__none">
-                      {stage.id === 'custom'
-                        ? 'Groups you add outside the standard checklist show up here.'
-                        : 'No tasks in this stage.'}
-                    </li>
-                  ) : stage.tasks.map((task) => (
-                    <TaskRow
-                      key={task.id}
-                      task={task}
-                      rangeStart={model.rangeStart}
-                      rangeEnd={model.rangeEnd}
-                      showAssignee={showAssignee}
-                    />
-                  ))}
-                </ul>
-              ) : null}
+                </div>
+              ))}
             </div>
-          );
-        })}
+          </div>
+
+          {model.stages.map((stage) => {
+            const expanded = isOpen(stage);
+            const work = stage.tasks.filter((task) => !task.milestone);
+            const marker = stage.milestoneAt != null ? barSegments(stage.milestoneAt, stage.milestoneAt, weeks) : [];
+            return (
+              <div key={stage.id} className={`dd-gantt__stage dd-gantt__stage--${stage.id}${expanded ? ' is-open' : ''}`}>
+                <div className="dd-gantt__line dd-gantt__line--mile">
+                  <div className="dd-gantt__milebox">
+                    <button
+                      type="button"
+                      className="dd-gantt__mile"
+                      aria-expanded={expanded}
+                      onClick={() => toggleStage(stage)}
+                    >
+                      <span>{stage.label}</span>
+                      <span className="dd-gantt__count">{stage.total ? `${stage.complete}/${stage.total}` : '0'}</span>
+                    </button>
+                    {onMilestoneDate ? (
+                      <input
+                        type="date"
+                        className="modal-input dd-gantt__milestone"
+                        value={stage.dueOn || ''}
+                        aria-label={`Due date for ${stage.label}`}
+                        onChange={(e) => onMilestoneDate(stage.id, e.target.value)}
+                      />
+                    ) : null}
+                  </div>
+                  <Track weeks={weeks} segments={marker} />
+                </div>
+                {expanded ? (
+                  work.length === 0 ? (
+                    <div className="dd-gantt__line dd-gantt__line--item">
+                      <div className="dd-gantt__item dd-gantt__item--empty">
+                        {stage.id === 'custom'
+                          ? 'Groups you add outside the standard checklist show up here.'
+                          : 'No tasks in this stage.'}
+                      </div>
+                      <Track weeks={weeks} segments={[]} />
+                    </div>
+                  ) : work.map((task) => (
+                    <ItemRow key={task.id} task={task} weeks={weeks} showAssignee={showAssignee} />
+                  ))
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

@@ -8725,7 +8725,7 @@ button.aggregator-welcome__buybox {
 
 .dd-workspace-split__chart {
   flex: 0 0 auto;
-  max-height: 34vh;
+  max-height: 62vh;
   overflow: auto;
   padding: 8px;
   border: 1px solid var(--border);
@@ -8733,8 +8733,41 @@ button.aggregator-welcome__buybox {
   background: var(--bg-secondary);
 }
 
-.dd-checklist--workspace .dd-workspace,
-.dd-checklist--workspace .dd-workspace-kanban {
+.dd-stage-focus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.dd-stage-focus .btn-secondary {
+  opacity: 1;
+}
+
+.dd-checklist--workspace .dd-bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin-bottom: 8px;
+}
+
+.dd-portal-card.is-selected {
+  border-color: rgba(126, 184, 255, 0.45);
+  background: rgba(126, 184, 255, 0.14);
+}
+
+.dd-portal-card__top .dd-list-row__check {
+  flex: 0 0 auto;
+}
+
+.dd-checklist--workspace .dd-workspace {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -10659,11 +10692,56 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-gantt {
+  --dd-diligence: #8eb4d4;
+  --dd-qoe: #e0c07a;
+  --dd-bank: #7dbea8;
+  --dd-psa: #c9a6d8;
+  --dd-close: #8fca9b;
+  --dd-custom: #c9b59a;
+  --dd-loi: #8eb4d4;
+  --dd-today: #b5b5b5;
+  --dd-month-0: #7ec8e3;
+  --dd-month-1: #6f9fe8;
+  --dd-month-2: #8b7fd6;
+  --dd-month-3: #5eae9a;
+  --dd-month-4: #d4a24c;
+  --dd-month-5: #d48aa8;
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin: 8px 0 16px;
 }
+
+.dd-gantt__stage--loi,
+.dd-gantt__tick--loi,
+.dd-gantt__grid--loi,
+.dd-gantt__bar--loi { --dd-stage: var(--dd-loi); }
+.dd-gantt__stage--diligence,
+.dd-gantt__tick--diligence,
+.dd-gantt__grid--diligence,
+.dd-gantt__bar--diligence { --dd-stage: var(--dd-diligence); }
+.dd-gantt__stage--qoe,
+.dd-gantt__tick--qoe,
+.dd-gantt__grid--qoe,
+.dd-gantt__bar--qoe { --dd-stage: var(--dd-qoe); }
+.dd-gantt__stage--bank,
+.dd-gantt__tick--bank,
+.dd-gantt__grid--bank,
+.dd-gantt__bar--bank { --dd-stage: var(--dd-bank); }
+.dd-gantt__stage--psa,
+.dd-gantt__tick--psa,
+.dd-gantt__grid--psa,
+.dd-gantt__bar--psa { --dd-stage: var(--dd-psa); }
+.dd-gantt__stage--close,
+.dd-gantt__tick--close,
+.dd-gantt__grid--close,
+.dd-gantt__bar--close { --dd-stage: var(--dd-close); }
+.dd-gantt__stage--custom,
+.dd-gantt__tick--custom,
+.dd-gantt__grid--custom,
+.dd-gantt__bar--custom { --dd-stage: var(--dd-custom); }
+.dd-gantt__tick--today,
+.dd-gantt__grid--today { --dd-stage: var(--dd-today); }
 
 .dd-gantt__toolbar {
   display: flex;
@@ -10674,6 +10752,210 @@ button.aggregator-welcome__buybox {
 
 .dd-gantt__toolbar .crm-muted {
   margin: 0;
+}
+
+.dd-gantt__scroll {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+
+.dd-gantt__sheet {
+  --weeks: 8;
+  min-width: calc(220px + var(--weeks) * 124px);
+}
+
+.dd-gantt__line {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.dd-gantt__corner,
+.dd-gantt__milebox,
+.dd-gantt__item {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.dd-gantt__corner {
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.dd-gantt__span {
+  display: grid;
+  grid-template-columns: repeat(var(--weeks), minmax(124px, 1fr));
+  position: relative;
+  min-height: 36px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dd-gantt__week {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.dd-gantt__week-label {
+  padding: 7px 6px 5px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--dd-month, var(--border)) 28%, var(--bg-secondary));
+}
+
+.dd-gantt__days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: var(--dd-month, var(--border));
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: center;
+  line-height: 18px;
+  padding: 2px 0 3px;
+}
+
+.dd-gantt__days span {
+  display: block;
+}
+
+.dd-gantt__week--m0 { --dd-month: var(--dd-month-0); }
+.dd-gantt__week--m1 { --dd-month: var(--dd-month-1); }
+.dd-gantt__week--m2 { --dd-month: var(--dd-month-2); }
+.dd-gantt__week--m3 { --dd-month: var(--dd-month-3); }
+.dd-gantt__week--m4 { --dd-month: var(--dd-month-4); }
+.dd-gantt__week--m5 { --dd-month: var(--dd-month-5); }
+
+.dd-gantt__week.is-today .dd-gantt__week-label {
+  box-shadow: inset 0 -2px 0 var(--text-primary);
+}
+
+.dd-gantt__milebox {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 8px 10px;
+  background: #2a4364;
+  color: #f4f7fb;
+}
+
+.dd-gantt__mile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dd-gantt__milebox .dd-gantt__milestone {
+  width: 100%;
+  min-height: 28px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.dd-gantt__count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c5d0dc;
+}
+
+.dd-gantt__item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-height: 36px;
+  padding: 4px 8px 4px 14px;
+  background: var(--bg-secondary);
+}
+
+.dd-gantt__item .dd-gantt__title {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dd-gantt__item .dd-gantt__sub {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dd-gantt__item--empty {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dd-gantt__cell {
+  border-right: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  background: color-mix(in srgb, var(--dd-month, var(--border)) 8%, var(--bg-primary));
+}
+
+.dd-gantt__cell--m0 { --dd-month: var(--dd-month-0); }
+.dd-gantt__cell--m1 { --dd-month: var(--dd-month-1); }
+.dd-gantt__cell--m2 { --dd-month: var(--dd-month-2); }
+.dd-gantt__cell--m3 { --dd-month: var(--dd-month-3); }
+.dd-gantt__cell--m4 { --dd-month: var(--dd-month-4); }
+.dd-gantt__cell--m5 { --dd-month: var(--dd-month-5); }
+
+.dd-gantt__cell.is-today {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 35%, transparent);
+}
+
+.dd-gantt__block {
+  position: absolute;
+  top: 8px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--dd-month, var(--primary));
+  z-index: 1;
+}
+
+.dd-gantt__block--m0 { --dd-month: var(--dd-month-0); }
+.dd-gantt__block--m1 { --dd-month: var(--dd-month-1); }
+.dd-gantt__block--m2 { --dd-month: var(--dd-month-2); }
+.dd-gantt__block--m3 { --dd-month: var(--dd-month-3); }
+.dd-gantt__block--m4 { --dd-month: var(--dd-month-4); }
+.dd-gantt__block--m5 { --dd-month: var(--dd-month-5); }
+
+.dd-gantt__line--mile .dd-gantt__block {
+  top: 12px;
+  height: 8px;
+  border-radius: 99px;
 }
 
 .dd-gantt__chart {
@@ -10706,6 +10988,17 @@ button.aggregator-welcome__buybox {
   background: transparent;
   color: var(--text-primary);
   text-align: left;
+}
+
+.dd-gantt__open::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--dd-stage, var(--border));
+  vertical-align: 1px;
 }
 
 .dd-gantt__open,
@@ -10775,12 +11068,12 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-gantt__track--scale {
-  height: 36px;
+  height: 42px;
   background: transparent;
 }
 
 .dd-gantt__track--scale.is-stacked {
-  height: 58px;
+  height: 72px;
 }
 
 .dd-gantt__tick,
@@ -10800,17 +11093,19 @@ button.aggregator-welcome__buybox {
   line-height: 1.15;
   white-space: nowrap;
   pointer-events: none;
+  padding: 3px 7px 4px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dd-stage, var(--text-primary));
+  background: color-mix(in srgb, var(--dd-stage, var(--border)) 22%, var(--bg-secondary));
+  box-shadow: inset 0 -2px 0 var(--dd-stage, var(--border));
 }
 
 .dd-gantt__tick-date {
-  color: var(--text-secondary);
+  color: var(--dd-stage, var(--text-secondary));
   font-size: 10px;
-}
-
-.dd-gantt__tick {
-  transform: translateX(-50%);
-  font-size: 10px;
-  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .dd-gantt__tick--start {
@@ -10824,12 +11119,14 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-gantt__tick--lane-1 {
-  top: 28px;
+  top: 34px;
 }
 
 .dd-gantt__grid {
-  width: 1px;
-  background: var(--border);
+  width: 2px;
+  margin-left: -1px;
+  background: var(--dd-stage, var(--border));
+  opacity: 0.85;
 }
 
 .dd-gantt__today {
@@ -10857,6 +11154,23 @@ button.aggregator-welcome__buybox {
 .dd-gantt__bar--stage {
   top: 4px;
   height: 14px;
+  background: color-mix(in srgb, var(--dd-stage, #6b6b6b) 72%, var(--bg-tertiary));
+}
+
+.dd-gantt__bar--stage::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dd-stage, var(--text-primary));
+  box-shadow: 0 0 0 2px var(--bg-tertiary);
+}
+
+.dd-gantt__bar--stage.dd-gantt__bar--idle {
+  opacity: 0.55;
 }
 
 .dd-gantt__bar--idle { background: #6b6b6b; }
@@ -10869,6 +11183,10 @@ button.aggregator-welcome__buybox {
 .dd-gantt__bar--in_progress { background: #c4c4c4; }
 .dd-gantt__bar--not_started { background: #6b6b6b; }
 .dd-gantt__bar--milestone { background: var(--primary); }
+
+.dd-gantt__bar--stage {
+  background: color-mix(in srgb, var(--dd-stage, #8a8a8a) 78%, var(--bg-tertiary));
+}
 
 .dd-gantt__nodate {
   position: absolute;
