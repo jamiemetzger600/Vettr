@@ -1,24 +1,72 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   barSegments,
   buildGanttModel,
+  dayMarker,
   formatGanttDay,
+  holidaysForWeeks,
   localTodayMs,
-  taskSpan,
   viewerTimeZone,
   weekColumns
 } from './ddGantt.js';
 
-const STATUS_LABEL = {
-  not_started: 'Not started',
-  in_progress: 'In progress',
-  waiting_on_other: 'Waiting',
-  blocked: 'Blocked',
-  complete: 'Complete',
-  na: 'N/A'
-};
+const HOLIDAY_KEY = 'vettr.dd.bankHolidays';
 
-function Track({ weeks, segments }) {
+function readHolidayToggle() {
+  try {
+    const stored = localStorage.getItem(HOLIDAY_KEY);
+    if (stored == null || stored === '') return true;
+    return stored === '1';
+  } catch {
+    return true;
+  }
+}
+
+function MilestoneName({ stage, onRename, onDone }) {
+  const [value, setValue] = useState(stage.label);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const finish = (raw, revert) => {
+    const next = String(raw || '').trim();
+    onDone();
+    if (revert || !next || next === stage.label) return;
+    console.log('[DdGantt] rename group', stage.groupId, next);
+    Promise.resolve(onRename(stage.groupId, next)).catch((err) => {
+      console.error('[DdGantt] rename failed', err);
+    });
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      className="dd-gantt__mile-name"
+      value={value}
+      maxLength={255}
+      aria-label={`Name for ${stage.label}`}
+      onChange={(e) => setValue(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onBlur={(e) => finish(e.currentTarget.value, e.currentTarget.dataset.revert === '1')}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.currentTarget.dataset.revert = '1';
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function Track({ weeks, segments, diamond, holidays = [] }) {
   return (
     <div className="dd-gantt__span">
       {weeks.map((week) => (
@@ -27,33 +75,29 @@ function Track({ weeks, segments }) {
           className={`dd-gantt__cell dd-gantt__cell--m${week.month}${week.today ? ' is-today' : ''}`}
         />
       ))}
-      {segments.map((segment) => (
-        <span
-          key={segment.key}
-          className={`dd-gantt__block dd-gantt__block--m${segment.month}`}
-          style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ItemRow({ task, weeks, showAssignee }) {
-  const span = taskSpan(task);
-  const segments = span ? barSegments(span.start, span.end, weeks) : [];
-  const after = task.after?.length ? `After ${task.after.join(', ')}` : '';
-  return (
-    <div className={`dd-gantt__line dd-gantt__line--item${task.blocked ? ' is-blocked' : ''}`}>
-      <div className="dd-gantt__item" title={after || task.groupName}>
-        <span className="dd-gantt__title">{task.title}</span>
-        <span className="dd-gantt__sub">
-          {task.groupName}
-          {task.due != null ? ` · ${formatGanttDay(task.due)}` : ' · No date'}
-          {showAssignee ? ` · ${task.assignee || 'Unassigned'}` : ''}
-          {` · ${STATUS_LABEL[task.status] || 'Not started'}`}
-        </span>
+      <div className="dd-gantt__bars">
+        {segments.map((segment) => (
+          <span
+            key={segment.key}
+            className={`dd-gantt__block dd-gantt__block--m${segment.month}`}
+            style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
+          />
+        ))}
+        {holidays.map((holiday) => (
+          <span
+            key={holiday.key}
+            className="dd-gantt__holiday"
+            style={{ left: `${holiday.left}%` }}
+          />
+        ))}
+        {diamond ? (
+          <span
+            className={`dd-gantt__diamond dd-gantt__diamond--m${diamond.month}`}
+            style={{ left: `${diamond.left}%` }}
+            title={diamond.label || 'Close'}
+          />
+        ) : null}
       </div>
-      <Track weeks={weeks} segments={segments} />
     </div>
   );
 }
@@ -67,11 +111,13 @@ export default function DdGantt({
   audience = 'internal',
   showAudienceToggle = false,
   activeStageId = null,
-  onStageChange = null
+  onStageChange = null,
+  onRenameGroup = null
 }) {
   const [mode, setMode] = useState(audience === 'external' ? 'external' : 'internal');
-  const [open, setOpen] = useState(null);
   const [todayMs, setTodayMs] = useState(() => localTodayMs());
+  const [editingId, setEditingId] = useState(null);
+  const [showHolidays, setShowHolidays] = useState(readHolidayToggle);
   const shown = showAudienceToggle ? mode : (audience === 'external' ? 'external' : 'internal');
   const showAssignee = shown === 'internal';
 
@@ -99,6 +145,25 @@ export default function DdGantt({
     [model.rangeStart, model.rangeEnd, model.todayMs]
   );
   const todayLabel = formatGanttDay(model.todayMs);
+  const holidays = useMemo(
+    () => (showHolidays ? holidaysForWeeks(weeks) : []),
+    [showHolidays, weeks]
+  );
+  const holidayOnDay = useMemo(() => {
+    const map = new Map();
+    for (const holiday of holidays) {
+      if (holiday.weekId != null && holiday.dayIndex != null) {
+        map.set(`${holiday.weekId}:${holiday.dayIndex}`, holiday);
+      }
+    }
+    return map;
+  }, [holidays]);
+
+  const setHolidayToggle = (next) => {
+    setShowHolidays(next);
+    try { localStorage.setItem(HOLIDAY_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+    console.log('[DdGantt] bank holidays', next ? 'shown' : 'hidden');
+  };
 
   useEffect(() => {
     console.log('[DdGantt] weeks', {
@@ -107,25 +172,19 @@ export default function DdGantt({
       count: weeks.length,
       first: weeks[0]?.label,
       last: weeks[weeks.length - 1]?.label,
-      months: [...new Set(weeks.map((week) => week.monthKey))]
+      bars: model.stages
+        .filter((stage) => stage.barStart != null && stage.barEnd != null)
+        .map((stage) => `${stage.id} ${formatGanttDay(stage.barStart)} → ${formatGanttDay(stage.barEnd)}`),
+      close: formatGanttDay(model.stages.find((stage) => stage.id === 'close')?.milestoneAt) || 'none',
+      holidays: holidays.map((holiday) => `${holiday.name} ${holiday.observedOn}`)
     });
-  }, [weeks, todayLabel]);
+  }, [weeks, todayLabel, holidays, model.stages]);
 
-  const isOpen = (stage) => (open == null ? stage.total > 0 : open.has(stage.id));
-
-  const toggleStage = (stage) => {
-    setOpen((current) => {
-      const base = current ?? new Set(model.stages.filter((row) => row.total > 0).map((row) => row.id));
-      const next = new Set(base);
-      if (next.has(stage.id)) next.delete(stage.id);
-      else next.add(stage.id);
-      console.log('[DdGantt] stage', stage.id, next.has(stage.id) ? 'open' : 'closed', stage.total);
-      return next;
-    });
-    if (typeof onStageChange === 'function') {
-      const next = activeStageId === stage.id ? null : stage.id;
-      onStageChange(next);
-    }
+  const selectStage = (stage) => {
+    if (typeof onStageChange !== 'function') return;
+    const next = activeStageId === stage.id ? null : stage.id;
+    console.log('[DdGantt] stage tasks below', next || 'all', stage.total);
+    onStageChange(next);
   };
 
   const setAudience = (next) => {
@@ -138,9 +197,17 @@ export default function DdGantt({
       <div className="dd-gantt__toolbar">
         <p className="crm-muted">
           {showAssignee
-            ? 'Weekly view. Each month has its own color. Open a milestone to see its tasks.'
+            ? 'Weekly view. Click a group name to rename it. Select a milestone to see its tasks below the chart.'
             : 'Weekly view. Assignee names stay off this view.'}
         </p>
+        <label className="dd-gantt__holiday-toggle">
+          <input
+            type="checkbox"
+            checked={showHolidays}
+            onChange={(e) => setHolidayToggle(e.target.checked)}
+          />
+          Bank holidays
+        </label>
         {showAudienceToggle ? (
           <div className="dd-portal-view-toggle panel-position-toggle" role="tablist" aria-label="Gantt audience">
             <button
@@ -174,9 +241,18 @@ export default function DdGantt({
                 <div key={week.id} className={`dd-gantt__week dd-gantt__week--m${week.month}${week.today ? ' is-today' : ''}`}>
                   <span className="dd-gantt__week-label">{week.label}</span>
                   <span className="dd-gantt__days">
-                    {week.days.map((day, index) => (
-                      <span key={`${week.id}-${index}`}>{day}</span>
-                    ))}
+                    {week.days.map((day, index) => {
+                      const holiday = holidayOnDay.get(`${week.id}:${index}`);
+                      return (
+                        <span
+                          key={`${week.id}-${index}`}
+                          className={holiday ? 'is-holiday' : undefined}
+                          title={holiday ? `${holiday.name} · banks closed` : undefined}
+                        >
+                          {day}
+                        </span>
+                      );
+                    })}
                   </span>
                 </div>
               ))}
@@ -184,48 +260,66 @@ export default function DdGantt({
           </div>
 
           {model.stages.map((stage) => {
-            const expanded = isOpen(stage);
-            const work = stage.tasks.filter((task) => !task.milestone);
-            const marker = stage.milestoneAt != null ? barSegments(stage.milestoneAt, stage.milestoneAt, weeks) : [];
+            const selected = activeStageId === stage.id;
+            const editing = editingId === stage.id;
+            const canRename = stage.renameable && typeof onRenameGroup === 'function';
+            const count = stage.total ? `${stage.complete}/${stage.total}` : '0';
+            const isClose = stage.id === 'close';
+            const placed = isClose ? dayMarker(stage.milestoneAt, weeks) : null;
+            const diamond = placed
+              ? { ...placed, label: `Close ${formatGanttDay(stage.milestoneAt)}` }
+              : null;
+            const hasSpan = stage.barStart != null && stage.barEnd != null && stage.barEnd > stage.barStart;
+            const marker = stage.barStart != null && stage.barEnd != null && (!isClose || hasSpan)
+              ? barSegments(stage.barStart, stage.barEnd, weeks)
+              : [];
+            const openName = () => {
+              if (activeStageId !== stage.id) selectStage(stage);
+              if (!canRename) return;
+              console.log('[DdGantt] edit milestone name', stage.label);
+              setEditingId(stage.id);
+            };
             return (
-              <div key={stage.id} className={`dd-gantt__stage dd-gantt__stage--${stage.id}${expanded ? ' is-open' : ''}`}>
+              <div key={stage.id} className={`dd-gantt__stage dd-gantt__stage--${stage.kind || stage.id}${selected ? ' is-selected' : ''}`}>
                 <div className="dd-gantt__line dd-gantt__line--mile">
                   <div className="dd-gantt__milebox">
+                    {canRename ? (
+                      <div className="dd-gantt__mile">
+                        {editing ? (
+                          <MilestoneName
+                            stage={stage}
+                            onRename={onRenameGroup}
+                            onDone={() => setEditingId(null)}
+                          />
+                        ) : (
+                          <button type="button" className="dd-gantt__mile-label" onClick={openName}>
+                            {stage.label}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="dd-gantt__count"
+                          aria-pressed={selected}
+                          aria-label={`${count} tasks in ${stage.label}`}
+                          onClick={() => selectStage(stage)}
+                        >
+                          {count}
+                        </button>
+                      </div>
+                    ) : (
                     <button
                       type="button"
                       className="dd-gantt__mile"
-                      aria-expanded={expanded}
-                      onClick={() => toggleStage(stage)}
+                      aria-pressed={selected}
+                      onClick={() => selectStage(stage)}
                     >
                       <span>{stage.label}</span>
-                      <span className="dd-gantt__count">{stage.total ? `${stage.complete}/${stage.total}` : '0'}</span>
+                      <span className="dd-gantt__count">{count}</span>
                     </button>
-                    {onMilestoneDate ? (
-                      <input
-                        type="date"
-                        className="modal-input dd-gantt__milestone"
-                        value={stage.dueOn || ''}
-                        aria-label={`Due date for ${stage.label}`}
-                        onChange={(e) => onMilestoneDate(stage.id, e.target.value)}
-                      />
-                    ) : null}
+                    )}
                   </div>
-                  <Track weeks={weeks} segments={marker} />
+                  <Track weeks={weeks} segments={marker} diamond={diamond} holidays={holidays} />
                 </div>
-                {expanded ? (
-                  work.length === 0 ? (
-                    <div className="dd-gantt__line dd-gantt__line--item">
-                      <div className="dd-gantt__item dd-gantt__item--empty">
-                        {stage.id === 'custom'
-                          ? 'Groups you add outside the standard checklist show up here.'
-                          : 'No tasks in this stage.'}
-                      </div>
-                      <Track weeks={weeks} segments={[]} />
-                    </div>
-                  ) : work.map((task) => (
-                    <ItemRow key={task.id} task={task} weeks={weeks} showAssignee={showAssignee} />
-                  ))
-                ) : null}
               </div>
             );
           })}

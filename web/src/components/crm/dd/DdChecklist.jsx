@@ -6,7 +6,35 @@ import useDdMarquee from './useDdMarquee.js';
 import { DdFolderIcon, DdIconCard, DdListHead } from './DdItemViews.jsx';
 import DdGantt from './DdGantt.jsx';
 import { blockedLabel, blockedTooltip, canSetStatus } from './ddBlocked.js';
-import { GANTT_STAGES, stageIdForGroup } from './ddGantt.js';
+import { GANTT_STAGES, customGroupId, groupMatchesStage, milestoneKeyForGroup } from './ddGantt.js';
+
+const CHART_HEIGHT_KEY = 'vettr.dd.chartHeight';
+const CHART_MIN = 140;
+const TASK_MIN = 180;
+const CHART_DEFAULT = 280;
+
+function readChartHeight() {
+  try {
+    const stored = window.localStorage.getItem(CHART_HEIGHT_KEY);
+    if (stored == null || stored === '') return CHART_DEFAULT;
+    const raw = Number(stored);
+    if (!Number.isFinite(raw)) return CHART_DEFAULT;
+    const cap = Math.max(CHART_MIN, Math.round(window.innerHeight * 0.55));
+    return Math.min(cap, Math.max(CHART_MIN, Math.round(raw)));
+  } catch (err) {
+    console.error('[DdChecklist] chart height unreadable', err);
+    return CHART_DEFAULT;
+  }
+}
+
+function saveChartHeight(height) {
+  try {
+    window.localStorage.setItem(CHART_HEIGHT_KEY, String(height));
+    console.log('[DdChecklist] chart height', height);
+  } catch (err) {
+    console.error('[DdChecklist] chart height not saved', err);
+  }
+}
 
 const DEFAULT_MILESTONES = [
   { title: 'Request data room / remaining docs', dueAt: '' },
@@ -143,6 +171,54 @@ function sortDdGroups(groups, sort, assigneeLabel) {
   return list;
 }
 
+function MilestoneDates({ label, stageId, startOn, dueOn, disabled, onChange }) {
+  const [draft, setDraft] = useState({ startOn: startOn || '', dueOn: dueOn || '' });
+
+  useEffect(() => {
+    setDraft({ startOn: startOn || '', dueOn: dueOn || '' });
+  }, [startOn, dueOn, stageId]);
+
+  const commit = (field, value) => {
+    const next = value || '';
+    if (draft[field] === next) return;
+    setDraft((prev) => ({ ...prev, [field]: next }));
+    const patch = { [field]: next || null };
+    console.log('[DdChecklist] milestone input', stageId, patch);
+    onChange(stageId, patch);
+  };
+
+  return (
+    <div className="dd-group__dates">
+      <label>
+        Start
+        <input
+          type="date"
+          className="modal-input"
+          value={draft.startOn}
+          disabled={disabled}
+          aria-label={`Start date for ${label}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onChange={(e) => commit('startOn', e.target.value)}
+          onBlur={(e) => commit('startOn', e.target.value)}
+        />
+      </label>
+      <label>
+        End
+        <input
+          type="date"
+          className="modal-input"
+          value={draft.dueOn}
+          disabled={disabled}
+          aria-label={`End date for ${label}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onChange={(e) => commit('dueOn', e.target.value)}
+          onBlur={(e) => commit('dueOn', e.target.value)}
+        />
+      </label>
+    </div>
+  );
+}
+
 export default function DdChecklist({ dealId, onRefresh, canWrite = true, workspace = false }) {
   const [checklist, setChecklist] = useState(null);
   const [members, setMembers] = useState([]);
@@ -190,6 +266,8 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkSaving, setBulkSaving] = useState(false);
   const workspaceRef = useRef(null);
+  const splitDrag = useRef(null);
+  const [chartHeight, setChartHeight] = useState(readChartHeight);
 
   const load = useCallback(async () => {
     if (!dealId) return;
@@ -349,15 +427,43 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
     }
   };
 
-  const handleMilestoneDate = async (stageId, dueOn) => {
+  const handleMilestoneDate = async (stageId, patch) => {
     if (!canWrite) return;
+    const snapshot = checklist;
+    setChecklist((prev) => {
+      if (!prev) return prev;
+      const rows = (prev.milestones || []).map((row) => ({ ...row }));
+      const index = rows.findIndex((row) => row.stageId === stageId);
+      const current = index >= 0 ? rows[index] : { stageId, startOn: null, dueOn: null };
+      const next = { ...current };
+      if (Object.prototype.hasOwnProperty.call(patch, 'startOn')) next.startOn = patch.startOn;
+      if (Object.prototype.hasOwnProperty.call(patch, 'dueOn')) next.dueOn = patch.dueOn;
+      if (index >= 0) rows[index] = next;
+      else rows.push(next);
+      return { ...prev, milestones: rows };
+    });
     try {
-      const data = await crmAPI.setDdMilestone(dealId, { stageId, dueOn: dueOn || null });
+      const data = await crmAPI.setDdMilestone(dealId, { stageId, ...patch });
       setChecklist(data.checklist);
-      console.log('[DdChecklist] milestone', stageId, dueOn || 'cleared');
+      const saved = (data.checklist?.milestones || []).find((row) => row.stageId === stageId);
+      console.log('[DdChecklist] milestone', stageId, patch, saved || null);
     } catch (err) {
+      console.error('[DdChecklist] milestone failed', err);
+      if (snapshot) setChecklist(snapshot);
       alert(err.message || 'Failed to set milestone date');
     }
+  };
+
+  const datesForStage = (stageId) => {
+    const rows = checklist?.milestones || [];
+    const own = rows.find((row) => row.stageId === stageId);
+    const shared = String(stageId).startsWith('g:')
+      ? rows.find((row) => row.stageId === 'custom')
+      : null;
+    return {
+      startOn: own?.startOn || (!own?.dueOn ? shared?.startOn : '') || '',
+      dueOn: own?.dueOn || shared?.dueOn || ''
+    };
   };
 
   const handleDueChange = async (itemId, dueAt) => {
@@ -736,9 +842,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
 
   const renderKanbanBoard = () => (
     <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
-      {(checklist?.groups || []).filter((group) => (
-        !stageFocus || stageIdForGroup(group.name) === stageFocus
-      )).map((group) => {
+      {(checklist?.groups || []).filter((group) => groupMatchesStage(group, stageFocus)).map((group) => {
         const items = group.items || [];
         const complete = items.filter((item) => item.status === 'complete' || item.status === 'na').length;
         return (
@@ -746,6 +850,13 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             <header className="dd-portal-column__header">
               <h2>{group.name}</h2>
               <span>{complete}/{items.length}</span>
+              <MilestoneDates
+                label={group.name}
+                stageId={milestoneKeyForGroup(group)}
+                disabled={!canWrite}
+                onChange={handleMilestoneDate}
+                {...datesForStage(milestoneKeyForGroup(group))}
+              />
             </header>
             <ul className="dd-portal-column__cards">
               {items.map((item) => (
@@ -949,12 +1060,85 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
     );
   }
 
+  const clampChartHeight = (next, max) => Math.round(Math.min(max, Math.max(CHART_MIN, next)));
+
+  const splitMax = (handle) => {
+    const checklist = handle?.closest?.('.dd-checklist--workspace');
+    const chart = checklist?.querySelector('.dd-workspace-split__chart');
+    const tasks = checklist?.querySelector('.dd-workspace');
+    if (!chart || !tasks) return Math.round(window.innerHeight * 0.55);
+    const available = chart.getBoundingClientRect().height + tasks.getBoundingClientRect().height;
+    return Math.max(CHART_MIN, available - TASK_MIN);
+  };
+
+  const onSplitPointerDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    event.preventDefault();
+    const chart = event.currentTarget.previousElementSibling;
+    splitDrag.current = {
+      startY: event.clientY,
+      startH: chart?.getBoundingClientRect().height || chartHeight,
+      max: splitMax(event.currentTarget)
+    };
+    document.body.style.cursor = 'row-resize';
+    console.log('[DdChecklist] resize chart start', Math.round(splitDrag.current.startH));
+    const move = (e) => {
+      const drag = splitDrag.current;
+      if (!drag) return;
+      setChartHeight(clampChartHeight(drag.startH + (e.clientY - drag.startY), drag.max));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!splitDrag.current) return;
+      splitDrag.current = null;
+      document.body.style.cursor = '';
+      setChartHeight((height) => {
+        saveChartHeight(height);
+        return height;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch (err) {
+      console.error('[DdChecklist] pointer capture', err);
+    }
+  };
+
+  const onSplitKeyDown = (event) => {
+    const step = event.shiftKey ? 80 : 32;
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home') return;
+    event.preventDefault();
+    const max = splitMax(event.currentTarget);
+    setChartHeight((height) => {
+      const next = event.key === 'Home'
+        ? clampChartHeight(CHART_DEFAULT, max)
+        : clampChartHeight(height + (event.key === 'ArrowDown' ? step : -step), max);
+      saveChartHeight(next);
+      return next;
+    });
+  };
+
   const progress = checklist.progress || {};
   const selectedCount = selected.size;
   const paneView = workspace ? workView : view;
-  const focusedStage = GANTT_STAGES.find((stage) => stage.id === stageFocus) || null;
+  const namedFocusId = customGroupId(stageFocus);
+  const focusedGroup = namedFocusId != null
+    ? (checklist.groups || []).find((group) => Number(group.id) === namedFocusId)
+    : null;
+  const focusedStage = focusedGroup
+    ? { id: stageFocus, label: focusedGroup.name }
+    : (GANTT_STAGES.find((stage) => stage.id === stageFocus) || null);
   const groupsForWork = (checklist.groups || []).filter((group) => (
-    !workspace || !stageFocus || stageIdForGroup(group.name) === stageFocus
+    !workspace || groupMatchesStage(group, stageFocus)
+  ));
+  const coveredStageIds = new Set((checklist.groups || []).map((group) => milestoneKeyForGroup(group)));
+  const orphanStages = GANTT_STAGES.filter((stage) => (
+    stage.id !== 'custom'
+    && !coveredStageIds.has(stage.id)
+    && (!stageFocus || stage.id === stageFocus)
   ));
 
   return (
@@ -1259,21 +1443,39 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
       ) : null}
 
       {workspace ? (
-        <div className="dd-workspace-split__chart">
-          <DdGantt
-            groups={checklist.groups}
-            startedAt={checklist.started_at}
-            targetDate={checklist.target_date}
-            milestones={checklist.milestones || []}
-            onMilestoneDate={canWrite ? handleMilestoneDate : null}
-            showAudienceToggle
-            activeStageId={stageFocus}
-            onStageChange={(stageId) => {
-              console.log('[DdChecklist] show stage items', stageId || 'all');
-              setStageFocus(stageId);
+        <>
+          <div className="dd-workspace-split__chart" style={{ height: chartHeight, maxHeight: 'none' }}>
+            <DdGantt
+              groups={checklist.groups}
+              startedAt={checklist.started_at}
+              targetDate={checklist.target_date}
+              milestones={checklist.milestones || []}
+              onMilestoneDate={canWrite ? handleMilestoneDate : null}
+              showAudienceToggle
+              activeStageId={stageFocus}
+              onStageChange={(stageId) => {
+                console.log('[DdChecklist] show stage items', stageId || 'all');
+                setStageFocus(stageId);
+              }}
+            />
+          </div>
+          <div
+            className="dd-workspace-split__handle"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize chart and task list"
+            aria-valuemin={CHART_MIN}
+            aria-valuenow={chartHeight}
+            tabIndex={0}
+            title="Drag to show more of the chart or the tasks. Arrow keys nudge it."
+            onPointerDown={onSplitPointerDown}
+            onKeyDown={onSplitKeyDown}
+            onDoubleClick={() => {
+              setChartHeight(CHART_DEFAULT);
+              saveChartHeight(CHART_DEFAULT);
             }}
           />
-        </div>
+        </>
       ) : null}
 
       {!workspace && paneView === 'gantt' ? (
@@ -1394,6 +1596,18 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             Drag to select · Shift-click a range · ⌘-click to toggle · then assign dates and people
           </p>
         )}
+        {orphanStages.map((stage) => (
+          <section key={stage.id} className="dd-group dd-group--milestone">
+            <h4 className="dd-group__title">{stage.label}</h4>
+            <MilestoneDates
+              label={stage.label}
+              stageId={stage.id}
+              disabled={!canWrite}
+              onChange={handleMilestoneDate}
+              {...datesForStage(stage.id)}
+            />
+          </section>
+        ))}
         {paneView === 'kanban' ? renderKanbanBoard() : (
         <>
         {paneView === 'list' ? (
@@ -1439,6 +1653,13 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
                   {addingItemGroupId === group.id ? 'Cancel' : '+ Item'}
                 </button>
               </h4>
+              <MilestoneDates
+                label={group.name}
+                stageId={milestoneKeyForGroup(group)}
+                disabled={!canWrite}
+                onChange={handleMilestoneDate}
+                {...datesForStage(milestoneKeyForGroup(group))}
+              />
               {addingItemGroupId === group.id ? (
                 <div className="dd-add-item-form">
                   <input

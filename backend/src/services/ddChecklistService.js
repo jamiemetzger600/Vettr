@@ -19,7 +19,7 @@ import {
   statusRequiresPredecessors,
   isUnblocking
 } from '../lib/ddDependencies.js';
-import { isStageId, stageIdForGroup } from '../lib/ddStages.js';
+import { isStageId, stageIdForGroup, customGroupId } from '../lib/ddStages.js';
 import { createTask } from './crmTaskService.js';
 import { sendPushToUser } from './pushService.js';
 import { createUserAlert } from './userAlertService.js';
@@ -479,7 +479,7 @@ export async function getChecklistForDeal(userId, savedDealId) {
   }
 
   const milestoneRes = await pool.query(
-    `SELECT stage_id, due_on FROM dd_stage_milestones WHERE checklist_id = $1`,
+    `SELECT stage_id, start_on, due_on FROM dd_stage_milestones WHERE checklist_id = $1`,
     [checklistId]
   );
 
@@ -488,6 +488,7 @@ export async function getChecklistForDeal(userId, savedDealId) {
     groups,
     milestones: milestoneRes.rows.map((row) => ({
       stageId: row.stage_id,
+      startOn: dateOnly(row.start_on),
       dueOn: dateOnly(row.due_on)
     })),
     progress: {
@@ -1154,19 +1155,35 @@ function calendarDueAt(dueOn) {
   return `${dueOn}T12:00:00.000Z`;
 }
 
-export async function setStageMilestone(userId, savedDealId, { stageId, dueOn } = {}) {
-  await assertDealOwned(userId, savedDealId);
-  if (!isStageId(stageId)) {
-    const err = new Error('Unknown milestone');
-    err.status = 400;
-    throw err;
-  }
-  const date = dueOn ? String(dueOn).slice(0, 10) : '';
-  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+function parseMilestoneDay(value) {
+  if (value == null || value === '') return null;
+  const date = String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     const err = new Error('Milestone date is invalid');
     err.status = 400;
     throw err;
   }
+  return date;
+}
+
+export async function setStageMilestone(userId, savedDealId, body = {}) {
+  await assertDealOwned(userId, savedDealId);
+  const stageId = body.stageId;
+  const namedGroupId = customGroupId(stageId);
+  if (!isStageId(stageId) && namedGroupId == null) {
+    const err = new Error('Unknown milestone');
+    err.status = 400;
+    throw err;
+  }
+  const hasDue = Object.prototype.hasOwnProperty.call(body, 'dueOn');
+  const hasStart = Object.prototype.hasOwnProperty.call(body, 'startOn');
+  if (!hasDue && !hasStart) {
+    const err = new Error('Milestone date is required');
+    err.status = 400;
+    throw err;
+  }
+  const due = hasDue ? parseMilestoneDay(body.dueOn) : undefined;
+  const start = hasStart ? parseMilestoneDay(body.startOn) : undefined;
 
   const checklist = await pool.query(
     'SELECT id FROM dd_checklists WHERE saved_deal_id = $1',
@@ -1179,24 +1196,44 @@ export async function setStageMilestone(userId, savedDealId, { stageId, dueOn } 
   }
   const checklistId = checklist.rows[0].id;
 
-  if (!date) {
+  if (namedGroupId != null) {
+    const owns = await pool.query(
+      'SELECT id FROM dd_groups WHERE id = $1 AND checklist_id = $2',
+      [namedGroupId, checklistId]
+    );
+    if (!owns.rows.length) {
+      const err = new Error('DD group not found');
+      err.status = 404;
+      throw err;
+    }
+  }
+
+  const existing = await pool.query(
+    'SELECT start_on, due_on FROM dd_stage_milestones WHERE checklist_id = $1 AND stage_id = $2',
+    [checklistId, stageId]
+  );
+  const nextDue = hasDue ? due : dateOnly(existing.rows[0]?.due_on);
+  const nextStart = hasStart ? start : dateOnly(existing.rows[0]?.start_on);
+
+  if (!nextDue && !nextStart) {
     await pool.query(
       'DELETE FROM dd_stage_milestones WHERE checklist_id = $1 AND stage_id = $2',
       [checklistId, stageId]
     );
   } else {
     await pool.query(
-      `INSERT INTO dd_stage_milestones (checklist_id, stage_id, due_on)
-       VALUES ($1, $2, $3::date)
-       ON CONFLICT (checklist_id, stage_id) DO UPDATE SET due_on = EXCLUDED.due_on`,
-      [checklistId, stageId, date]
+      `INSERT INTO dd_stage_milestones (checklist_id, stage_id, start_on, due_on)
+       VALUES ($1, $2, $3::date, $4::date)
+       ON CONFLICT (checklist_id, stage_id)
+       DO UPDATE SET start_on = EXCLUDED.start_on, due_on = EXCLUDED.due_on`,
+      [checklistId, stageId, nextStart, nextDue]
     );
   }
 
-  if (stageId === 'close') {
+  if (stageId === 'close' && hasDue) {
     await pool.query(
       'UPDATE dd_checklists SET target_date = $1::date WHERE id = $2',
-      [date || null, checklistId]
+      [nextDue, checklistId]
     );
   }
 
@@ -1204,22 +1241,30 @@ export async function setStageMilestone(userId, savedDealId, { stageId, dueOn } 
     'SELECT id, name FROM dd_groups WHERE checklist_id = $1',
     [checklistId]
   );
-  const groupIds = groups.rows
-    .filter((group) => stageIdForGroup(group.name) === stageId)
-    .map((group) => group.id);
-  if (date && groupIds.length) {
+  const groupIds = namedGroupId != null
+    ? [namedGroupId]
+    : groups.rows
+      .filter((group) => stageIdForGroup(group.name) === stageId)
+      .map((group) => group.id);
+  if (hasDue && nextDue && groupIds.length) {
     const updated = await pool.query(
       `UPDATE dd_items SET due_at = $1::timestamptz WHERE group_id = ANY($2::int[])`,
-      [calendarDueAt(date), groupIds]
+      [calendarDueAt(nextDue), groupIds]
     );
     console.log('[dd] stage milestone inherited', {
       savedDealId,
       stageId,
-      dueOn: date,
+      startOn: nextStart,
+      dueOn: nextDue,
       items: updated.rowCount
     });
   } else {
-    console.log('[dd] stage milestone', { savedDealId, stageId, dueOn: date || null });
+    console.log('[dd] stage milestone', {
+      savedDealId,
+      stageId,
+      startOn: nextStart,
+      dueOn: nextDue
+    });
   }
 
   return getChecklistForDeal(userId, savedDealId);

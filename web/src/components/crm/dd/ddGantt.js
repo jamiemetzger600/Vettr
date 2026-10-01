@@ -1,3 +1,5 @@
+import { usBankHolidays } from './ddHolidays.js';
+
 /** Stage lanes for the diligence Gantt. Close Date is last: it ends the transaction. */
 export const GANTT_STAGES = [
   { id: 'loi', label: 'LOI' },
@@ -34,6 +36,54 @@ export function stageIdForGroup(name) {
   if (/close date|\bclosing\b|\bclose\b/.test(n)) return 'close';
   if (STANDARD_DILIGENCE.has(n)) return 'diligence';
   return 'custom';
+}
+
+/** One chart row per extra group. The name is the group name. */
+export function customStageId(groupId) {
+  return `g:${groupId}`;
+}
+
+export function customGroupId(stageId) {
+  const match = /^g:(\d+)$/.exec(String(stageId || ''));
+  return match ? Number(match[1]) : null;
+}
+
+export function groupMatchesStage(group, stageId) {
+  if (!stageId) return true;
+  const named = customGroupId(stageId);
+  if (named != null) return Number(group?.id) === named;
+  return stageIdForGroup(group?.name) === stageId;
+}
+
+/** Chart row for a checklist group. Extra groups each keep their own id. */
+export function milestoneKeyForGroup(group) {
+  const kind = stageIdForGroup(group?.name);
+  if (kind === 'custom' && group?.id != null && group.id !== '') return customStageId(group.id);
+  return kind;
+}
+
+function ganttStagesFor(groups) {
+  const custom = [];
+  groups.forEach((group, index) => {
+    if (stageIdForGroup(group.name) !== 'custom') return;
+    const hasId = group.id != null && group.id !== '';
+    custom.push({
+      id: hasId ? customStageId(group.id) : `g:anon:${index}`,
+      label: String(group.name || 'Untitled').trim() || 'Untitled',
+      kind: 'custom',
+      groupId: hasId ? group.id : null,
+      renameable: hasId
+    });
+  });
+  const stages = [];
+  for (const stage of GANTT_STAGES) {
+    if (stage.id === 'custom') {
+      stages.push(...custom);
+      continue;
+    }
+    stages.push({ ...stage, kind: stage.id, groupId: null, renameable: false });
+  }
+  return stages;
 }
 
 export function toDayMs(value) {
@@ -103,12 +153,17 @@ export function buildGanttModel({
   milestones = [],
   today = new Date()
 } = {}) {
-  const buckets = new Map(GANTT_STAGES.map((stage) => [stage.id, []]));
-  for (const group of groups) {
-    const stageId = stageIdForGroup(group.name);
+  const stageList = ganttStagesFor(groups);
+  const buckets = new Map(stageList.map((stage) => [stage.id, []]));
+  groups.forEach((group, index) => {
+    const kind = stageIdForGroup(group.name);
+    const stageId = kind === 'custom'
+      ? (group.id != null && group.id !== '' ? customStageId(group.id) : `g:anon:${index}`)
+      : kind;
     const tasks = (group.items || []).map((item) => taskFromItem(item, group));
+    if (!buckets.has(stageId)) return;
     buckets.get(stageId).push(...tasks);
-  }
+  });
 
   const targetMs = toDayMs(targetDate);
   if (targetMs != null) {
@@ -125,20 +180,27 @@ export function buildGanttModel({
   }
 
   const todayMs = localTodayMs(today);
-  const milestoneByStage = new Map(
-    (milestones || [])
-      .filter((row) => row?.dueOn)
-      .map((row) => [row.stageId, String(row.dueOn).slice(0, 10)])
-  );
-  if (targetDate && !milestoneByStage.has('close')) {
-    milestoneByStage.set('close', String(targetDate).slice(0, 10));
+  const dueByStage = new Map();
+  const startByStage = new Map();
+  for (const row of milestones || []) {
+    if (!row?.stageId) continue;
+    if (row.dueOn) dueByStage.set(row.stageId, String(row.dueOn).slice(0, 10));
+    if (row.startOn) startByStage.set(row.stageId, String(row.startOn).slice(0, 10));
   }
-  const stages = GANTT_STAGES.map((stage) => {
-    const tasks = buckets.get(stage.id);
+  if (targetDate && !dueByStage.has('close')) {
+    dueByStage.set('close', String(targetDate).slice(0, 10));
+  }
+  const stages = stageList.map((stage) => {
+    const tasks = buckets.get(stage.id) || [];
     const work = tasks.filter((task) => !task.milestone);
     const dues = tasks.map((task) => task.due).filter((due) => due != null);
     const complete = work.filter((task) => task.status === 'complete' || task.status === 'na').length;
-    const dueOn = milestoneByStage.get(stage.id) || '';
+    const dueOn = dueByStage.get(stage.id)
+      || (stage.kind === 'custom' ? dueByStage.get('custom') : '')
+      || '';
+    const startOn = startByStage.get(stage.id)
+      || (stage.kind === 'custom' && !startByStage.has(stage.id) ? startByStage.get('custom') : '')
+      || '';
     const milestoneAt = dueOn ? toDayMs(dueOn) : null;
     let start = dues.length ? Math.min(...dues) : null;
     let end = dues.length ? Math.max(...dues) : null;
@@ -152,11 +214,38 @@ export function buildGanttModel({
       total: work.length,
       complete,
       dueOn,
+      startOn,
       milestoneAt,
       start,
       end,
+      barStart: null,
+      barEnd: null,
       tone: stageTone(tasks, todayMs)
     };
+  });
+
+  stages.forEach((stage) => {
+    const endAt = stage.milestoneAt;
+    const startAt = stage.startOn ? toDayMs(stage.startOn) : null;
+    if (startAt != null && endAt != null) {
+      stage.barStart = Math.min(startAt, endAt);
+      stage.barEnd = Math.max(startAt, endAt);
+      return;
+    }
+    if (endAt != null) {
+      stage.barStart = endAt;
+      stage.barEnd = endAt;
+      return;
+    }
+    if (startAt != null) {
+      stage.barStart = startAt;
+      stage.barEnd = startAt;
+      return;
+    }
+    if (stage.start != null && stage.end != null && stage.end > stage.start) {
+      stage.barStart = stage.start;
+      stage.barEnd = stage.end;
+    }
   });
 
   const closeMs = stages.find((stage) => stage.id === 'close')?.milestoneAt ?? targetMs;
@@ -362,4 +451,54 @@ export function barSegments(startMs, endMs, weeks) {
     });
   }
   return segments;
+}
+
+/** Bank-holiday marks that fall on a weekday column in the chart. */
+export function holidaysForWeeks(weeks) {
+  if (!weeks?.length) return [];
+  const first = weeks[0].start;
+  const last = weeks[weeks.length - 1].start + 4 * DAY;
+  const startYear = new Date(first).getFullYear() - 1;
+  const endYear = new Date(last).getFullYear() + 1;
+  const byDay = new Map();
+  for (let year = startYear; year <= endYear; year += 1) {
+    for (const holiday of usBankHolidays(year)) {
+      if (holiday.observedMs < first || holiday.observedMs > last) continue;
+      const placed = dayMarker(holiday.observedMs, weeks);
+      if (!placed) continue;
+      const existing = byDay.get(holiday.observedMs);
+      if (existing) {
+        existing.name = `${existing.name}, ${holiday.name}`;
+        continue;
+      }
+      const weekIndex = Math.floor((holiday.observedMs - first) / WEEK);
+      const dayOffset = Math.floor((holiday.observedMs - first - weekIndex * WEEK) / DAY);
+      const dayIndex = Math.min(4, Math.max(0, dayOffset));
+      byDay.set(holiday.observedMs, {
+        ...holiday,
+        ...placed,
+        weekId: weeks[weekIndex]?.id,
+        dayIndex,
+        key: String(holiday.observedMs)
+      });
+    }
+  }
+  return [...byDay.values()].sort((a, b) => a.observedMs - b.observedMs);
+}
+
+/** Center of the weekday column for a single milestone date, as a percent of the track. */
+export function dayMarker(ms, weeks) {
+  if (ms == null || !weeks?.length) return null;
+  const origin = weeks[0].start;
+  const slots = weeks.length * 5;
+  const delta = ms - origin;
+  const weekIndex = Math.floor(delta / WEEK);
+  if (weekIndex < 0 || weekIndex >= weeks.length) return null;
+  const dayOffset = Math.floor((delta - weekIndex * WEEK) / DAY);
+  const weekday = Math.min(4, Math.max(0, dayOffset));
+  const slot = weekIndex * 5 + weekday;
+  return {
+    left: ((slot + 0.5) / slots) * 100,
+    month: weeks[weekIndex].month
+  };
 }

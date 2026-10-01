@@ -8723,14 +8723,46 @@ button.aggregator-welcome__buybox {
   overflow: hidden;
 }
 
+.dd-checklist--workspace .dd-checklist__header {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
 .dd-workspace-split__chart {
   flex: 0 0 auto;
-  max-height: 62vh;
+  max-height: min(300px, 32vh);
   overflow: auto;
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-secondary);
+}
+
+.dd-workspace-split__handle {
+  flex: 0 0 auto;
+  height: 18px;
+  margin: -4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  border-radius: 8px;
+}
+
+.dd-workspace-split__handle::before {
+  content: '';
+  width: 56px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--border);
+}
+
+.dd-workspace-split__handle:hover::before,
+.dd-workspace-split__handle:focus-visible::before {
+  background: var(--text-secondary);
+  outline: none;
 }
 
 .dd-stage-focus {
@@ -8768,9 +8800,32 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-checklist--workspace .dd-workspace {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow: auto;
+  padding-bottom: 28px;
+}
+
+.dd-checklist--workspace .dd-workspace--list .dd-list-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-primary);
+}
+
+.dd-checklist--workspace .dd-workspace--kanban {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 8px;
+}
+
+.dd-checklist--workspace .dd-workspace--kanban .dd-portal-board {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .dd-workspace-kanban.dd-portal-board {
@@ -8778,7 +8833,14 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-checklist--workspace .dd-portal-column {
-  max-height: min(520px, 48vh);
+  max-height: none;
+  height: 100%;
+  align-self: stretch;
+}
+
+.dd-checklist--workspace .dd-portal-column__cards {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .crm-people-tab__broker-hint {
@@ -10084,6 +10146,44 @@ button.aggregator-welcome__buybox {
   gap: 8px;
 }
 
+.dd-group__dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.dd-group__dates label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  user-select: text;
+}
+
+.dd-group__dates .modal-input {
+  min-height: 32px;
+  min-width: 148px;
+  user-select: text;
+}
+
+.dd-portal-column__header:has(.dd-group__dates) {
+  flex-wrap: wrap;
+}
+
+.dd-portal-column__header .dd-group__dates {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.dd-group--milestone {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
 .dd-group__add-item {
   margin-left: auto;
   font-size: 12px;
@@ -10752,6 +10852,22 @@ button.aggregator-welcome__buybox {
 
 .dd-gantt__toolbar .crm-muted {
   margin: 0;
+  flex: 1 1 auto;
+}
+
+.dd-gantt__holiday-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.dd-gantt__holiday-toggle input {
+  margin: 0;
+  accent-color: var(--text-primary);
 }
 
 .dd-gantt__scroll {
@@ -10837,6 +10953,12 @@ button.aggregator-welcome__buybox {
   display: block;
 }
 
+.dd-gantt__days span.is-holiday {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
 .dd-gantt__week--m0 { --dd-month: var(--dd-month-0); }
 .dd-gantt__week--m1 { --dd-month: var(--dd-month-1); }
 .dd-gantt__week--m2 { --dd-month: var(--dd-month-2); }
@@ -10846,6 +10968,10 @@ button.aggregator-welcome__buybox {
 
 .dd-gantt__week.is-today .dd-gantt__week-label {
   box-shadow: inset 0 -2px 0 var(--text-primary);
+}
+
+.dd-gantt__stage.is-selected .dd-gantt__milebox {
+  box-shadow: inset 3px 0 0 var(--dd-stage, var(--text-primary));
 }
 
 .dd-gantt__milebox {
@@ -10936,13 +11062,19 @@ button.aggregator-welcome__buybox {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 35%, transparent);
 }
 
+.dd-gantt__bars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .dd-gantt__block {
   position: absolute;
   top: 8px;
-  height: 16px;
-  border-radius: 2px;
+  height: 18px;
+  border-radius: 3px;
   background: var(--dd-month, var(--primary));
-  z-index: 1;
 }
 
 .dd-gantt__block--m0 { --dd-month: var(--dd-month-0); }
@@ -10953,9 +11085,40 @@ button.aggregator-welcome__buybox {
 .dd-gantt__block--m5 { --dd-month: var(--dd-month-5); }
 
 .dd-gantt__line--mile .dd-gantt__block {
-  top: 12px;
-  height: 8px;
-  border-radius: 99px;
+  top: 9px;
+  height: 18px;
+  border-radius: 3px;
+}
+
+.dd-gantt__holiday {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--text-primary) 72%, transparent);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.dd-gantt__diamond {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  background: #f4f7fb;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.dd-gantt__diamond--m0,
+.dd-gantt__diamond--m1,
+.dd-gantt__diamond--m2,
+.dd-gantt__diamond--m3,
+.dd-gantt__diamond--m4,
+.dd-gantt__diamond--m5 {
+  background: #f4f7fb;
 }
 
 .dd-gantt__chart {

@@ -29,3 +29,16 @@ export function stageIdForGroup(name) {
 export function isStageId(value) {
   return DD_STAGE_IDS.includes(String(value || ''));
 }
+
+export function customStageId(groupId) {
+  return `g:${groupId}`;
+}
+
+export function customGroupId(stageId) {
+  const match = /^g:(\d+)$/.exec(String(stageId || ''));
+  return match ? Number(match[1]) : null;
+}
+
+export function isMilestoneStageId(value) {
+  return isStageId(value) || customGroupId(value) != null;
+}

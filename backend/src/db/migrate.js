@@ -1297,6 +1297,10 @@ const migrations = [
         PRIMARY KEY (checklist_id, stage_id)
       );
     `
+  },
+  {
+    name: 'dd_stage_milestone_start_v5_147',
+    up: `ALTER TABLE dd_stage_milestones ADD COLUMN IF NOT EXISTS start_on DATE;`
   }
 ];
 
