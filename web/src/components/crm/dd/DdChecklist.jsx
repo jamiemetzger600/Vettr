@@ -6,7 +6,73 @@ import useDdMarquee from './useDdMarquee.js';
 import { DdFolderIcon, DdIconCard, DdListHead } from './DdItemViews.jsx';
 import DdGantt from './DdGantt.jsx';
 import { blockedLabel, blockedTooltip, canSetStatus } from './ddBlocked.js';
-import { GANTT_STAGES, customGroupId, groupMatchesStage, milestoneKeyForGroup } from './ddGantt.js';
+import { GANTT_STAGES, customGroupId, groupMatchesStage, milestoneKeyForGroup, stageIdForGroup } from './ddGantt.js';
+
+function GroupName({ group, canWrite, onRename }) {
+  const editable = canWrite && stageIdForGroup(group.name) === 'custom';
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(group.name || '');
+
+  useEffect(() => {
+    if (!editing) setValue(group.name || '');
+  }, [group.name, editing]);
+
+  if (!editable) return group.name;
+
+  const commit = async () => {
+    const next = value.trim();
+    if (!next || next === group.name) {
+      setValue(group.name || '');
+      setEditing(false);
+      return;
+    }
+    try {
+      await onRename(group.id, next);
+      setEditing(false);
+    } catch (err) {
+      console.error('[DdChecklist] group rename failed', err);
+      setValue(group.name || '');
+      setEditing(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        type="text"
+        className="modal-input dd-group__name-input"
+        value={value}
+        maxLength={255}
+        aria-label="Group name"
+        autoFocus
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') {
+            setValue(group.name || '');
+            setEditing(false);
+          }
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="dd-group__name"
+      title="Rename this group"
+      onClick={() => setEditing(true)}
+    >
+      {group.name}
+    </button>
+  );
+}
 
 const CHART_HEIGHT_KEY = 'vettr.dd.chartHeight';
 const CHART_MIN = 140;
@@ -604,6 +670,20 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
     setNewGroupName('');
   };
 
+  const handleRenameGroup = async (groupId, name) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed || !dealId) return;
+    console.log('[DdChecklist] rename group', groupId, trimmed);
+    try {
+      const data = await crmAPI.renameDdGroup(dealId, groupId, trimmed);
+      setChecklist(data.checklist);
+      onRefresh?.();
+    } catch (err) {
+      alert('Failed to rename group: ' + (err.message || 'unknown error'));
+      throw err;
+    }
+  };
+
   const handleAddGroupSubmit = async () => {
     const name = newGroupName.trim();
     if (!name || addingGroup) return;
@@ -848,7 +928,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
         return (
           <section key={group.id} className="dd-portal-column">
             <header className="dd-portal-column__header">
-              <h2>{group.name}</h2>
+              <h2><GroupName group={group} canWrite={canWrite} onRename={handleRenameGroup} /></h2>
               <span>{complete}/{items.length}</span>
               <MilestoneDates
                 label={group.name}
@@ -1451,6 +1531,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
               targetDate={checklist.target_date}
               milestones={checklist.milestones || []}
               onMilestoneDate={canWrite ? handleMilestoneDate : null}
+              onRenameGroup={canWrite ? handleRenameGroup : null}
               showAudienceToggle
               activeStageId={stageFocus}
               onStageChange={(stageId) => {
@@ -1485,6 +1566,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
           targetDate={checklist.target_date}
           milestones={checklist.milestones || []}
           onMilestoneDate={canWrite ? handleMilestoneDate : null}
+          onRenameGroup={canWrite ? handleRenameGroup : null}
           showAudienceToggle
         />
       ) : (
@@ -1644,7 +1726,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
                   />
                 </label>
                 <DdFolderIcon />
-                {group.name} <span>({done}/{total})</span>
+                <GroupName group={group} canWrite={canWrite} onRename={handleRenameGroup} /> <span>({done}/{total})</span>
                 <button
                   type="button"
                   className={`btn-secondary dd-group__add-item${addingItemGroupId === group.id ? ' dd-group__add-item--active' : ''}`}

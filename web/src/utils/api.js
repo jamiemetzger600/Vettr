@@ -651,6 +651,12 @@ export const crmAPI = {
       body: JSON.stringify({ name })
     }),
 
+  renameDdGroup: (savedDealId, groupId, name) =>
+    apiRequest(`/crm/deals/${savedDealId}/dd/groups/${groupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name })
+    }),
+
   addDdItem: (savedDealId, groupId, payload) =>
     apiRequest(`/crm/deals/${savedDealId}/dd/groups/${groupId}/items`, {
       method: 'POST',

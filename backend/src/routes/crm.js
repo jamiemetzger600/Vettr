@@ -73,6 +73,7 @@ import {
   deleteDdShareLink,
   postDdSummaryEmail,
   postDdGroup,
+  patchDdGroup,
   postDdItem,
   postDdItemDocument,
   postDdDependency,
@@ -173,6 +174,7 @@ router.patch('/deals/:id/dd/milestones', patchDdMilestone);
 router.post('/deals/:id/dd/dependencies', postDdDependency);
 router.delete('/deals/:id/dd/dependencies', deleteDdDependency);
 router.post('/deals/:id/dd/groups', postDdGroup);
+router.patch('/deals/:id/dd/groups/:groupId', patchDdGroup);
 router.post('/deals/:id/dd/groups/:groupId/items', postDdItem);
 router.post('/deals/:id/dd/items/:itemId/documents', postDdItemDocument);
 router.post('/deals/:id/dd/share-links', postDdShareLink);

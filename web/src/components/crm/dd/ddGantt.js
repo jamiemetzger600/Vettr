@@ -1,4 +1,4 @@
-import { usBankHolidays } from './ddHolidays.js';
+import { usClosureHolidays } from './ddHolidays.js';
 
 /** Stage lanes for the diligence Gantt. Close Date is last: it ends the transaction. */
 export const GANTT_STAGES = [
@@ -453,22 +453,30 @@ export function barSegments(startMs, endMs, weeks) {
   return segments;
 }
 
-/** Bank-holiday marks that fall on a weekday column in the chart. */
+/** Closure-day marks that fall on a weekday column in the chart. */
 export function holidaysForWeeks(weeks) {
   if (!weeks?.length) return [];
   const first = weeks[0].start;
   const last = weeks[weeks.length - 1].start + 4 * DAY;
   const startYear = new Date(first).getFullYear() - 1;
   const endYear = new Date(last).getFullYear() + 1;
+  const slots = weeks.length * 5;
+  const width = 100 / slots;
   const byDay = new Map();
   for (let year = startYear; year <= endYear; year += 1) {
-    for (const holiday of usBankHolidays(year)) {
+    for (const holiday of usClosureHolidays(year)) {
       if (holiday.observedMs < first || holiday.observedMs > last) continue;
       const placed = dayMarker(holiday.observedMs, weeks);
       if (!placed) continue;
       const existing = byDay.get(holiday.observedMs);
       if (existing) {
-        existing.name = `${existing.name}, ${holiday.name}`;
+        const names = existing.name.split(', ');
+        if (!names.includes(holiday.name)) existing.name = `${existing.name}, ${holiday.name}`;
+        const notes = existing.note ? existing.note.split('; ') : [];
+        if (holiday.note && !notes.includes(holiday.note)) {
+          existing.note = existing.note ? `${existing.note}; ${holiday.note}` : holiday.note;
+        }
+        if (holiday.weight === 'full') existing.weight = 'full';
         continue;
       }
       const weekIndex = Math.floor((holiday.observedMs - first) / WEEK);
@@ -477,6 +485,7 @@ export function holidaysForWeeks(weeks) {
       byDay.set(holiday.observedMs, {
         ...holiday,
         ...placed,
+        width,
         weekId: weeks[weekIndex]?.id,
         dayIndex,
         key: String(holiday.observedMs)

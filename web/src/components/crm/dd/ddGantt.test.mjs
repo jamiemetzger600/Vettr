@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stageIdForGroup, buildGanttModel, barStyle, milestoneHeaders, localTodayMs, weekColumns, barSegments, taskSpan, dayMarker, holidaysForWeeks } from './ddGantt.js';
-import { usBankHolidays } from './ddHolidays.js';
+import { usBankHolidays, usClosureHolidays } from './ddHolidays.js';
 
 test('groups land in the closing stages', () => {
   assert.equal(stageIdForGroup('Tax'), 'diligence');
@@ -152,7 +152,49 @@ test('bank holidays use the weekday banks are closed', () => {
   const slots = weeks.length * 5;
   assert.ok(Math.abs(byName['Columbus Day'].left - dayMarker(byName['Columbus Day'].observedMs, weeks).left) < 0.01);
   assert.ok(byName['Columbus Day'].left > 0 && byName['Columbus Day'].left < 100);
+  assert.equal(byName['Day after Thanksgiving'].observedOn, '2026-11-27');
+  assert.equal(byName['Day after Thanksgiving'].dayIndex, 4);
   assert.equal(slots > 0, true);
+});
+
+test('closure days include religious and business holidays on the weekday they fall', () => {
+  const on = (year, name) => usClosureHolidays(year)
+    .filter((holiday) => holiday.name === name)
+    .map((holiday) => holiday.observedOn);
+
+  assert.deepEqual(on(2026, 'Good Friday'), ['2026-04-03']);
+  assert.deepEqual(on(2025, 'Good Friday'), ['2025-04-18']);
+  assert.deepEqual(on(2024, 'Good Friday'), ['2024-03-29']);
+  assert.deepEqual(on(2026, 'Day after Thanksgiving'), ['2026-11-27']);
+  assert.deepEqual(on(2026, 'Christmas Eve'), ['2026-12-24']);
+  assert.deepEqual(on(2026, "New Year's Eve"), ['2026-12-31']);
+  assert.deepEqual(on(2022, 'Christmas Eve'), []);
+
+  assert.deepEqual(on(2024, 'Rosh Hashanah'), ['2024-10-03', '2024-10-04']);
+  assert.deepEqual(on(2024, 'Yom Kippur'), []);
+  assert.deepEqual(on(2025, 'Rosh Hashanah'), ['2025-09-23', '2025-09-24']);
+  assert.deepEqual(on(2025, 'Yom Kippur'), ['2025-10-02']);
+  assert.ok(on(2025, 'Passover').includes('2025-04-14'));
+  assert.ok(on(2025, 'Shavuot').includes('2025-06-02'));
+  assert.deepEqual(on(2026, 'Eid al-Fitr'), ['2026-03-20']);
+  assert.deepEqual(on(2026, 'Eid al-Adha'), ['2026-05-27']);
+  assert.deepEqual(on(2025, 'Eid al-Fitr'), []);
+  assert.deepEqual(on(2024, 'Eid al-Fitr'), ['2024-04-10']);
+  assert.deepEqual(on(2024, 'Eid al-Adha'), []);
+  assert.deepEqual(on(2025, 'Eid al-Adha'), ['2025-06-06']);
+
+  const overlapWeeks = weekColumns(new Date(2026, 2, 30).getTime(), new Date(2026, 3, 10).getTime(), new Date(2026, 3, 3).getTime());
+  const overlap = holidaysForWeeks(overlapWeeks).find((holiday) => holiday.observedOn === '2026-04-03');
+  assert.equal(overlap.name, 'Good Friday, Passover');
+  assert.equal(overlap.weight, 'full');
+  assert.match(overlap.note, /Markets closed/);
+  assert.match(overlap.note, /law firms/);
+
+  const yomKippur = usClosureHolidays(2025).find((holiday) => holiday.name === 'Yom Kippur');
+  assert.equal(yomKippur.weight, 'partial');
+  const thanksgiving = usClosureHolidays(2026).find((holiday) => holiday.name === 'Thanksgiving');
+  assert.equal(thanksgiving.weight, 'full');
+  assert.match(thanksgiving.note, /Banks/);
 });
 
 test('a one-day bar stays inside the timeline', () => {

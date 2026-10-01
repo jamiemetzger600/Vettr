@@ -86,8 +86,9 @@ function Track({ weeks, segments, diamond, holidays = [] }) {
         {holidays.map((holiday) => (
           <span
             key={holiday.key}
-            className="dd-gantt__holiday"
-            style={{ left: `${holiday.left}%` }}
+            className={`dd-gantt__holiday${holiday.weight === 'partial' ? ' dd-gantt__holiday--partial' : ''}`}
+            style={{ left: `${holiday.left}%`, width: `${holiday.width}%` }}
+            title={`${holiday.name} · ${holiday.note}`}
           />
         ))}
         {diamond ? (
@@ -162,7 +163,7 @@ export default function DdGantt({
   const setHolidayToggle = (next) => {
     setShowHolidays(next);
     try { localStorage.setItem(HOLIDAY_KEY, next ? '1' : '0'); } catch { /* ignore */ }
-    console.log('[DdGantt] bank holidays', next ? 'shown' : 'hidden');
+    console.log('[DdGantt] holiday closures', next ? 'shown' : 'hidden');
   };
 
   useEffect(() => {
@@ -200,13 +201,16 @@ export default function DdGantt({
             ? 'Weekly view. Click a group name to rename it. Select a milestone to see its tasks below the chart.'
             : 'Weekly view. Assignee names stay off this view.'}
         </p>
-        <label className="dd-gantt__holiday-toggle">
+        <label
+          className="dd-gantt__holiday-toggle"
+          title="Days when banks, law firms, courts, or businesses are often closed. A milestone on one of these days can slip."
+        >
           <input
             type="checkbox"
             checked={showHolidays}
             onChange={(e) => setHolidayToggle(e.target.checked)}
           />
-          Bank holidays
+          Holiday closures
         </label>
         {showAudienceToggle ? (
           <div className="dd-portal-view-toggle panel-position-toggle" role="tablist" aria-label="Gantt audience">
@@ -239,15 +243,15 @@ export default function DdGantt({
             <div className="dd-gantt__span dd-gantt__span--head">
               {weeks.map((week) => (
                 <div key={week.id} className={`dd-gantt__week dd-gantt__week--m${week.month}${week.today ? ' is-today' : ''}`}>
-                  <span className="dd-gantt__week-label">{week.label}</span>
+                  <span className="dd-gantt__week-label" title={week.label}>{week.label}</span>
                   <span className="dd-gantt__days">
                     {week.days.map((day, index) => {
                       const holiday = holidayOnDay.get(`${week.id}:${index}`);
                       return (
                         <span
                           key={`${week.id}-${index}`}
-                          className={holiday ? 'is-holiday' : undefined}
-                          title={holiday ? `${holiday.name} · banks closed` : undefined}
+                          className={holiday ? `is-holiday${holiday.weight === 'partial' ? ' is-holiday-partial' : ''}` : undefined}
+                          title={holiday ? `${holiday.name} · ${holiday.note}` : undefined}
                         >
                           {day}
                         </span>
@@ -323,6 +327,24 @@ export default function DdGantt({
               </div>
             );
           })}
+          {holidays.length > 0 ? (
+            <div className="dd-gantt__holiday-layer">
+              {holidays.map((holiday) => {
+                const dateLabel = formatGanttDay(holiday.observedMs);
+                return (
+                  <span
+                    key={holiday.key}
+                    className={`dd-gantt__holiday-tag${holiday.weight === 'partial' ? ' dd-gantt__holiday-tag--partial' : ''}`}
+                    style={{ left: `${holiday.left}%` }}
+                    title={`${holiday.name} · ${dateLabel}${holiday.note ? ` · ${holiday.note}` : ''}`}
+                  >
+                    {holiday.name}
+                    <span className="dd-gantt__holiday-tag-date"> · {dateLabel}</span>
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

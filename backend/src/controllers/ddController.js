@@ -10,6 +10,7 @@ import {
   getPublicChecklistByToken,
   patchPublicDdItem as patchPublicDdItemService,
   addDdGroup,
+  renameDdGroup,
   addDdItem,
   addDdItemDocument,
   addPublicDdComment,
@@ -222,6 +223,18 @@ export const postDdGroup = async (req, res) => {
     if (error.status === 400) return res.status(400).json({ error: error.message });
     if (error.status === 404) return res.status(404).json({ error: error.message });
     console.error('[dd] postDdGroup error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const patchDdGroup = async (req, res) => {
+  try {
+    const checklist = await renameDdGroup(req.user.userId, req.params.id, req.params.groupId, req.body || {});
+    res.json({ checklist });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error('[dd] patchDdGroup error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

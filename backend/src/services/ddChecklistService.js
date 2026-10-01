@@ -1141,6 +1141,40 @@ export async function addDdGroup(userId, savedDealId, { name }) {
   return getChecklistForDeal(userId, savedDealId);
 }
 
+export async function renameDdGroup(userId, savedDealId, groupId, { name }) {
+  await assertDealOwned(userId, savedDealId, { write: true });
+  const checklist = await getChecklistForDeal(userId, savedDealId);
+  if (!checklist) {
+    const err = new Error('Start a DD checklist first');
+    err.status = 400;
+    throw err;
+  }
+  const trimmed = String(name || '').trim().slice(0, 255);
+  if (!trimmed) {
+    const err = new Error('Group name required');
+    err.status = 400;
+    throw err;
+  }
+  const id = Number(groupId);
+  const group = (checklist.groups || []).find((row) => Number(row.id) === id);
+  if (!group) {
+    const err = new Error('Group not found');
+    err.status = 404;
+    throw err;
+  }
+  if (stageIdForGroup(group.name) !== 'custom') {
+    const err = new Error('Only a custom group can be renamed');
+    err.status = 400;
+    throw err;
+  }
+  await pool.query(
+    'UPDATE dd_groups SET name = $1 WHERE id = $2 AND checklist_id = $3',
+    [trimmed, id, checklist.id]
+  );
+  console.log('[dd] rename group', { savedDealId, groupId: id, name: trimmed });
+  return getChecklistForDeal(userId, savedDealId);
+}
+
 function dateOnly(value) {
   if (!value) return null;
   if (value instanceof Date) {
