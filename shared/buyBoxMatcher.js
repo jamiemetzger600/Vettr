@@ -22,6 +22,14 @@ function withinSlack(limit, dealValue, type, pct) {
   return dealValue >= floor;
 }
 
+/** Whole token, so "CA" matches CA and not Canada or Carolina. */
+function stateTokenHit(dealState, wanted) {
+  const needle = String(wanted || '').toUpperCase().trim();
+  if (!needle) return false;
+  const tokens = String(dealState || '').toUpperCase().split(/[^A-Z]+/).filter(Boolean);
+  return tokens.includes(needle);
+}
+
 /**
  * Check if a deal matches the user's buy box criteria.
  * Optional includeNearMatchesPercent (0–100) relaxes numeric limits so slightly over-max or under-min deals still show (e.g. negotiable listings).
@@ -46,21 +54,15 @@ export function dealMatchesBuyBox(deal, buyBox) {
   if (buyBox.minRevenue != null && deal.revenue != null && !withinSlack(buyBox.minRevenue, deal.revenue, 'min', pct)) return false;
   if (buyBox.maxRevenue != null && deal.revenue != null && !withinSlack(buyBox.maxRevenue, deal.revenue, 'max', pct)) return false;
 
-  // State filters (target states)
+  // State filters (target states). Codes match a whole token, so CA does not match Canada.
   if (buyBox.targetStates && buyBox.targetStates.length > 0) {
-    const dealState = (deal.state || '').toUpperCase().trim();
-    const hasTargetState = buyBox.targetStates.some(s =>
-      dealState.includes(s.toUpperCase().trim())
-    );
+    const hasTargetState = buyBox.targetStates.some((s) => stateTokenHit(deal.state, s));
     if (!hasTargetState) return false;
   }
 
   // State filters (exclude states)
   if (buyBox.excludeStates && buyBox.excludeStates.length > 0) {
-    const dealState = (deal.state || '').toUpperCase().trim();
-    const isExcluded = buyBox.excludeStates.some(s =>
-      dealState.includes(s.toUpperCase().trim())
-    );
+    const isExcluded = buyBox.excludeStates.some((s) => stateTokenHit(deal.state, s));
     if (isExcluded) return false;
   }
 

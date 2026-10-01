@@ -146,7 +146,8 @@ router.get('/', optionalAuth, async (req, res) => {
       params.push(restrictIds);
     }
 
-    // Text search: comma or & separates AND terms (each must match name, location, or industry).
+    // Text search: comma or & separates AND terms. Each term is a whole word,
+    // so "CA" matches the state CA and not "car" or "Canada".
     if (search && search.trim()) {
       const terms = search
         .trim()
@@ -156,17 +157,18 @@ router.get('/', optionalAuth, async (req, res) => {
         .slice(0, 8);
       console.log('[market-deals] search terms', { count: terms.length, terms });
       for (const term of terms) {
+        const pattern = `(^|[^a-zA-Z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-zA-Z0-9]|$)`;
         conditions.push(`(
-          name ILIKE $${idx}
-          OR description ILIKE $${idx}
-          OR COALESCE(city, '') ILIKE $${idx}
-          OR COALESCE(state, '') ILIKE $${idx}
-          OR COALESCE(county, '') ILIKE $${idx}
-          OR COALESCE(country, '') ILIKE $${idx}
-          OR COALESCE(array_to_string(industries, ' '), '') ILIKE $${idx}
-          OR COALESCE(remote_relocatable, '') ILIKE $${idx}
+          name ~* $${idx}
+          OR COALESCE(description, '') ~* $${idx}
+          OR COALESCE(city, '') ~* $${idx}
+          OR COALESCE(state, '') ~* $${idx}
+          OR COALESCE(county, '') ~* $${idx}
+          OR COALESCE(country, '') ~* $${idx}
+          OR COALESCE(array_to_string(industries, ' '), '') ~* $${idx}
+          OR COALESCE(remote_relocatable, '') ~* $${idx}
         )`);
-        params.push(`%${term}%`);
+        params.push(pattern);
         idx++;
       }
     }

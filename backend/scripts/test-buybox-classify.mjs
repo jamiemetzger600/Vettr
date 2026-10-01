@@ -1,5 +1,7 @@
 import {
   classifyBuyBoxMatch,
+  dealMatchesBuyBox,
+  dealPassesSlotFeed,
   isAbsenteeRemoteDeal
 } from '../src/lib/buyBoxMatcher.js';
 import { groupDealsByBuyBox } from '../src/services/dealMatchDigestService.js';
@@ -74,5 +76,33 @@ const grouped = groupDealsByBuyBox(
 assert(grouped.total === 3, `expected 3 grouped, got ${grouped.total}`);
 assert(grouped.groups[0].deals.length === 1, 'expected 1 exact');
 assert(grouped.groups[0].nearDeals.length === 2, 'expected 2 near');
+
+assert(dealMatchesBuyBox({ state: 'CA' }, { targetStates: ['CA'] }) === true, 'CA should match CA');
+assert(dealMatchesBuyBox({ state: 'Ontario Canada' }, { targetStates: ['CA'] }) === false, 'Canada must not match CA');
+assert(dealPassesSlotFeed(
+  { name: 'Full Service Car Wash', state: 'NV', description: 'tunnel, smog station' },
+  { feedSearch: 'smog' }
+) === true, 'smog in the description should count');
+assert(dealPassesSlotFeed(
+  { name: 'Full Service Car Wash', state: 'NV', description: 'detail area' },
+  { feedSearch: 'CA, smog' }
+) === false, 'car must not satisfy the CA keyword');
+
+const smogBox = groupDealsByBuyBox(
+  [
+    { id: 10, name: 'Vegas car wash', state: 'NV', description: 'detail only', askingPrice: 200_000, ebitda: 80_000 },
+    { id: 11, name: 'STAR Smog Check', state: 'CA', description: '', askingPrice: 200_000, ebitda: 80_000 },
+    { id: 12, name: 'Smog shop', state: 'Ontario Canada', askingPrice: 200_000, ebitda: 80_000 },
+    { id: 13, name: 'Franchise smog', state: 'CA', description: 'smog', askingPrice: 200_000, ebitda: 80_000 }
+  ],
+  [{
+    name: 'SMOG',
+    targetStates: ['CA'],
+    feedSearch: 'smog',
+    excludeKeywords: ['franchise']
+  }]
+);
+assert(smogBox.total === 1, `expected only the CA smog shop, got ${smogBox.total}`);
+assert(smogBox.groups[0].dealIds.length === 1 && smogBox.groups[0].dealIds[0] === 11, 'expected deal 11');
 
 console.log('[test-buybox-classify] ok');

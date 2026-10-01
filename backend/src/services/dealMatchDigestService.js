@@ -22,7 +22,7 @@ export function formatMoney(n) {
 export async function loadNewMarketDeals(sinceDate) {
   const since = sinceDate instanceof Date ? sinceDate : new Date(sinceDate);
   const result = await pool.query(
-    `SELECT id, name, listing_url, asking_price, annual_revenue, annual_profit,
+    `SELECT id, name, description, listing_url, asking_price, annual_revenue, annual_profit,
             city, state, industries, first_seen_at, source_added_at, remote_relocatable
      FROM market_deals
      WHERE is_active = true

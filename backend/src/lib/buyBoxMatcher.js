@@ -14,6 +14,14 @@ function withinSlack(limit, dealValue, type, pct) {
   return dealValue >= floor;
 }
 
+/** Whole token, so "CA" matches CA and not Canada or Carolina. */
+function stateTokenHit(dealState, wanted) {
+  const needle = String(wanted || '').toUpperCase().trim();
+  if (!needle) return false;
+  const tokens = String(dealState || '').toUpperCase().split(/[^A-Z]+/).filter(Boolean);
+  return tokens.includes(needle);
+}
+
 export function dealMatchesBuyBox(deal, buyBox) {
   if (!buyBox) return true;
 
@@ -27,17 +35,11 @@ export function dealMatchesBuyBox(deal, buyBox) {
   if (buyBox.maxRevenue != null && deal.revenue != null && !withinSlack(buyBox.maxRevenue, deal.revenue, 'max', pct)) return false;
 
   if (buyBox.targetStates && buyBox.targetStates.length > 0) {
-    const dealState = (deal.state || '').toUpperCase().trim();
-    const hasTargetState = buyBox.targetStates.some(s =>
-      dealState.includes(s.toUpperCase().trim())
-    );
+    const hasTargetState = buyBox.targetStates.some((s) => stateTokenHit(deal.state, s));
     if (!hasTargetState) return false;
   }
   if (buyBox.excludeStates && buyBox.excludeStates.length > 0) {
-    const dealState = (deal.state || '').toUpperCase().trim();
-    const isExcluded = buyBox.excludeStates.some(s =>
-      dealState.includes(s.toUpperCase().trim())
-    );
+    const isExcluded = buyBox.excludeStates.some((s) => stateTokenHit(deal.state, s));
     if (isExcluded) return false;
   }
   if (buyBox.targetIndustries && buyBox.targetIndustries.length > 0) {
@@ -178,18 +180,25 @@ export function marketRowToMatchDeal(row) {
     industry,
     remote: row?.remote_relocatable || '',
     location: [row?.city, row?.state].filter(Boolean).join(', '),
+    description: row?.description || '',
     firstSeenAt: row?.first_seen_at || null
   };
 }
 
-/** Slot feed search (AND terms) and exclude keywords. */
+function termHitsText(term, text) {
+  const needle = String(term || '').trim().toLowerCase();
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, 'i').test(text);
+}
+
+/** Slot feed search (AND terms) and exclude keywords. Whole words, same fields as the feed. */
 export function dealPassesSlotFeed(deal, slot) {
   if (!slot || typeof slot !== 'object') return true;
-  const text = `${deal.name || ''} ${deal.industry || ''} ${deal.location || ''} ${deal.state || ''}`.toLowerCase();
+  const text = `${deal.name || ''} ${deal.description || ''} ${deal.industry || ''} ${deal.location || ''} ${deal.city || ''} ${deal.state || ''}`.toLowerCase();
   const exclude = Array.isArray(slot.excludeKeywords) ? slot.excludeKeywords : [];
   for (const raw of exclude) {
-    const k = String(raw || '').trim().toLowerCase();
-    if (k && text.includes(k)) return false;
+    if (termHitsText(raw, text)) return false;
   }
   const search = typeof slot.feedSearch === 'string' ? slot.feedSearch.trim() : '';
   if (!search) return true;
@@ -198,5 +207,5 @@ export function dealPassesSlotFeed(deal, slot) {
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean)
     .slice(0, 8);
-  return terms.every((t) => text.includes(t));
+  return terms.every((term) => termHitsText(term, text));
 }

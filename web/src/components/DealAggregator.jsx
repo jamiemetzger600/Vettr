@@ -1270,8 +1270,8 @@ export default function DealAggregator({
     const params = buildMarketDealsParams({
       page: pageOverride ?? ((matchFilterMode || filterNewToday) ? 1 : currentPage),
       perPage: PER_PAGE,
-      search: matchFilterMode ? '' : feedSearchString,
-      buyBox: (poolNewMode || matchFilterMode) ? null : (showHiddenDeals ? null : buyBox),
+      search: feedSearchString,
+      buyBox: (poolNewMode || showHiddenDeals) ? null : buyBox,
       flexibilityPct: flexPct,
       sortSpec,
       sort: primarySortCol,
@@ -1291,6 +1291,8 @@ export default function DealAggregator({
       console.log('[DealAggregator] match alert filter', {
         count: matchFilterIds.length,
         keepView: true,
+        search: feedSearchString,
+        states: (buyBox.targetStates || []).join(','),
         excludeKeywords: excludeKw.length
       });
     } else if (filterNewToday) {
