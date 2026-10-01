@@ -75,6 +75,7 @@ function GroupName({ group, canWrite, onRename }) {
 }
 
 const CHART_HEIGHT_KEY = 'vettr.dd.chartHeight';
+const CHART_HIDDEN_KEY = 'vettr.dd.chartHidden';
 const CHART_MIN = 140;
 const TASK_MIN = 180;
 const CHART_DEFAULT = 280;
@@ -90,6 +91,24 @@ function readChartHeight() {
   } catch (err) {
     console.error('[DdChecklist] chart height unreadable', err);
     return CHART_DEFAULT;
+  }
+}
+
+function readChartHidden() {
+  try {
+    return window.localStorage.getItem(CHART_HIDDEN_KEY) === '1';
+  } catch (err) {
+    console.error('[DdChecklist] chart visibility unreadable', err);
+    return false;
+  }
+}
+
+function saveChartHidden(hidden) {
+  try {
+    window.localStorage.setItem(CHART_HIDDEN_KEY, hidden ? '1' : '0');
+    console.log('[DdChecklist] chart', hidden ? 'hidden' : 'shown');
+  } catch (err) {
+    console.error('[DdChecklist] chart visibility not saved', err);
   }
 }
 
@@ -327,13 +346,10 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [anchorId, setAnchorId] = useState(null);
-  const [bulkDue, setBulkDue] = useState('');
-  const [bulkAssignee, setBulkAssignee] = useState('');
-  const [bulkStatus, setBulkStatus] = useState('');
-  const [bulkSaving, setBulkSaving] = useState(false);
   const workspaceRef = useRef(null);
   const splitDrag = useRef(null);
   const [chartHeight, setChartHeight] = useState(readChartHeight);
+  const [chartHidden, setChartHidden] = useState(readChartHidden);
 
   const load = useCallback(async () => {
     if (!dealId) return;
@@ -383,10 +399,20 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   useEffect(() => {
     setSelected(new Set());
     setAnchorId(null);
-    setBulkDue('');
-    setBulkAssignee('');
-    setBulkStatus('');
   }, [dealId]);
+
+  useEffect(() => {
+    if (workView !== 'kanban' || !checklist?.groups) return;
+    const counts = {};
+    for (const status of DD_STATUSES) counts[status.label] = 0;
+    for (const group of checklist.groups) {
+      for (const item of group.items || []) {
+        const label = DD_STATUSES.find((status) => status.value === item.status)?.label || item.status;
+        counts[label] = (counts[label] || 0) + 1;
+      }
+    }
+    console.log('[DdChecklist] kanban columns', counts);
+  }, [workView, checklist]);
 
   const allItemIds = useMemo(() => {
     const ids = [];
@@ -483,14 +509,33 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
     }
   };
 
-  const handleStatusChange = async (itemId, status) => {
+  const saveItemPatch = async (itemId, payload, failMessage) => {
+    const key = String(itemId);
+    const bulk = selected.size > 1 && selected.has(key);
+    const itemIds = bulk
+      ? [...selected].map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : null;
     try {
-      const data = await crmAPI.patchDdItem(dealId, itemId, { status });
+      console.log('[DdChecklist] item patch', {
+        itemId,
+        count: itemIds?.length || 1,
+        payload
+      });
+      const data = itemIds
+        ? await crmAPI.patchDdItemsBulk(dealId, { itemIds, ...payload })
+        : await crmAPI.patchDdItem(dealId, itemId, payload);
       setChecklist(data.checklist);
-      onRefresh?.();
+      return bulk;
     } catch (err) {
-      alert('Failed to update item: ' + err.message);
+      console.error('[DdChecklist] item patch failed', err);
+      alert(failMessage + (err.message || 'unknown error'));
+      return null;
     }
+  };
+
+  const handleStatusChange = async (itemId, status) => {
+    const bulk = await saveItemPatch(itemId, { status }, 'Failed to update item: ');
+    if (bulk !== null) onRefresh?.();
   };
 
   const handleMilestoneDate = async (stageId, patch) => {
@@ -533,12 +578,8 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   };
 
   const handleDueChange = async (itemId, dueAt) => {
-    try {
-      const data = await crmAPI.patchDdItem(dealId, itemId, { dueAt: dueAt || null });
-      setChecklist(data.checklist);
-    } catch (err) {
-      alert('Failed to set due date: ' + err.message);
-    }
+    const bulk = await saveItemPatch(itemId, { dueAt: dueAt || null }, 'Failed to set due date: ');
+    if (bulk) onRefresh?.();
   };
 
   const handleLinkPredecessor = async (successorId, predecessorId) => {
@@ -571,28 +612,18 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
 
   const handleAssigneeChange = async (itemId, memberId) => {
     if (!canWrite) return;
-    try {
-      if (!memberId) {
-        const data = await crmAPI.patchDdItem(dealId, itemId, { assignee: null });
-        setChecklist(data.checklist);
-        console.log('[DdChecklist] cleared assignee item', itemId);
-        return;
-      }
+    let assignee = null;
+    if (memberId) {
       const member = members.find((m) => String(m.id) === String(memberId));
       if (!member?.email) return;
-      const displayName = member.displayName || displayNameFromEmail(member.email);
-      const data = await crmAPI.patchDdItem(dealId, itemId, {
-        assignee: {
-          email: member.email,
-          name: displayName,
-          roleLabel: member.role || null
-        }
-      });
-      setChecklist(data.checklist);
-      console.log('[DdChecklist] assigned item', itemId, 'to', displayName);
-    } catch (err) {
-      alert('Failed to assign: ' + err.message);
+      assignee = {
+        email: member.email,
+        name: member.displayName || displayNameFromEmail(member.email),
+        roleLabel: member.role || null
+      };
     }
+    const bulk = await saveItemPatch(itemId, { assignee }, 'Failed to assign: ');
+    if (bulk) onRefresh?.();
   };
 
   const memberIdForEmail = (email) => {
@@ -617,47 +648,6 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
     setSelected(next);
     setAnchorId(ids[0]);
     console.log('[DdChecklist] group select', group.name, { allOn: !allOn, count: next.size });
-  };
-
-  const handleBulkApply = async () => {
-    if (!canWrite || selected.size === 0 || bulkSaving) return;
-    const itemIds = [...selected].map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    const payload = { itemIds };
-    if (bulkDue) payload.dueAt = dueToIso(bulkDue);
-    if (bulkAssignee === '__unassign__') payload.assignee = null;
-    else if (bulkAssignee) {
-      const member = members.find((m) => String(m.id) === String(bulkAssignee));
-      if (!member?.email) {
-        alert('Pick a team member');
-        return;
-      }
-      payload.assignee = {
-        email: member.email,
-        name: member.displayName || displayNameFromEmail(member.email),
-        roleLabel: member.role || null
-      };
-    }
-    if (bulkStatus) payload.status = bulkStatus;
-    if (payload.dueAt === undefined && payload.assignee === undefined && !payload.status) {
-      alert('Choose a date, person, or status to apply to the selected items.');
-      return;
-    }
-    setBulkSaving(true);
-    try {
-      console.log('[DdChecklist] bulk apply', {
-        count: itemIds.length,
-        dueAt: payload.dueAt || null,
-        assignee: payload.assignee?.email || (payload.assignee === null ? 'cleared' : null),
-        status: payload.status || null
-      });
-      const data = await crmAPI.patchDdItemsBulk(dealId, payload);
-      setChecklist(data.checklist);
-      onRefresh?.();
-    } catch (err) {
-      alert('Failed to update items: ' + err.message);
-    } finally {
-      setBulkSaving(false);
-    }
   };
 
   const handleAddGroup = () => {
@@ -920,88 +910,87 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
     );
   };
 
-  const renderKanbanBoard = () => (
-    <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
-      {(checklist?.groups || []).filter((group) => groupMatchesStage(group, stageFocus)).map((group) => {
-        const items = group.items || [];
-        const complete = items.filter((item) => item.status === 'complete' || item.status === 'na').length;
-        return (
-          <section key={group.id} className="dd-portal-column">
-            <header className="dd-portal-column__header">
-              <h2><GroupName group={group} canWrite={canWrite} onRename={handleRenameGroup} /></h2>
-              <span>{complete}/{items.length}</span>
-              <MilestoneDates
-                label={group.name}
-                stageId={milestoneKeyForGroup(group)}
-                disabled={!canWrite}
-                onChange={handleMilestoneDate}
-                {...datesForStage(milestoneKeyForGroup(group))}
-              />
-            </header>
-            <ul className="dd-portal-column__cards">
-              {items.map((item) => (
-                <li
-                  key={item.id}
-                  data-dd-item-id={item.id}
-                  className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}${selected.has(String(item.id)) ? ' is-selected' : ''}`}
-                  data-status={item.status}
-                  title={blockedTooltip(item) || undefined}
-                >
-                  <div className="dd-portal-card__top">
-                    <label className="dd-list-row__check">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(String(item.id))}
-                        onChange={(e) => {
-                          const next = new Set(selected);
-                          const key = String(item.id);
-                          if (e.target.checked) next.add(key);
-                          else next.delete(key);
-                          setSelected(next);
-                          setAnchorId(key);
-                          console.log('[DdChecklist] kanban select', key, next.size);
-                        }}
-                        aria-label={`Select ${item.title}`}
-                      />
-                    </label>
-                    <strong>{item.title}</strong>
-                    {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
-                    {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
-                  </div>
-                  <input
-                    type="date"
-                    className="modal-input dd-item__due-input"
-                    value={item.due_at ? item.due_at.slice(0, 10) : ''}
-                    onChange={(e) => handleDueChange(item.id, dueToIso(e.target.value))}
-                    aria-label={`Due date for ${item.title}`}
-                    disabled={!canWrite}
-                  />
-                  {renderAssigneeSelect(item, 'modal-input')}
-                  <select
-                    className="modal-input dd-item__status"
-                    value={item.status}
-                    onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                    disabled={!canWrite}
-                    aria-label={`Status for ${item.title}`}
+  const renderKanbanBoard = () => {
+    const cards = [];
+    for (const group of groupsForWork) {
+      for (const item of group.items || []) cards.push({ item, group });
+    }
+    return (
+      <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
+        {DD_STATUSES.map((status) => {
+          const column = cards.filter(({ item }) => item.status === status.value);
+          return (
+            <section key={status.value} className="dd-portal-column" data-status={status.value}>
+              <header className="dd-portal-column__header">
+                <h2>{status.label}</h2>
+                <span>{column.length}</span>
+              </header>
+              <ul className="dd-portal-column__cards">
+                {column.map(({ item, group }) => (
+                  <li
+                    key={item.id}
+                    data-dd-item-id={item.id}
+                    className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}${selected.has(String(item.id)) ? ' is-selected' : ''}`}
+                    data-status={item.status}
+                    title={blockedTooltip(item) || undefined}
                   >
-                    {DD_STATUSES.map((s) => (
-                      <option
-                        key={s.value}
-                        value={s.value}
-                        disabled={s.value !== item.status && !canSetStatus(item, s.value)}
-                      >
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
-    </div>
-  );
+                    <div className="dd-portal-card__top">
+                      <label className="dd-list-row__check">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(String(item.id))}
+                          onChange={(e) => {
+                            const next = new Set(selected);
+                            const key = String(item.id);
+                            if (e.target.checked) next.add(key);
+                            else next.delete(key);
+                            setSelected(next);
+                            setAnchorId(key);
+                            console.log('[DdChecklist] kanban select', key, next.size);
+                          }}
+                          aria-label={`Select ${item.title}`}
+                        />
+                      </label>
+                      <strong>{item.title}</strong>
+                      {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
+                      {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
+                    </div>
+                    <span className="dd-portal-card__group">{group.name}</span>
+                    <input
+                      type="date"
+                      className="modal-input dd-item__due-input"
+                      value={item.due_at ? item.due_at.slice(0, 10) : ''}
+                      onChange={(e) => handleDueChange(item.id, dueToIso(e.target.value))}
+                      aria-label={`Due date for ${item.title}`}
+                      disabled={!canWrite}
+                    />
+                    {renderAssigneeSelect(item, 'modal-input')}
+                    <select
+                      className="modal-input dd-item__status"
+                      value={item.status}
+                      onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                      disabled={!canWrite}
+                      aria-label={`Status for ${item.title}`}
+                    >
+                      {DD_STATUSES.map((s) => (
+                        <option
+                          key={s.value}
+                          value={s.value}
+                          disabled={s.value !== item.status && !canSetStatus(item, s.value)}
+                        >
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+    );
+  };
 
   const renderItemExtras = (item) => (
     <>
@@ -1202,7 +1191,6 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   };
 
   const progress = checklist.progress || {};
-  const selectedCount = selected.size;
   const paneView = workspace ? workView : view;
   const namedFocusId = customGroupId(stageFocus);
   const focusedGroup = namedFocusId != null
@@ -1486,43 +1474,46 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
         </div>
       ) : null}
 
-      <div className="dd-add-group">
-        <button
-          type="button"
-          className={`btn-secondary${showAddGroup ? ' dd-group__add-item--active' : ''}`}
-          onClick={handleAddGroup}
-        >
-          {showAddGroup ? 'Cancel' : '+ Group'}
-        </button>
-      </div>
-
-      {showAddGroup ? (
-        <div className="dd-add-item-form dd-add-group-form">
-          <input
-            type="text"
-            className="modal-input"
-            placeholder="New group name"
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAddGroupSubmit();
-              if (e.key === 'Escape') cancelAddGroup();
-            }}
-            autoFocus
-            aria-label="New group name"
-          />
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={addingGroup || !newGroupName.trim()}
-            onClick={handleAddGroupSubmit}
-          >
-            {addingGroup ? 'Adding…' : 'Add group'}
-          </button>
-        </div>
+      {!workspace ? (
+        <>
+          <div className="dd-add-group">
+            <button
+              type="button"
+              className={`btn-secondary${showAddGroup ? ' dd-group__add-item--active' : ''}`}
+              onClick={handleAddGroup}
+            >
+              {showAddGroup ? 'Cancel' : '+ Group'}
+            </button>
+          </div>
+          {showAddGroup ? (
+            <div className="dd-add-item-form dd-add-group-form">
+              <input
+                type="text"
+                className="modal-input"
+                placeholder="New group name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddGroupSubmit();
+                  if (e.key === 'Escape') cancelAddGroup();
+                }}
+                autoFocus
+                aria-label="New group name"
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={addingGroup || !newGroupName.trim()}
+                onClick={handleAddGroupSubmit}
+              >
+                {addingGroup ? 'Adding…' : 'Add group'}
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
-      {workspace ? (
+      {workspace && !chartHidden ? (
         <>
           <div className="dd-workspace-split__chart" style={{ height: chartHeight, maxHeight: 'none' }}>
             <DdGantt
@@ -1532,6 +1523,10 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
               milestones={checklist.milestones || []}
               onMilestoneDate={canWrite ? handleMilestoneDate : null}
               onRenameGroup={canWrite ? handleRenameGroup : null}
+              onHide={() => {
+                setChartHidden(true);
+                saveChartHidden(true);
+              }}
               showAudienceToggle
               activeStageId={stageFocus}
               onStageChange={(stageId) => {
@@ -1556,6 +1551,57 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
               saveChartHeight(CHART_DEFAULT);
             }}
           />
+        </>
+      ) : null}
+
+      {workspace ? (
+        <>
+          <div className="dd-task-tools">
+            {chartHidden ? (
+              <button
+                type="button"
+                className="btn-secondary btn-secondary--sm"
+                onClick={() => {
+                  setChartHidden(false);
+                  saveChartHidden(false);
+                }}
+              >
+                Show chart
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={`btn-secondary${showAddGroup ? ' dd-group__add-item--active' : ''}`}
+              onClick={handleAddGroup}
+            >
+              {showAddGroup ? 'Cancel' : '+ Group'}
+            </button>
+          </div>
+          {showAddGroup ? (
+            <div className="dd-add-item-form dd-add-group-form">
+              <input
+                type="text"
+                className="modal-input"
+                placeholder="New group name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddGroupSubmit();
+                  if (e.key === 'Escape') cancelAddGroup();
+                }}
+                autoFocus
+                aria-label="New group name"
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={addingGroup || !newGroupName.trim()}
+                onClick={handleAddGroupSubmit}
+              >
+                {addingGroup ? 'Adding…' : 'Add group'}
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
 
@@ -1593,92 +1639,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             </button>
           </p>
         ) : null}
-        {selectedCount > 0 ? (
-          <div className="dd-bulk-bar">
-            <strong>{selectedCount} selected</strong>
-            <button
-              type="button"
-              className="btn-secondary btn-secondary--sm"
-              onClick={() => {
-                console.log('[DdChecklist] select all', allItemIds.length);
-                setSelected(new Set(allItemIds));
-                setAnchorId(allItemIds[0] || null);
-              }}
-            >
-              Select all
-            </button>
-            <button
-              type="button"
-              className="btn-secondary btn-secondary--sm"
-              onClick={() => {
-                console.log('[DdChecklist] clear selection');
-                setSelected(new Set());
-                setAnchorId(null);
-              }}
-            >
-              Clear
-            </button>
-            {canWrite ? (
-              <>
-                <label className="dd-bulk-bar__field">
-                  <span>Due</span>
-                  <input
-                    type="date"
-                    className="modal-input"
-                    value={bulkDue}
-                    onChange={(e) => setBulkDue(e.target.value)}
-                    aria-label="Bulk due date"
-                  />
-                </label>
-                <label className="dd-bulk-bar__field">
-                  <span>Assign</span>
-                  <select
-                    className="modal-input"
-                    value={bulkAssignee}
-                    onChange={(e) => setBulkAssignee(e.target.value)}
-                    disabled={members.length === 0}
-                    aria-label="Bulk assignee"
-                  >
-                    <option value="">Keep assignee</option>
-                    <option value="__unassign__">Unassigned</option>
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.displayName || displayNameFromEmail(m.email)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="dd-bulk-bar__field">
-                  <span>Status</span>
-                  <select
-                    className="modal-input"
-                    value={bulkStatus}
-                    onChange={(e) => setBulkStatus(e.target.value)}
-                    aria-label="Bulk status"
-                  >
-                    <option value="">Keep status</option>
-                    {DD_STATUSES.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={bulkSaving}
-                  onClick={handleBulkApply}
-                >
-                  {bulkSaving ? 'Applying…' : 'Apply'}
-                </button>
-              </>
-            ) : null}
-          </div>
-        ) : (
-          <p className="crm-muted dd-select-hint">
-            Drag to select · Shift-click a range · ⌘-click to toggle · then assign dates and people
-          </p>
-        )}
-        {orphanStages.map((stage) => (
+        {paneView === 'kanban' ? null : orphanStages.map((stage) => (
           <section key={stage.id} className="dd-group dd-group--milestone">
             <h4 className="dd-group__title">{stage.label}</h4>
             <MilestoneDates

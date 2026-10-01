@@ -112,6 +112,12 @@ test('weeks are Monday to Friday and colored by month', () => {
   assert.ok(weeks.length >= 8);
   assert.notEqual(weeks[0].month, weeks[1].month);
   assert.deepEqual(weeks[0].days, ['M', 'T', 'W', 'T', 'F']);
+  assert.equal(weeks[0].todayDay, 0);
+  const thursday = new Date(2026, 9, 1).getTime();
+  const octWeeks = weekColumns(thursday, thursday, thursday);
+  const todayWeek = octWeeks.find((week) => week.todayDay != null);
+  assert.equal(todayWeek.todayDay, 3);
+  assert.equal(todayWeek.days[todayWeek.todayDay], 'T');
   const span = taskSpan({ due: monday + 21 * 86400000 });
   const segments = barSegments(span.start, span.end, weeks);
   assert.ok(segments.length >= 2);

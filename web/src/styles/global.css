@@ -8712,6 +8712,13 @@ button.aggregator-welcome__buybox {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.dd-checklist--workspace > :not(.dd-workspace-split__chart):not(.dd-workspace-split__handle) {
+  padding-left: 18px;
+  padding-right: 18px;
 }
 
 .dd-checklist--workspace {
@@ -8784,13 +8791,6 @@ button.aggregator-welcome__buybox {
   opacity: 1;
 }
 
-.dd-checklist--workspace .dd-bulk-bar {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  margin-bottom: 8px;
-}
-
 .dd-portal-card.is-selected {
   border-color: rgba(126, 184, 255, 0.45);
   background: rgba(126, 184, 255, 0.14);
@@ -8823,10 +8823,50 @@ button.aggregator-welcome__buybox {
 
 .dd-checklist--workspace .dd-workspace--kanban .dd-portal-board {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 220px;
+  height: 100%;
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.dd-checklist--workspace .dd-portal-column[data-status='not_started'] { border-top: 3px solid #9aa0a6; }
+.dd-checklist--workspace .dd-portal-column[data-status='in_progress'] { border-top: 3px solid #e6b84f; }
+.dd-checklist--workspace .dd-portal-column[data-status='waiting_on_other'] { border-top: 3px solid #e07a5f; }
+.dd-checklist--workspace .dd-portal-column[data-status='blocked'] { border-top: 3px solid #e74c3c; }
+.dd-checklist--workspace .dd-portal-column[data-status='complete'] { border-top: 3px solid #5cb87a; }
+.dd-checklist--workspace .dd-portal-column[data-status='na'] { border-top: 3px solid #6b6b6b; }
+
+.dd-portal-card__group {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dd-task-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.dd-checklist--workspace .dd-workspace-split__chart {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+
+.dd-checklist--workspace .dd-gantt__toolbar {
+  padding: 0 18px;
+}
+
+.dd-checklist--workspace .dd-gantt__scroll {
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
 }
 
 .dd-workspace-kanban.dd-portal-board {
@@ -10971,6 +11011,25 @@ button.aggregator-welcome__buybox {
 
 .dd-gantt__days span {
   display: block;
+}
+
+.dd-gantt__days span.is-today {
+  position: relative;
+  z-index: 1;
+  color: #1a1a1a;
+}
+
+.dd-gantt__days span.is-today::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: #f4f7fb;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  z-index: -1;
 }
 
 .dd-gantt__days span.is-holiday {

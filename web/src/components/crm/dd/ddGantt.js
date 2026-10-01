@@ -396,6 +396,7 @@ export function weekColumns(rangeStart, rangeEnd, todayMs = rangeStart) {
     const monday = new Date(cursor);
     const monthKey = `${monday.getFullYear()}-${monday.getMonth()}`;
     if (!monthIndex.has(monthKey)) monthIndex.set(monthKey, monthIndex.size % 6);
+    const dayOffset = Math.round((todayMs - cursor) / DAY);
     weeks.push({
       id: `${monthKey}-${monday.getDate()}`,
       start: cursor,
@@ -403,7 +404,8 @@ export function weekColumns(rangeStart, rangeEnd, todayMs = rangeStart) {
       monthKey,
       month: monthIndex.get(monthKey),
       days: WEEKDAY_LETTERS,
-      today: todayMs >= cursor && todayMs < cursor + WEEK
+      today: todayMs >= cursor && todayMs < cursor + WEEK,
+      todayDay: dayOffset >= 0 && dayOffset <= 4 ? dayOffset : null
     });
     cursor += WEEK;
   }

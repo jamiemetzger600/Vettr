@@ -113,7 +113,8 @@ export default function DdGantt({
   showAudienceToggle = false,
   activeStageId = null,
   onStageChange = null,
-  onRenameGroup = null
+  onRenameGroup = null,
+  onHide = null
 }) {
   const [mode, setMode] = useState(audience === 'external' ? 'external' : 'internal');
   const [todayMs, setTodayMs] = useState(() => localTodayMs());
@@ -170,6 +171,10 @@ export default function DdGantt({
     console.log('[DdGantt] weeks', {
       zone: viewerTimeZone(),
       today: todayLabel,
+      todayLetter: (() => {
+        const week = weeks.find((row) => row.todayDay != null);
+        return week ? week.days[week.todayDay] : null;
+      })(),
       count: weeks.length,
       first: weeks[0]?.label,
       last: weeks[weeks.length - 1]?.label,
@@ -234,6 +239,11 @@ export default function DdGantt({
             </button>
           </div>
         ) : null}
+        {typeof onHide === 'function' ? (
+          <button type="button" className="btn-secondary btn-secondary--sm" onClick={onHide}>
+            Hide
+          </button>
+        ) : null}
       </div>
 
       <div className="dd-gantt__scroll">
@@ -247,11 +257,20 @@ export default function DdGantt({
                   <span className="dd-gantt__days">
                     {week.days.map((day, index) => {
                       const holiday = holidayOnDay.get(`${week.id}:${index}`);
+                      const isToday = week.todayDay === index;
+                      const className = [
+                        holiday ? `is-holiday${holiday.weight === 'partial' ? ' is-holiday-partial' : ''}` : '',
+                        isToday ? 'is-today' : ''
+                      ].filter(Boolean).join(' ');
+                      const title = [
+                        isToday ? `Today · ${todayLabel}` : '',
+                        holiday ? `${holiday.name} · ${holiday.note}` : ''
+                      ].filter(Boolean).join(' · ');
                       return (
                         <span
                           key={`${week.id}-${index}`}
-                          className={holiday ? `is-holiday${holiday.weight === 'partial' ? ' is-holiday-partial' : ''}` : undefined}
-                          title={holiday ? `${holiday.name} · ${holiday.note}` : undefined}
+                          className={className || undefined}
+                          title={title || undefined}
                         >
                           {day}
                         </span>
