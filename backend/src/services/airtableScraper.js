@@ -235,15 +235,82 @@ function dealIdentityKeys(deal) {
   return keys;
 }
 
+function positiveRound(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}
+
+function normText(value) {
+  const s = String(value ?? '').trim().toLowerCase();
+  return s || null;
+}
+
+/** Same business already stored: price + profit + revenue + state. City is ignored. */
+export function financeStateKey(deal) {
+  const price = positiveRound(deal?.asking_price ?? deal?.askingPrice);
+  const profit = positiveRound(deal?.annual_profit ?? deal?.ebitda);
+  const revenue = positiveRound(deal?.annual_revenue ?? deal?.revenue);
+  const state = normText(deal?.state);
+  if (price == null || profit == null || revenue == null || !state) return null;
+  return `${price}|${profit}|${revenue}|${state}`;
+}
+
+export function nameStateKey(deal) {
+  const name = normText(deal?.name);
+  const state = normText(deal?.state);
+  if (!name || !state) return null;
+  return `${name}|${state}`;
+}
+
+/** Calendar day from an Airtable date string, before timezone conversion. */
+export function listingAddedDay(value) {
+  if (value == null || value === '') return null;
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+/** Date Added is today or yesterday in the scrape timezone. */
+export function isRecentAirtableListing(addedAt, now = new Date()) {
+  const day = listingAddedDay(addedAt);
+  if (!day) return false;
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCRAPE_CRON_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const today = fmt.format(now);
+  const yesterday = fmt.format(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  return day === today || day === yesterday;
+}
+
 function indexExistingRows(existingRows) {
   const byId = new Map();
   const byUrl = new Map();
+  const byFinance = new Map();
+  const byName = new Map();
   for (const row of existingRows || []) {
     if (row?.source_id != null) byId.set(String(row.source_id), row);
     const urlKey = normalizeListingUrlKey(row?.listing_url);
     if (urlKey && !byUrl.has(urlKey)) byUrl.set(urlKey, row);
+    const fin = financeStateKey(row);
+    if (fin && !byFinance.has(fin)) byFinance.set(fin, row);
+    const nameKey = nameStateKey(row);
+    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, row);
   }
-  return { byId, byUrl };
+  return { byId, byUrl, byFinance, byName };
+}
+
+function rememberExistingRow(index, row) {
+  if (!index || !row) return;
+  if (row.source_id != null) index.byId.set(String(row.source_id), row);
+  const urlKey = normalizeListingUrlKey(row.listing_url);
+  if (urlKey) index.byUrl.set(urlKey, row);
+  const fin = financeStateKey(row);
+  if (fin) index.byFinance.set(fin, row);
+  const nameKey = nameStateKey(row);
+  if (nameKey) index.byName.set(nameKey, row);
 }
 
 function findExistingDeal(deal, index) {
@@ -252,6 +319,10 @@ function findExistingDeal(deal, index) {
   }
   const urlKey = normalizeListingUrlKey(deal.listing_url);
   if (urlKey && index.byUrl.has(urlKey)) return index.byUrl.get(urlKey);
+  const fin = financeStateKey(deal);
+  if (fin && index.byFinance.has(fin)) return index.byFinance.get(fin);
+  const nameKey = nameStateKey(deal);
+  if (nameKey && index.byName.has(nameKey)) return index.byName.get(nameKey);
   return null;
 }
 
@@ -359,10 +430,11 @@ async function upsertDeals(deals) {
 
   const client = await pool.connect();
   let inserted = 0;
+  let rawInserted = 0;
   let updated = 0;
   let financialChanges = 0;
-  /** DB ids for rows inserted this run (for in-app "new pool" navigation; capped). */
-  const newRowIds = [];
+  /** DB ids for listings that are new to the pool. Toast navigation keeps the first 400. */
+  let newRowIds = [];
   let inTx = false;
   let sinceCommit = 0;
 
@@ -370,12 +442,15 @@ async function upsertDeals(deals) {
     await client.query('BEGIN');
     inTx = true;
     const prior = await client.query(
-      `SELECT source_id, asking_price, annual_profit FROM market_deals WHERE source = $1`,
+      `SELECT id, source_id, listing_url, name, city, state,
+              asking_price, annual_profit, annual_revenue, is_active
+       FROM market_deals WHERE source = $1`,
       [SOURCE_KEY]
     );
     const priorById = new Map(
       prior.rows.map((r) => [String(r.source_id), { price: r.asking_price, ebitda: r.annual_profit }])
     );
+    const existingIndex = indexExistingRows(prior.rows);
 
     for (const deal of deals) {
       const rawKey = deal.airtable_record_id ?? deal.airtable_id;
@@ -460,6 +535,44 @@ async function upsertDeals(deals) {
       }
 
       if (!result?.rows?.length) {
+        const matched = findExistingDeal(deal, existingIndex);
+        if (matched?.id) {
+          result = await client.query(
+            `UPDATE market_deals SET
+              source_id = $2,
+              name = $3,
+              description = $4,
+              industries = $5,
+              listing_url = $6,
+              asking_price = $7,
+              annual_revenue = $8,
+              annual_profit = $9,
+              profit_multiple = $10,
+              revenue_multiple = $11,
+              city = $12,
+              county = $13,
+              state = $14,
+              country = $15,
+              years_established = $16,
+              remote_relocatable = $17,
+              franchise = $18,
+              five_plus_years = $19,
+              broker_name = $20,
+              broker_company = $21,
+              broker_contact = $22,
+              broker_email = $23,
+              source_updated_at = $24,
+              source_added_at = $25,
+              last_scraped_at = NOW(),
+              is_active = true
+             WHERE source = $1 AND id = $26
+             RETURNING id, false AS is_insert`,
+            [...params, matched.id]
+          );
+        }
+      }
+
+      if (!result?.rows?.length) {
         result = await client.query(
         `INSERT INTO market_deals (
           source, source_id, name, description, industries, listing_url,
@@ -511,8 +624,22 @@ async function upsertDeals(deals) {
 
       const ret = result.rows[0];
       if (ret?.is_insert) {
-        inserted++;
-        if (newRowIds.length < 400 && ret.id != null) newRowIds.push(ret.id);
+        rawInserted++;
+        rememberExistingRow(existingIndex, {
+          id: ret.id,
+          source_id: sourceId,
+          listing_url: deal.listing_url,
+          name: deal.name,
+          city: deal.city,
+          state: deal.state,
+          asking_price: deal.asking_price,
+          annual_profit: deal.annual_profit,
+          annual_revenue: deal.annual_revenue,
+        });
+        if (isRecentAirtableListing(deal.airtable_added_at) && ret.id != null) {
+          inserted++;
+          newRowIds.push(ret.id);
+        }
       } else updated++;
 
       sinceCommit++;
@@ -520,7 +647,7 @@ async function upsertDeals(deals) {
         await client.query('COMMIT');
         inTx = false;
         console.log(
-          `  Upsert progress: ${inserted + updated}/${deals.length} (${inserted} new, ${updated} updated)`
+          `  Upsert progress: ${rawInserted + updated}/${deals.length} (${rawInserted} rows inserted, ${inserted} new listings, ${updated} updated)`
         );
         await client.query('BEGIN');
         inTx = true;
@@ -547,6 +674,27 @@ async function upsertDeals(deals) {
       console.warn('  Dedupe after scrape failed (upserts kept):', dedupeErr.message);
     }
 
+    if (newRowIds.length > 0) {
+      const still = await pool.query(
+        `SELECT id FROM market_deals WHERE id = ANY($1::int[]) AND is_active = true`,
+        [newRowIds]
+      );
+      const alive = new Set(still.rows.map((r) => Number(r.id)));
+      const before = newRowIds.length;
+      newRowIds = newRowIds.filter((id) => alive.has(Number(id)));
+      inserted = newRowIds.length;
+      if (newRowIds.length > 400) newRowIds = newRowIds.slice(0, 400);
+      if (before !== inserted) {
+        console.log(`  New listings after duplicate cleanup: ${inserted} (removed ${before - inserted})`);
+      }
+    }
+
+    console.log('[scrape] new listings vs database', {
+      rawInserted,
+      newListings: inserted,
+      updated,
+    });
+
     // Update deal_sources metadata
     try {
       await pool.query(
@@ -558,6 +706,7 @@ async function upsertDeals(deals) {
         [
           JSON.stringify({
             inserted,
+            rawInserted,
             updated,
             financialChanges,
             ts: new Date().toISOString(),
@@ -576,7 +725,7 @@ async function upsertDeals(deals) {
     client.release();
   }
 
-  return { inserted, updated, financialChanges };
+  return { inserted, rawInserted, updated, financialChanges, newRowIds };
 }
 
 /**
@@ -678,7 +827,9 @@ export async function scrapeAirtable() {
 
     try {
       const existing = await pool.query(
-        `SELECT source_id, listing_url, source_added_at, source_updated_at, is_active
+        `SELECT id, source_id, listing_url, name, city, state,
+                asking_price, annual_profit, annual_revenue,
+                source_added_at, source_updated_at, is_active
          FROM market_deals WHERE source = $1`,
         [SOURCE_KEY]
       );
@@ -699,7 +850,7 @@ export async function scrapeAirtable() {
       deals = sortDealsForSync(deals, []);
     }
 
-    const { inserted, updated } = await upsertDeals(deals);
+    const { inserted, rawInserted, updated, newRowIds } = await upsertDeals(deals);
 
     let absent = null;
     try {
@@ -724,7 +875,9 @@ export async function scrapeAirtable() {
       processed: deals.length,
       skipped,
       inserted,
+      rawInserted,
       updated,
+      ...(newRowIds?.length > 0 ? { new_row_ids: newRowIds } : {}),
       absent,
       prune,
       elapsed,
@@ -746,7 +899,7 @@ export async function scrapeAirtable() {
     }
 
     console.log(
-      `  Done: ${rows.length} fetched, ${deals.length} processed (${inserted} new, ${updated} updated, ${skipped} skipped) in ${elapsed}s`
+      `  Done: ${rows.length} fetched, ${deals.length} processed (${inserted} new listings, ${rawInserted ?? 0} rows inserted, ${updated} updated, ${skipped} skipped) in ${elapsed}s`
     );
     return _lastResult;
   } catch (err) {

@@ -1,6 +1,12 @@
 process.env.SCRAPE_CLI_ONCE = '1';
 
-const { selectDealsToUpsert, sortDealsForSync, assessSnapshot, readSnapshotRowCount } = await import('./airtableScraper.js');
+const {
+  selectDealsToUpsert,
+  sortDealsForSync,
+  assessSnapshot,
+  readSnapshotRowCount,
+  isRecentAirtableListing,
+} = await import('./airtableScraper.js');
 const { default: pool } = await import('../db/pool.js');
 
 import assert from 'node:assert/strict';
@@ -114,6 +120,90 @@ test('sync order puts missing listings ahead of updates, newest first', () => {
     'recMISSING_OLD',
     'recOLD',
   ]);
+});
+
+test('a relisted listing with the same financials is already in the database', () => {
+  const existing = [
+    {
+      source_id: 'recOLD',
+      listing_url: 'https://www.bizbuysell.com/business-opportunity/old-slug/2527791/',
+      name: 'Nassau County Bakery With Property',
+      asking_price: 2400000,
+      annual_profit: 350000,
+      annual_revenue: 1850000,
+      city: 'Melville',
+      state: 'NY',
+      source_added_at: '2026-09-23T00:00:00.000Z',
+      source_updated_at: '2026-09-23T00:00:00.000Z',
+      is_active: true,
+    },
+  ];
+  const deals = [
+    {
+      airtable_record_id: 'recRELIST',
+      listing_url: 'https://www.bizbuysell.com/business-opportunity/new-slug/2559878/',
+      name: 'Nassau County Bakery With Property — updated title',
+      asking_price: 2400000,
+      annual_profit: 350000,
+      annual_revenue: 1850000,
+      state: 'NY',
+      airtable_added_at: '2026-10-02',
+      airtable_updated_at: '2026-10-02',
+    },
+    {
+      airtable_record_id: 'recTRULY_NEW',
+      listing_url: 'https://www.bizbuysell.com/business-opportunity/other/999/',
+      name: 'Maui Fishing Charters',
+      asking_price: 2100000,
+      annual_profit: 400000,
+      annual_revenue: 900000,
+      state: 'HI',
+      airtable_added_at: '2026-06-01',
+    },
+  ];
+
+  const ordered = sortDealsForSync(deals, existing);
+  assert.equal(ordered[0].airtable_record_id, 'recTRULY_NEW');
+  assert.equal(ordered[1].airtable_record_id, 'recRELIST');
+});
+
+test('the same listing title and state is already in the database', () => {
+  const existing = [
+    {
+      source_id: 'recOLD',
+      listing_url: 'https://example.com/old',
+      name: 'Recurring Revenue Commercial Service Business For Sale',
+      state: 'TX',
+      source_added_at: '2026-03-06T00:00:00.000Z',
+      source_updated_at: '2026-03-06T00:00:00.000Z',
+      is_active: true,
+    },
+  ];
+  const deals = [
+    {
+      airtable_record_id: 'recCOPY',
+      listing_url: 'https://us.businessesforsale.com/us/recurring-revenue',
+      name: 'Recurring Revenue Commercial Service Business For Sale',
+      state: 'TX',
+      airtable_added_at: '2026-10-02',
+      airtable_updated_at: '2026-10-02',
+    },
+  ];
+  const ordered = sortDealsForSync(deals, existing);
+  assert.equal(ordered[0].airtable_record_id, 'recCOPY');
+  const { skipped } = selectDealsToUpsert(
+    [{ ...deals[0], airtable_added_at: '2026-03-06T00:00:00.000Z', airtable_updated_at: '2026-03-06T00:00:00.000Z' }],
+    existing
+  );
+  assert.equal(skipped, 1);
+});
+
+test('new listing dates are today or yesterday only', () => {
+  const now = new Date('2026-10-02T12:18:00.000Z');
+  assert.equal(isRecentAirtableListing('2026-10-02', now), true);
+  assert.equal(isRecentAirtableListing('2026-10-01T00:00:00.000Z', now), true);
+  assert.equal(isRecentAirtableListing('2026-09-30', now), false);
+  assert.equal(isRecentAirtableListing(null, now), false);
 });
 
 test('a short or halved Airtable payload is not treated as the full list', () => {
