@@ -8393,8 +8393,14 @@ button.aggregator-welcome__buybox {
   flex-direction: column;
   gap: 8px;
 }
+.crm-diligence__row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
 .crm-diligence__item {
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -8405,6 +8411,21 @@ button.aggregator-welcome__buybox {
   background: var(--bg-secondary);
   color: var(--text-primary);
   cursor: pointer;
+}
+.crm-diligence__delete {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--error);
+  background: transparent;
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.crm-diligence__delete:hover {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
 }
 .crm-diligence__item:hover {
   border-color: var(--primary);
@@ -8819,6 +8840,16 @@ button.aggregator-welcome__buybox {
   flex-direction: column;
   overflow: hidden;
   padding-bottom: 8px;
+}
+
+.dd-checklist--workspace .dd-workspace--kanban .dd-workspace-kanban__tools {
+  flex: 0 0 auto;
+  margin: 0 0 10px;
+}
+
+.dd-checklist--workspace .dd-workspace-kanban__tools .btn-secondary {
+  align-self: flex-end;
+  min-height: 38px;
 }
 
 .dd-checklist--workspace .dd-workspace--kanban .dd-portal-board {

@@ -16,7 +16,7 @@ function progressLabel(row) {
 /**
  * Deals with an unfinished due diligence checklist.
  */
-export default function CrmDiligenceList({ deals = [], onSelectDeal }) {
+export default function CrmDiligenceList({ deals = [], onSelectDeal, onDeleteDeal, canDelete = true }) {
   if (!deals.length) {
     return (
       <div className="crm-empty">
@@ -35,22 +35,35 @@ export default function CrmDiligenceList({ deals = [], onSelectDeal }) {
       <ul className="crm-diligence__list">
         {deals.map((row) => {
           const started = formatStarted(row.started_at);
+          const name = row.deal_name || 'Deal';
           return (
-            <li key={row.saved_deal_id}>
+            <li key={row.saved_deal_id} className="crm-diligence__row">
               <button
                 type="button"
                 className="crm-diligence__item"
                 onClick={() => {
-                  console.log('[CrmDiligenceList] open', row.saved_deal_id, row.deal_name);
+                  console.log('[CrmDiligenceList] open', row.saved_deal_id, name);
                   onSelectDeal?.(row.saved_deal_id, { focusSection: 'crm-dd', openRecord: true });
                 }}
               >
-                <span className="crm-diligence__name">{row.deal_name || 'Deal'}</span>
+                <span className="crm-diligence__name">{name}</span>
                 <span className="crm-diligence__meta">
                   {progressLabel(row)}
                   {started ? ` · started ${started}` : ''}
                 </span>
               </button>
+              {canDelete && onDeleteDeal ? (
+                <button
+                  type="button"
+                  className="crm-diligence__delete"
+                  onClick={() => {
+                    console.log('[CrmDiligenceList] delete', row.saved_deal_id, name);
+                    onDeleteDeal(row.saved_deal_id, name);
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
             </li>
           );
         })}

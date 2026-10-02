@@ -418,6 +418,26 @@ export default function CrmDashboard({
     onRefresh?.();
   };
 
+  const handleDeleteSavedDeal = useCallback(async (savedDealId, name) => {
+    const label = name || 'this deal';
+    if (!window.confirm(`Delete “${label}” from the team CRM? This removes the deal, checklist, and notes.`)) return;
+    try {
+      await dealsAPI.deleteDeal(savedDealId);
+      console.log('[CrmDashboard] deleted deal', savedDealId, label);
+      setDdWorkspace((prev) => (
+        prev && String(prev.dealId) === String(savedDealId) ? { ...prev, dealId: null } : prev
+      ));
+      if (String(recordDealId) === String(savedDealId)) handleCloseRecord();
+      if (String(peekDealId) === String(savedDealId)) handleClosePeek();
+      await loadToday();
+      setBoardEpoch((n) => n + 1);
+      onRefresh?.();
+    } catch (err) {
+      console.error('[CrmDashboard] delete deal failed', savedDealId, err);
+      alert('Failed to delete deal: ' + (err.message || 'error'));
+    }
+  }, [handleClosePeek, handleCloseRecord, loadToday, onRefresh, peekDealId, recordDealId]);
+
   const handleStageChanged = (result, dealName) => {
     setBoardEpoch((n) => n + 1);
     if (!result || result.unchanged) return;
@@ -637,6 +657,7 @@ export default function CrmDashboard({
         <CrmDiligenceList
           deals={activeDdDeals}
           onSelectDeal={(id) => openDdWorkspace(id)}
+          onDeleteDeal={handleDeleteSavedDeal}
         />
       )}
 
@@ -865,6 +886,7 @@ export default function CrmDashboard({
           canWrite={ddWorkspace.canWrite !== false}
           deals={activeDdDeals}
           onSelectDeal={(id) => openDdWorkspace(id, { canWrite: ddWorkspace.canWrite !== false })}
+          onDeleteDeal={handleDeleteSavedDeal}
           onClose={closeDdWorkspace}
           onRefresh={handleRefresh}
         />

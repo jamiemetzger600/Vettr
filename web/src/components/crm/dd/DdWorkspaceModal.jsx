@@ -13,7 +13,8 @@ export default function DdWorkspaceModal({
   deals = [],
   onSelectDeal,
   onClose,
-  onRefresh
+  onRefresh,
+  onDeleteDeal
 }) {
   useEffect(() => {
     console.log('[DdWorkspaceModal] open', dealId || 'picker', dealName || '');
@@ -65,6 +66,7 @@ export default function DdWorkspaceModal({
         ) : (
           <CrmDiligenceList
             deals={deals}
+            onDeleteDeal={onDeleteDeal}
             onSelectDeal={(id) => {
               console.log('[DdWorkspaceModal] pick deal', id);
               onSelectDeal?.(id);

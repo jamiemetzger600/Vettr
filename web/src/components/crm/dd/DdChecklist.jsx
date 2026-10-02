@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { crmAPI } from '../../../utils/api';
+import { useAuth } from '../../../context/AuthContext.jsx';
 import { formatDate } from '../../../utils/normalizeDeal';
 import { applyClickSelection } from './ddSelection.js';
 import useDdMarquee from './useDdMarquee.js';
@@ -131,10 +132,12 @@ const DD_STATUSES = [
   { value: 'not_started', label: 'Not started' },
   { value: 'in_progress', label: 'In progress' },
   { value: 'waiting_on_other', label: 'Waiting' },
-  { value: 'complete', label: 'Complete' },
   { value: 'blocked', label: 'Blocked' },
+  { value: 'complete', label: 'Complete' },
   { value: 'na', label: 'N/A' }
 ];
+
+const KANBAN_STATUSES = DD_STATUSES.filter((status) => status.value !== 'na');
 
 const VIEW_KEY = 'vettr.ddChecklist.view';
 const WORK_VIEW_KEY = 'vettr.ddChecklist.workspaceView';
@@ -304,7 +307,21 @@ function MilestoneDates({ label, stageId, startOn, dueOn, disabled, onChange }) 
   );
 }
 
+function kanbanColumnFor(status) {
+  return status === 'na' ? 'complete' : status;
+}
+
+function itemMatchesKanbanAssignee(item, filter, myEmail) {
+  const email = String(item.assignees?.[0]?.email || '').trim().toLowerCase();
+  if (filter === 'all') return true;
+  if (filter === 'unassigned') return !email;
+  if (filter === 'mine') return Boolean(myEmail) && email === myEmail;
+  return email === filter;
+}
+
 export default function DdChecklist({ dealId, onRefresh, canWrite = true, workspace = false }) {
+  const { user } = useAuth() || {};
+  const myEmail = String(user?.email || '').trim().toLowerCase();
   const [checklist, setChecklist] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -344,6 +361,10 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   const [linkingId, setLinkingId] = useState(null);
   const [stageFocus, setStageFocus] = useState(null);
   const [listSort, setListSort] = useState({ key: null, dir: 'asc' });
+  const [kanbanCategory, setKanbanCategory] = useState('all');
+  const [kanbanStatus, setKanbanStatus] = useState('all');
+  const [kanbanAssignee, setKanbanAssignee] = useState('all');
+  const [kanbanSort, setKanbanSort] = useState({ key: null, dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [anchorId, setAnchorId] = useState(null);
   const workspaceRef = useRef(null);
@@ -404,10 +425,11 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   useEffect(() => {
     if (workView !== 'kanban' || !checklist?.groups) return;
     const counts = {};
-    for (const status of DD_STATUSES) counts[status.label] = 0;
+    for (const status of KANBAN_STATUSES) counts[status.label] = 0;
     for (const group of checklist.groups) {
       for (const item of group.items || []) {
-        const label = DD_STATUSES.find((status) => status.value === item.status)?.label || item.status;
+        const column = kanbanColumnFor(item.status);
+        const label = KANBAN_STATUSES.find((status) => status.value === column)?.label || item.status;
         counts[label] = (counts[label] || 0) + 1;
       }
     }
@@ -913,82 +935,191 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
   const renderKanbanBoard = () => {
     const cards = [];
     for (const group of groupsForWork) {
-      for (const item of group.items || []) cards.push({ item, group });
+      if (kanbanCategory !== 'all' && String(group.id) !== kanbanCategory) continue;
+      for (const item of group.items || []) {
+        if (kanbanStatus !== 'all' && kanbanColumnFor(item.status) !== kanbanStatus) continue;
+        if (!itemMatchesKanbanAssignee(item, kanbanAssignee, myEmail)) continue;
+        cards.push({ item, group });
+      }
     }
+    const columns = kanbanStatus === 'all'
+      ? KANBAN_STATUSES
+      : KANBAN_STATUSES.filter((status) => status.value === kanbanStatus);
     return (
-      <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
-        {DD_STATUSES.map((status) => {
-          const column = cards.filter(({ item }) => item.status === status.value);
-          return (
-            <section key={status.value} className="dd-portal-column" data-status={status.value}>
-              <header className="dd-portal-column__header">
-                <h2>{status.label}</h2>
-                <span>{column.length}</span>
-              </header>
-              <ul className="dd-portal-column__cards">
-                {column.map(({ item, group }) => (
-                  <li
-                    key={item.id}
-                    data-dd-item-id={item.id}
-                    className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}${selected.has(String(item.id)) ? ' is-selected' : ''}`}
-                    data-status={item.status}
-                    title={blockedTooltip(item) || undefined}
-                  >
-                    <div className="dd-portal-card__top">
-                      <label className="dd-list-row__check">
+      <>
+        <div className="dd-portal-board-tools dd-workspace-kanban__tools">
+          <label>
+            <span>Category</span>
+            <select
+              className="modal-input"
+              value={kanbanCategory}
+              onChange={(e) => {
+                setKanbanCategory(e.target.value);
+                console.log('[DdChecklist] kanban category', e.target.value);
+              }}
+            >
+              <option value="all">All categories</option>
+              {groupsForWork.map((group) => (
+                <option key={group.id} value={String(group.id)}>{group.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select
+              className="modal-input"
+              value={kanbanStatus}
+              onChange={(e) => {
+                setKanbanStatus(e.target.value);
+                console.log('[DdChecklist] kanban status', e.target.value);
+              }}
+            >
+              <option value="all">All statuses</option>
+              {KANBAN_STATUSES.map((status) => (
+                <option key={status.value} value={status.value}>{status.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Assignee</span>
+            <select
+              className="modal-input"
+              value={kanbanAssignee}
+              onChange={(e) => {
+                setKanbanAssignee(e.target.value);
+                console.log('[DdChecklist] kanban assignee', e.target.value);
+              }}
+            >
+              <option value="all">All assignees</option>
+              <option value="mine">Assigned to me</option>
+              <option value="unassigned">Unassigned</option>
+              {members.map((member) => (
+                <option key={member.id} value={String(member.email || '').trim().toLowerCase()}>
+                  {member.displayName || displayNameFromEmail(member.email)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Sort</span>
+            <select
+              className="modal-input"
+              value={kanbanSort.key || ''}
+              onChange={(e) => {
+                const key = e.target.value || null;
+                const next = { key, dir: 'asc' };
+                setKanbanSort(next);
+                console.log('[DdChecklist] kanban sort', next.key || 'checklist order', next.dir);
+              }}
+            >
+              <option value="">Checklist order</option>
+              <option value="assigned">Assignee</option>
+              <option value="status">Status</option>
+              <option value="due">Due date</option>
+              <option value="item">Item</option>
+            </select>
+          </label>
+          {kanbanSort.key ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              aria-label={kanbanSort.dir === 'desc' ? 'Sort descending' : 'Sort ascending'}
+              onClick={() => {
+                setKanbanSort((prev) => {
+                  const next = { ...prev, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+                  console.log('[DdChecklist] kanban sort', next.key, next.dir);
+                  return next;
+                });
+              }}
+            >
+              {kanbanSort.dir === 'desc' ? '↓' : '↑'}
+            </button>
+          ) : null}
+        </div>
+        <div className="dd-portal-board dd-workspace-kanban" aria-label="Due diligence kanban">
+          {columns.map((status) => {
+            const column = sortDdItems(
+              cards
+                .filter(({ item }) => kanbanColumnFor(item.status) === status.value)
+                .map(({ item }) => item),
+              kanbanSort,
+              assigneeLabel
+            );
+            const byId = new Map(cards.map(({ item, group }) => [item.id, group]));
+            return (
+              <section key={status.value} className="dd-portal-column" data-status={status.value}>
+                <header className="dd-portal-column__header">
+                  <h2>{status.label}</h2>
+                  <span>{column.length}</span>
+                </header>
+                <ul className="dd-portal-column__cards">
+                  {column.map((item) => {
+                    const group = byId.get(item.id);
+                    return (
+                      <li
+                        key={item.id}
+                        data-dd-item-id={item.id}
+                        className={`dd-portal-card${item.blocked ? ' dd-portal-card--locked' : ''}${selected.has(String(item.id)) ? ' is-selected' : ''}`}
+                        data-status={item.status}
+                        title={blockedTooltip(item) || undefined}
+                      >
+                        <div className="dd-portal-card__top">
+                          <label className="dd-list-row__check">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(String(item.id))}
+                              onChange={(e) => {
+                                const next = new Set(selected);
+                                const key = String(item.id);
+                                if (e.target.checked) next.add(key);
+                                else next.delete(key);
+                                setSelected(next);
+                                setAnchorId(key);
+                                console.log('[DdChecklist] kanban select', key, next.size);
+                              }}
+                              aria-label={`Select ${item.title}`}
+                            />
+                          </label>
+                          <strong>{item.title}</strong>
+                          {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
+                          {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
+                        </div>
+                        <span className="dd-portal-card__group">{group?.name}</span>
                         <input
-                          type="checkbox"
-                          checked={selected.has(String(item.id))}
-                          onChange={(e) => {
-                            const next = new Set(selected);
-                            const key = String(item.id);
-                            if (e.target.checked) next.add(key);
-                            else next.delete(key);
-                            setSelected(next);
-                            setAnchorId(key);
-                            console.log('[DdChecklist] kanban select', key, next.size);
-                          }}
-                          aria-label={`Select ${item.title}`}
+                          type="date"
+                          className="modal-input dd-item__due-input"
+                          value={item.due_at ? item.due_at.slice(0, 10) : ''}
+                          onChange={(e) => handleDueChange(item.id, dueToIso(e.target.value))}
+                          aria-label={`Due date for ${item.title}`}
+                          disabled={!canWrite}
                         />
-                      </label>
-                      <strong>{item.title}</strong>
-                      {item.requests_document ? <span className="dd-item__badge">Doc</span> : null}
-                      {item.blocked ? <span className="dd-dep__badge">{blockedLabel(item)}</span> : null}
-                    </div>
-                    <span className="dd-portal-card__group">{group.name}</span>
-                    <input
-                      type="date"
-                      className="modal-input dd-item__due-input"
-                      value={item.due_at ? item.due_at.slice(0, 10) : ''}
-                      onChange={(e) => handleDueChange(item.id, dueToIso(e.target.value))}
-                      aria-label={`Due date for ${item.title}`}
-                      disabled={!canWrite}
-                    />
-                    {renderAssigneeSelect(item, 'modal-input')}
-                    <select
-                      className="modal-input dd-item__status"
-                      value={item.status}
-                      onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                      disabled={!canWrite}
-                      aria-label={`Status for ${item.title}`}
-                    >
-                      {DD_STATUSES.map((s) => (
-                        <option
-                          key={s.value}
-                          value={s.value}
-                          disabled={s.value !== item.status && !canSetStatus(item, s.value)}
+                        {renderAssigneeSelect(item, 'modal-input')}
+                        <select
+                          className="modal-input dd-item__status"
+                          value={item.status}
+                          onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                          disabled={!canWrite}
+                          aria-label={`Status for ${item.title}`}
                         >
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })}
-      </div>
+                          {DD_STATUSES.map((s) => (
+                            <option
+                              key={s.value}
+                              value={s.value}
+                              disabled={s.value !== item.status && !canSetStatus(item, s.value)}
+                            >
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      </>
     );
   };
 
