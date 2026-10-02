@@ -59,6 +59,7 @@ export default function DdWorkspaceModal({
         {dealId ? (
           <DdChecklist
             dealId={dealId}
+            dealName={dealName}
             canWrite={canWrite}
             onRefresh={onRefresh}
             workspace

@@ -9,6 +9,7 @@ import {
   viewerTimeZone,
   weekColumns
 } from './ddGantt.js';
+import { downloadGanttShare, ganttShareRows } from './exportGanttShare.js';
 
 const HOLIDAY_KEY = 'vettr.dd.bankHolidays';
 
@@ -114,12 +115,16 @@ export default function DdGantt({
   activeStageId = null,
   onStageChange = null,
   onRenameGroup = null,
-  onHide = null
+  onHide = null,
+  shareTitle = ''
 }) {
   const [mode, setMode] = useState(audience === 'external' ? 'external' : 'internal');
   const [todayMs, setTodayMs] = useState(() => localTodayMs());
   const [editingId, setEditingId] = useState(null);
   const [showHolidays, setShowHolidays] = useState(readHolidayToggle);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef(null);
   const shown = showAudienceToggle ? mode : (audience === 'external' ? 'external' : 'internal');
   const showAssignee = shown === 'internal';
 
@@ -198,6 +203,35 @@ export default function DdGantt({
     console.log('[DdGantt] audience', next);
   };
 
+  useEffect(() => {
+    if (!exportOpen) return undefined;
+    const close = (event) => {
+      if (!exportRef.current?.contains(event.target)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [exportOpen]);
+
+  const runExport = async (format) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const rows = ganttShareRows(model.stages);
+      console.log('[DdGantt] export', format, shareTitle || 'timeline', rows);
+      await downloadGanttShare({
+        title: shareTitle,
+        rows,
+        format,
+        chart: { weeks, stages: model.stages, holidays }
+      });
+    } catch (err) {
+      console.error('[DdGantt] export failed', err);
+      alert(`Could not export the chart: ${err.message || 'error'}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <section className="dd-gantt" aria-label="Due diligence stages">
       <div className="dd-gantt__toolbar">
@@ -239,9 +273,29 @@ export default function DdGantt({
             </button>
           </div>
         ) : null}
+        <div className="dd-gantt__export" ref={exportRef}>
+          <button
+            type="button"
+            className="btn-secondary btn-secondary--sm dd-gantt__action"
+            aria-expanded={exportOpen}
+            aria-haspopup="menu"
+            aria-busy={exporting}
+            disabled={exporting}
+            onClick={() => setExportOpen((open) => !open)}
+          >
+            {exporting ? 'Exporting…' : 'Export Gantt Chart'}
+          </button>
+          {exportOpen ? (
+            <div className="dd-gantt__export-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => runExport('png')}>PNG</button>
+              <button type="button" role="menuitem" onClick={() => runExport('jpeg')}>JPEG</button>
+              <button type="button" role="menuitem" onClick={() => runExport('pdf')}>PDF</button>
+            </div>
+          ) : null}
+        </div>
         {typeof onHide === 'function' ? (
-          <button type="button" className="btn-secondary btn-secondary--sm" onClick={onHide}>
-            Hide
+          <button type="button" className="btn-secondary btn-secondary--sm dd-gantt__action" onClick={onHide}>
+            Hide Gantt Chart
           </button>
         ) : null}
       </div>

@@ -52,6 +52,7 @@ export default function CrmDashboard({
   onRefresh,
   onSaveCalculatorDefaults = null,
   onTodayLoaded = null,
+  onDiligenceCount = null,
   onAddDeal = null,
   initialDealId = null,
   initialCrmView = null,
@@ -98,12 +99,14 @@ export default function CrmDashboard({
       const data = await crmAPI.getToday();
       setToday(data);
       onTodayLoaded?.(data?.badgeCount ?? 0);
+      onDiligenceCount?.(Array.isArray(data?.activeDd) ? data.activeDd.length : 0);
+      console.log('[CrmDashboard] diligence count', data?.activeDd?.length ?? 0);
     } catch (err) {
       setError(err.message || 'Failed to load CRM');
     } finally {
       setLoading(false);
     }
-  }, [onTodayLoaded]);
+  }, [onDiligenceCount, onTodayLoaded]);
 
   useEffect(() => {
     loadToday();

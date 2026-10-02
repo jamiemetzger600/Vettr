@@ -10271,7 +10271,6 @@ button.aggregator-welcome__buybox {
 }
 
 .dd-group__add-item {
-  margin-left: auto;
   font-size: 12px;
   padding: 4px 10px;
 }
@@ -10939,6 +10938,53 @@ button.aggregator-welcome__buybox {
 .dd-gantt__toolbar .crm-muted {
   margin: 0;
   flex: 1 1 auto;
+}
+
+.dd-gantt__export {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.btn-secondary.btn-secondary--sm.dd-gantt__action {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.dd-gantt__export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-width: 112px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.dd-gantt__export-menu button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dd-gantt__export-menu button:hover {
+  background: var(--bg-tertiary);
 }
 
 .dd-gantt__holiday-toggle {

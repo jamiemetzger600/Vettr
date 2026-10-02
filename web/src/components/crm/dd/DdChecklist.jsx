@@ -319,7 +319,7 @@ function itemMatchesKanbanAssignee(item, filter, myEmail) {
   return email === filter;
 }
 
-export default function DdChecklist({ dealId, onRefresh, canWrite = true, workspace = false }) {
+export default function DdChecklist({ dealId, dealName = '', onRefresh, canWrite = true, workspace = false }) {
   const { user } = useAuth() || {};
   const myEmail = String(user?.email || '').trim().toLowerCase();
   const [checklist, setChecklist] = useState(null);
@@ -1658,6 +1658,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
                 setChartHidden(true);
                 saveChartHidden(true);
               }}
+              shareTitle={dealName}
               showAudienceToggle
               activeStageId={stageFocus}
               onStageChange={(stageId) => {
@@ -1691,13 +1692,13 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
             {chartHidden ? (
               <button
                 type="button"
-                className="btn-secondary btn-secondary--sm"
+                className="btn-secondary btn-secondary--sm dd-gantt__action"
                 onClick={() => {
                   setChartHidden(false);
                   saveChartHidden(false);
                 }}
               >
-                Show chart
+                Show Gantt Chart
               </button>
             ) : null}
             <button
@@ -1744,6 +1745,7 @@ export default function DdChecklist({ dealId, onRefresh, canWrite = true, worksp
           milestones={checklist.milestones || []}
           onMilestoneDate={canWrite ? handleMilestoneDate : null}
           onRenameGroup={canWrite ? handleRenameGroup : null}
+          shareTitle={dealName}
           showAudienceToggle
         />
       ) : (

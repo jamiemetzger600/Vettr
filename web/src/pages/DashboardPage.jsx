@@ -102,6 +102,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   /** All personal + team saves — used for aggregator “already saved” markers only. */
   const [savedDealIndex, setSavedDealIndex] = useState([]);
   const [crmBadgeCount, setCrmBadgeCount] = useState(0);
+  const [diligenceCount, setDiligenceCount] = useState(0);
   const [crmInitialDealId, setCrmInitialDealId] = useState(() => {
     const n = Number(crmDealParam);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -152,6 +153,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
   const skipPersistFromUrlRef = useRef(false);
+  const lastCrmViewRef = useRef('cards');
 
   const loadScopedSavedDeals = useCallback(async () => {
     if (authLoading || isGuest) return;
@@ -239,7 +241,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
         .then((data) => {
           if (!cancelled) {
             setCrmBadgeCount(data?.badgeCount ?? 0);
-            console.log('[Dashboard] CRM badgeCount', data?.badgeCount ?? 0);
+            setDiligenceCount(Array.isArray(data?.activeDd) ? data.activeDd.length : 0);
+            console.log('[Dashboard] CRM badgeCount', data?.badgeCount ?? 0, 'diligence', data?.activeDd?.length ?? 0);
           }
         })
         .catch((err) => console.warn('[Dashboard] CRM today prefetch failed', err.message));
@@ -289,6 +292,10 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
     setCrmInitialFocusSection(sectionParam || 'crm-talk');
     console.log('[Dashboard] deep link CRM deal', n, 'section', sectionParam);
   }, [crmDealParam, sectionParam, searchParams]);
+
+  useEffect(() => {
+    if (crmSubview && crmSubview !== 'diligence') lastCrmViewRef.current = crmSubview;
+  }, [crmSubview]);
 
   useEffect(() => {
     persistDashboardLocation({ tab: activeTab, crmSubview });
@@ -516,8 +523,26 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
       setCrmInitialViewOverride('list');
       return;
     }
-    if (isGuest && tab === 'crm') {
-      logGuestEvent('guest_my_deals_tab');
+    if (tab === 'diligence') {
+      console.log('[Dashboard] open Due Diligence tab');
+      if (isGuest) logGuestEvent('guest_my_deals_tab');
+      setActiveTab('crm');
+      setCrmSubview('diligence');
+      setCrmInitialViewOverride('diligence');
+      return;
+    }
+    if (tab === 'crm') {
+      if (isGuest) logGuestEvent('guest_my_deals_tab');
+      setActiveTab('crm');
+      if (crmSubview === 'diligence') {
+        const back = lastCrmViewRef.current && lastCrmViewRef.current !== 'diligence'
+          ? lastCrmViewRef.current
+          : 'cards';
+        console.log('[Dashboard] CRM tab from diligence, restore', back);
+        setCrmSubview(back);
+        setCrmInitialViewOverride(back);
+      }
+      return;
     }
     setActiveTab(tab);
   };
@@ -605,6 +630,8 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
         aggregatorCount={feedCountReady ? matchCount : totalDeals}
         crmCount={savedDeals.length}
         crmBadgeCount={crmBadgeCount}
+        diligenceCount={diligenceCount}
+        crmSubview={crmSubview}
         compact={mobileDeckActive && isMobile && activeTab === 'aggregator'}
         onOpenQuickCalculator={() => {
           if (isGuest) {
@@ -681,6 +708,7 @@ export default function DashboardPage({ feedSource = 'airtable' }) {
             onRefresh={loadUserData}
             onSaveCalculatorDefaults={handleSaveCalculatorDefaults}
             onTodayLoaded={setCrmBadgeCount}
+            onDiligenceCount={setDiligenceCount}
             onAddDeal={() => setShowManualDealModal(true)}
             initialDealId={crmInitialDealId}
             initialCrmView={crmInitialViewOverride || crmSubview}

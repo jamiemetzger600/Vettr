@@ -17,6 +17,8 @@ export default function Navigation({
   aggregatorCount = 0,
   crmCount = 0,
   crmBadgeCount = 0,
+  diligenceCount = 0,
+  crmSubview = null,
   onOpenQuickCalculator = null,
   onStartTour = null,
   compact = false,
@@ -192,7 +194,7 @@ export default function Navigation({
           </button>
           <button
             type="button"
-            className={`tab-btn ${activeTab === 'crm' ? 'active' : ''}`}
+            className={`tab-btn ${activeTab === 'crm' && crmSubview !== 'diligence' ? 'active' : ''}`}
             data-tour="crm-tab"
             onClick={() => setActiveTab('crm')}
             title={isTeamMode && activeTeam ? `${activeTeam.name} CRM` : 'Vettr CRM'}
@@ -205,6 +207,16 @@ export default function Navigation({
             ) : (
               <span className="tab-badge">{crmCount}</span>
             )}
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'crm' && crmSubview === 'diligence' ? 'active' : ''}`}
+            data-tour="dd-tab"
+            onClick={() => setActiveTab('diligence')}
+            title="Due Diligence"
+          >
+            <span>Due Diligence</span>
+            {!isGuest ? <span className="tab-badge">{diligenceCount}</span> : null}
           </button>
           {!compact && (
             <span className="app-header-version tab-navigation-version" title="App version">v{pkg.version}</span>

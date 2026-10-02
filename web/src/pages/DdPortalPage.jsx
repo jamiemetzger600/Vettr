@@ -481,6 +481,7 @@ export default function DdPortalPage() {
           startedAt={data.checklist?.started_at}
           targetDate={data.checklist?.target_date}
           milestones={data.checklist?.milestones || []}
+          shareTitle={data.dealName}
           audience={data.mode === 'collaborative' ? 'internal' : 'external'}
           showAudienceToggle={data.mode === 'collaborative'}
         />
