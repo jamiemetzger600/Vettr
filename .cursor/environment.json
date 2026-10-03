@@ -1,0 +1,19 @@
+{
+  "name": "Vettr dev",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && npm run dev"
+    },
+    {
+      "name": "web",
+      "command": "cd web && npm run dev"
+    }
+  ],
+  "ports": [
+    { "name": "backend-api", "port": 3001 },
+    { "name": "web-dev", "port": 5173 }
+  ]
+}
