@@ -6487,6 +6487,53 @@ button.aggregator-welcome__buybox {
   color: var(--text-secondary);
 }
 
+.mcp-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.mcp-connection-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-connection-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mcp-meta {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.mcp-token-once {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.mcp-token-once code {
+  display: block;
+  margin: 8px 0;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
 .settings-checkbox-list {
   margin: 16px 0 0;
   display: flex;

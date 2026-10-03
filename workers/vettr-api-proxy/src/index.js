@@ -53,6 +53,8 @@ export default {
 
     const headers = new Headers(request.headers);
     headers.delete('host');
+    headers.set('x-forwarded-host', incoming.host);
+    headers.set('x-forwarded-proto', incoming.protocol.replace(':', '') || 'https');
     headers.set('host', target.host);
     // Cloudflare / proxy hop-by-hop cleanup
     headers.delete('cf-connecting-ip');

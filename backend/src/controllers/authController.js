@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import pool from '../db/pool.js';
-import { setAuthCookie, clearAuthCookie } from '../lib/authCookies.js';
+import { setAuthCookie, clearAuthCookie, readAuthToken } from '../lib/authCookies.js';
 import { sendEmail, isSmtpConfigured } from '../services/emailService.js';
 
 const SALT_ROUNDS = 10;
@@ -160,6 +160,17 @@ export const getCurrentUser = async (req, res) => {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Server error' });
   }
+};
+
+/** Re-issue the session cookie from a valid bearer so a top-level OAuth redirect can see the user. */
+export const ensureSessionCookie = (req, res) => {
+  const { token } = readAuthToken(req);
+  if (!token || token.startsWith('vtr_')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  setAuthCookie(res, token, req);
+  console.log('[auth] session cookie refreshed for bot connect', { userId: req.user.userId });
+  res.json({ ok: true });
 };
 
 export const logout = async (req, res) => {

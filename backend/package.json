@@ -1,6 +1,6 @@
 {
   "name": "vettr-backend",
-  "version": "5.0.150",
+  "version": "5.0.152",
   "description": "Backend API for Vettr mobile web and native apps",
   "main": "src/index.js",
   "type": "module",
@@ -19,6 +19,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "bcrypt": "^5.1.1",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
@@ -30,7 +31,8 @@
     "pg": "^8.11.3",
     "stripe": "^14.7.0",
     "web-push": "^3.6.7",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

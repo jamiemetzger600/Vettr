@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { authAPI } from '../utils/api';
 import { mergeGuestSettingsIntoAccount } from '../utils/mergeGuestSettings';
 import { parseAuthReturnParams } from '../hooks/useGuestAccess';
+import { allowedMcpAuthorizeUrl } from '../utils/mcpOAuthNext';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,6 +17,7 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const fromExtension = searchParams.get('from') === 'extension';
   const resetOk = Boolean(location.state?.resetOk);
+  const oauthNext = allowedMcpAuthorizeUrl(searchParams.get('next'));
 
   const postAuthPath = useMemo(() => {
     // From Chrome extension: stay on a simple confirmation path (no auto-redirect away)
@@ -33,8 +36,22 @@ export default function LoginPage() {
   }, [searchParams, fromExtension]);
 
   useEffect(() => {
+    if (user && oauthNext) {
+      let cancelled = false;
+      authAPI.ensureSessionCookie()
+        .then(() => {
+          if (!cancelled) window.location.assign(oauthNext);
+        })
+        .catch((err) => {
+          console.error('[login] bot connect cookie failed', err);
+          if (!cancelled) setError(err.message || 'Could not start the bot connection');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     if (user && postAuthPath) navigate(postAuthPath, { replace: true });
-  }, [user, navigate, postAuthPath]);
+  }, [user, navigate, postAuthPath, oauthNext]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,6 +60,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
       await mergeGuestSettingsIntoAccount();
+      if (oauthNext) return;
       if (fromExtension) {
         // Stay on this page so the success banner is visible
         return;

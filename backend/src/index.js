@@ -13,9 +13,16 @@ import airtableDealsRoutes from './routes/airtableDeals.js';
 import marketDealsRoutes from './routes/marketDeals.js';
 import teamsRoutes from './routes/teams.js';
 import feedbackRoutes from './routes/feedback.js';
+import oauthRoutes, {
+  protectedResourceMetadata,
+  authorizationServerMetadata
+} from './routes/oauth.js';
+import mcpAccountRoutes from './routes/mcpAccount.js';
+import { handleMcp, mcpAuth } from './mcp/http.js';
 import './services/notificationScheduler.js'; // Start notification jobs
 import './services/airtableScraper.js';
 import { parseCookieHeader } from './lib/authCookies.js';
+import { authMiddleware } from './middleware/auth.js';
 import { validateConfig } from './config.js';
 import pool from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
@@ -66,10 +73,20 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.150' });
+  res.json({ status: 'ok', version: '5.0.152' });
 });
 
 // Routes
+app.get('/.well-known/oauth-protected-resource', protectedResourceMetadata);
+app.get('/.well-known/oauth-protected-resource/mcp', protectedResourceMetadata);
+app.get('/.well-known/oauth-authorization-server', authorizationServerMetadata);
+app.get('/.well-known/oauth-authorization-server/mcp', authorizationServerMetadata);
+app.use('/oauth', oauthRoutes);
+app.post('/mcp', mcpAuth, handleMcp);
+app.get('/mcp', mcpAuth, handleMcp);
+app.delete('/mcp', mcpAuth, handleMcp);
+app.use('/api/mcp', authMiddleware, mcpAccountRoutes);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/deals', dealsRoutes);

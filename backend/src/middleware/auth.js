@@ -10,6 +10,9 @@ export const authMiddleware = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.typ === 'mcp_access') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
     req.user = decoded; // Contains { userId, email }
     req.authSource = source;
     next();
@@ -27,6 +30,7 @@ export const optionalAuth = (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.typ === 'mcp_access') return next();
       req.user = decoded;
       req.authSource = source;
     }

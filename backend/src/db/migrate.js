@@ -1301,6 +1301,119 @@ const migrations = [
   {
     name: 'dd_stage_milestone_start_v5_147',
     up: `ALTER TABLE dd_stage_milestones ADD COLUMN IF NOT EXISTS start_on DATE;`
+  },
+  {
+    name: 'team_cloud_and_dd_answers_v5_151',
+    up: `
+      CREATE TABLE IF NOT EXISTS team_cloud_connections (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        provider VARCHAR(20) NOT NULL,
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TIMESTAMPTZ,
+        account_email TEXT,
+        root_folder_id TEXT,
+        connected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        connected_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (team_id, provider)
+      );
+
+      CREATE TABLE IF NOT EXISTS deal_cloud_folders (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        saved_deal_id INTEGER NOT NULL REFERENCES saved_deals(id) ON DELETE CASCADE,
+        provider VARCHAR(20) NOT NULL,
+        remote_folder_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (saved_deal_id, provider)
+      );
+
+      CREATE TABLE IF NOT EXISTS dd_answers (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+        saved_deal_id INTEGER NOT NULL REFERENCES saved_deals(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES dd_items(id) ON DELETE SET NULL,
+        category VARCHAR(40) NOT NULL,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL DEFAULT '',
+        source VARCHAR(20) NOT NULL DEFAULT 'seller',
+        cloud_provider VARCHAR(20),
+        cloud_file_id TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_dd_answers_deal ON dd_answers(saved_deal_id);
+      CREATE INDEX IF NOT EXISTS idx_dd_answers_team ON dd_answers(team_id);
+      CREATE INDEX IF NOT EXISTS idx_dd_answers_item ON dd_answers(item_id);
+    `
+  },
+  {
+    name: 'mcp_oauth_v5_152',
+    up: `
+      CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+        id TEXT PRIMARY KEY,
+        client_secret_hash TEXT,
+        client_name TEXT NOT NULL,
+        redirect_uris JSONB NOT NULL DEFAULT '[]'::jsonb,
+        token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
+        code_hash TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL REFERENCES mcp_oauth_clients(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        redirect_uri TEXT NOT NULL,
+        code_challenge TEXT NOT NULL,
+        scopes TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_refresh_tokens (
+        id SERIAL PRIMARY KEY,
+        token_hash TEXT UNIQUE NOT NULL,
+        client_id TEXT NOT NULL REFERENCES mcp_oauth_clients(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        scopes TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mcp_refresh_user ON mcp_refresh_tokens(user_id);
+
+      CREATE TABLE IF NOT EXISTS mcp_personal_tokens (
+        id SERIAL PRIMARY KEY,
+        token_hash TEXT UNIQUE NOT NULL,
+        token_prefix TEXT NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL DEFAULT 'Personal token',
+        scopes TEXT NOT NULL,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mcp_personal_user ON mcp_personal_tokens(user_id);
+
+      CREATE TABLE IF NOT EXISTS mcp_tool_calls (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        client_id TEXT,
+        tool_name TEXT NOT NULL,
+        saved_deal_id INTEGER,
+        status TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mcp_tool_calls_user ON mcp_tool_calls(user_id, created_at DESC);
+    `
   }
 ];
 

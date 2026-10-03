@@ -95,7 +95,7 @@ const MAX_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 50;
 
 // GET /api/market-deals — server-side paginated, filtered, sorted, searchable
-router.get('/', optionalAuth, async (req, res) => {
+export async function listMarketDeals(req, res) {
   try {
     const {
       page = 1,
@@ -475,7 +475,9 @@ router.get('/', optionalAuth, async (req, res) => {
     console.error('Market deals list error:', err);
     res.status(500).json({ error: 'Server error' });
   }
-});
+}
+
+router.get('/', optionalAuth, listMarketDeals);
 
 // POST /api/market-deals/off-market — broker / buyer off-market intake
 router.post('/off-market', authMiddleware, async (req, res) => {
@@ -573,7 +575,7 @@ router.get('/stats', async (_req, res) => {
 });
 
 // GET /api/market-deals/:id — full row (registered after /sources and /stats)
-router.get('/:id', optionalAuth, async (req, res) => {
+export async function getMarketDeal(req, res) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id < 1) {
     return res.status(404).json({ error: 'Deal not found' });
@@ -592,6 +594,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
     console.error('Market deal detail error:', err);
     res.status(500).json({ error: 'Server error' });
   }
-});
+}
+
+router.get('/:id', optionalAuth, getMarketDeal);
 
 export default router;

@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { authAPI } from '../utils/api';
 import { mergeGuestSettingsIntoAccount } from '../utils/mergeGuestSettings';
 import { parseAuthReturnParams } from '../hooks/useGuestAccess';
+import { allowedMcpAuthorizeUrl } from '../utils/mcpOAuthNext';
 import { getSignupCopy } from '../utils/guestEntitlements';
 import { logGuestEvent } from '../utils/guestAnalytics';
 
@@ -17,6 +19,7 @@ export default function RegisterPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const signupCopy = location.state?.signupCopy || getSignupCopy(searchParams.get('reason') || 'default');
+  const oauthNext = allowedMcpAuthorizeUrl(searchParams.get('next'));
 
   const postAuthPath = useMemo(() => {
     const { returnTo, dealDbId } = parseAuthReturnParams(searchParams.toString());
@@ -33,8 +36,22 @@ export default function RegisterPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (user && oauthNext) {
+      let cancelled = false;
+      authAPI.ensureSessionCookie()
+        .then(() => {
+          if (!cancelled) window.location.assign(oauthNext);
+        })
+        .catch((err) => {
+          console.error('[register] bot connect cookie failed', err);
+          if (!cancelled) setError(err.message || 'Could not start the bot connection');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     if (user) navigate(postAuthPath, { replace: true });
-  }, [user, navigate, postAuthPath]);
+  }, [user, navigate, postAuthPath, oauthNext]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,7 +63,7 @@ export default function RegisterPage() {
       await register(email, password);
       logGuestEvent('guest_register_complete');
       await mergeGuestSettingsIntoAccount();
-      navigate(postAuthPath);
+      if (!oauthNext) navigate(postAuthPath);
     } catch (err) {
       const msg = err.message || 'Registration failed';
       setError(msg.includes('fetch') || msg === 'Request failed' || msg === 'Failed to fetch'

@@ -200,6 +200,8 @@ export const authAPI = {
 
   getCurrentUser: () => apiRequest('/auth/me'),
 
+  ensureSessionCookie: () => apiRequest('/auth/session-cookie', { method: 'POST' }),
+
   forgotPassword: (email) =>
     apiRequest('/auth/forgot-password', {
       method: 'POST',
@@ -239,6 +241,17 @@ export const userAPI = {
   testPush: () => apiRequest('/user/push/test', { method: 'POST' }),
 
   sendDigestNow: () => apiRequest('/user/notifications/digest-now', { method: 'POST' })
+};
+
+export const mcpAPI = {
+  getConfig: () => apiRequest('/mcp/config'),
+  listConnections: () => apiRequest('/mcp/connections'),
+  revokeClient: (clientId) => apiRequest(`/mcp/connections/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
+  createToken: (name) => apiRequest('/mcp/tokens', {
+    method: 'POST',
+    body: JSON.stringify({ name })
+  }),
+  revokeToken: (id) => apiRequest(`/mcp/tokens/${id}`, { method: 'DELETE' })
 };
 
 // Deals API

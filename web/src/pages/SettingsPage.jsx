@@ -5,6 +5,7 @@ import Navigation from '../components/Navigation';
 import TeamsSettingsPanel from '../components/TeamsSettingsPanel';
 import GetTheAppPanel from '../components/GetTheAppPanel';
 import GoogleIntegrationsPanel from '../components/GoogleIntegrationsPanel';
+import ConnectedBotsPanel from '../components/ConnectedBotsPanel';
 import { useAuth } from '../context/AuthContext';
 import {
   notificationPermission,
@@ -528,6 +529,13 @@ export default function SettingsPage() {
             </label>
           </div>
         </div>
+
+        {user ? (
+          <div className="settings-section">
+            <h2>Connected bots</h2>
+            <ConnectedBotsPanel />
+          </div>
+        ) : null}
 
         {user ? (
           <div className="settings-section">
