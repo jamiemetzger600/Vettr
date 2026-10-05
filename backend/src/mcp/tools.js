@@ -39,7 +39,7 @@ export const TOOL_DEFS = [
     name: 'search_market_deals',
     title: 'Search market deals',
     description:
-      'Search the deal feed. Set use_buy_box to apply the active buy box (price, revenue, profit, states, industries, feed search, exclude keywords). Pass explicit filters to override. Always paginated. excludeStates on the buy box are returned by get_buy_boxes but are not applied by this search.',
+      'Search the deal feed. Set use_buy_box to apply the active buy box (price, revenue, profit, profit multiple, states, industries, feed search, exclude keywords). Pass explicit filters to override. Always paginated. excludeStates on the buy box are returned by get_buy_boxes but are not applied by this search.',
     inputSchema: {
       use_buy_box: z.boolean().optional().describe('Apply the active buy box'),
       search: optStr,

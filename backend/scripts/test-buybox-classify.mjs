@@ -78,6 +78,33 @@ assert(grouped.groups[0].deals.length === 1, 'expected 1 exact');
 assert(grouped.groups[0].nearDeals.length === 2, 'expected 2 near');
 
 assert(dealMatchesBuyBox({ state: 'CA' }, { targetStates: ['CA'] }) === true, 'CA should match CA');
+
+const profitBox = { profitMultiple: 3, includeNearMatchesPercent: 0 };
+assert(
+  dealMatchesBuyBox({ askingPrice: 900_000, ebitda: 400_000 }, profitBox) === true,
+  '2.25x reported profit should pass a 3.0x cap'
+);
+assert(
+  dealMatchesBuyBox({ askingPrice: 1_000_000, ebitda: 250_000 }, profitBox) === false,
+  '4.0x reported profit should fail a 3.0x cap'
+);
+assert(
+  dealMatchesBuyBox({ askingPrice: 1_000_000, ebitda: null }, profitBox) === true,
+  'listing with no reported EBITDA or SDE should stay in the feed'
+);
+assert(
+  dealMatchesBuyBox({ askingPrice: 1_000_000, profitMultiple: 2.5 }, profitBox) === true,
+  'stored profit multiple should be used when profit dollars are missing'
+);
+const profitNear = classifyBuyBoxMatch(
+  { askingPrice: 960_000, ebitda: 300_000 },
+  { profitMultiple: 3, includeNearMatchesPercent: 10 }
+);
+assert(profitNear.kind === 'near', `3.2x vs 3.0x at 10% flex should be near, got ${profitNear.kind}`);
+assert(
+  profitNear.reasons.some((r) => r.field === 'profit multiple'),
+  'near reason should name profit multiple'
+);
 assert(dealMatchesBuyBox({ state: 'Ontario Canada' }, { targetStates: ['CA'] }) === false, 'Canada must not match CA');
 assert(dealPassesSlotFeed(
   { name: 'Full Service Car Wash', state: 'NV', description: 'tunnel, smog station' },

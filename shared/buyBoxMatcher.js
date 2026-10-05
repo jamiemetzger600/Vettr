@@ -30,6 +30,17 @@ function stateTokenHit(dealState, wanted) {
   return tokens.includes(needle);
 }
 
+/** Asking price ÷ reported EBITDA or SDE. Prefer the live ratio; fall back to a stored multiple. */
+function reportedProfitMultiple(deal) {
+  const profit = Number(deal?.ebitda);
+  const price = Number(deal?.askingPrice);
+  if (Number.isFinite(profit) && profit > 0 && Number.isFinite(price) && price > 0) {
+    return price / profit;
+  }
+  const listed = Number(deal?.profitMultiple);
+  return Number.isFinite(listed) && listed > 0 ? listed : null;
+}
+
 /**
  * Check if a deal matches the user's buy box criteria.
  * Optional includeNearMatchesPercent (0–100) relaxes numeric limits so slightly over-max or under-min deals still show (e.g. negotiable listings).
@@ -79,6 +90,11 @@ export function dealMatchesBuyBox(deal, buyBox) {
   if (buyBox.revenueMultiple != null && deal.revenue && deal.askingPrice) {
     const actualMultiple = deal.askingPrice / deal.revenue;
     if (!withinSlack(buyBox.revenueMultiple, actualMultiple, 'max', pct)) return false;
+  }
+
+  if (buyBox.profitMultiple != null) {
+    const actualProfitMultiple = reportedProfitMultiple(deal);
+    if (actualProfitMultiple != null && !withinSlack(buyBox.profitMultiple, actualProfitMultiple, 'max', pct)) return false;
   }
 
   return true;
@@ -132,6 +148,12 @@ function thresholdOvershootReasons(deal, buyBox) {
   push('revenue', overshootMax(deal.revenue, buyBox.maxRevenue), 'over');
   if (buyBox.revenueMultiple != null && deal.revenue && deal.askingPrice) {
     push('multiple', overshootMax(deal.askingPrice / deal.revenue, buyBox.revenueMultiple), 'over');
+  }
+  if (buyBox.profitMultiple != null) {
+    const actualProfitMultiple = reportedProfitMultiple(deal);
+    if (actualProfitMultiple != null) {
+      push('profit multiple', overshootMax(actualProfitMultiple, buyBox.profitMultiple), 'over');
+    }
   }
   return reasons;
 }

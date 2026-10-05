@@ -36,6 +36,10 @@ export function marketQueryFromBuyBox(slot, flexibilityPct = null) {
   if (maxProfit != null) query.max_profit = String(maxProfit);
   if (minRevenue != null) query.min_revenue = String(minRevenue);
   if (maxRevenue != null) query.max_revenue = String(maxRevenue);
+  const maxProfitMultiple = numOrNull(criteria.profitMultiple);
+  if (maxProfitMultiple != null && maxProfitMultiple > 0) {
+    query.max_profit_multiple = String(Number((maxProfitMultiple * (1 + flex)).toFixed(4)));
+  }
 
   if (Array.isArray(criteria.targetStates) && criteria.targetStates.length) {
     query.state = criteria.targetStates.join(',');

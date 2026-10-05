@@ -109,6 +109,7 @@ export async function listMarketDeals(req, res) {
       max_revenue,
       min_profit,
       max_profit,
+      max_profit_multiple,
       industry,
       min_years,
       max_years,
@@ -225,6 +226,22 @@ export async function listMarketDeals(req, res) {
     if (max_profit) {
       conditions.push(`annual_profit <= $${idx++}`);
       params.push(Number(max_profit));
+    }
+
+    // Max asking price ÷ reported EBITDA or SDE. No reported profit (COALESCE falls through to 0) stays in the feed.
+    if (max_profit_multiple) {
+      const cap = Number(max_profit_multiple);
+      if (Number.isFinite(cap) && cap > 0) {
+        conditions.push(`COALESCE(
+          CASE
+            WHEN annual_profit > 0 AND asking_price IS NOT NULL THEN asking_price / annual_profit
+          END,
+          profit_multiple,
+          0
+        ) <= $${idx++}`);
+        params.push(cap);
+        console.log('[market-deals] max profit multiple', { cap });
+      }
     }
 
     // Industry (match against TEXT[] column)

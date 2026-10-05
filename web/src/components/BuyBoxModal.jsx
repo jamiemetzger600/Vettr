@@ -16,6 +16,7 @@ const DEFAULT_BUYBOX = {
   minRevenue: null,
   maxRevenue: null,
   revenueMultiple: null,
+  profitMultiple: null,
   targetStates: [],
   excludeStates: [],
   /** Mirrors targetStates in the text field so Save always persists what the user sees */
@@ -225,6 +226,7 @@ export default function BuyBoxModal({
         maxEbitda: parseNumberField(form.maxEbitda),
         minRevenue: parseNumberField(form.minRevenue),
         revenueMultiple: parseNumberField(form.revenueMultiple),
+        profitMultiple: parseNumberField(form.profitMultiple),
         targetStates: parseStateCodes(form.targetStatesInput, form.targetStates),
         excludeStates: parseStateCodes(form.excludeStatesInput, form.excludeStates),
         targetIndustries: form.targetIndustries || [],
@@ -369,9 +371,14 @@ export default function BuyBoxModal({
           <div className="form-group"><label>Min EBITDA</label><input value={formatWithCommas(form.minEbitda)} onChange={(e) => handleNumberChange('minEbitda', e.target.value)} placeholder="$100,000" /></div>
           <div className="form-group"><label>Max EBITDA</label><input value={formatWithCommas(form.maxEbitda)} onChange={(e) => handleNumberChange('maxEbitda', e.target.value)} placeholder="$1,000,000" /></div>
           <div className="form-group"><label>Min Revenue</label><input value={formatWithCommas(form.minRevenue)} onChange={(e) => handleNumberChange('minRevenue', e.target.value)} placeholder="$1,000,000" /></div>
-          <div className="form-group"><label>Revenue Multiple</label><input value={formatWithCommas(form.revenueMultiple)} onChange={(e) => handleNumberChange('revenueMultiple', e.target.value)} placeholder="3.5" /></div>
-          <div className="form-group"><label>Target States</label><input value={form.targetStatesInput ?? form.targetStates?.join(', ') ?? ''} onChange={(e) => updateField('targetStatesInput', e.target.value)} placeholder="CA, TX, FL" /></div>
-          <div className="form-group"><label>Exclude States</label><input value={form.excludeStatesInput ?? form.excludeStates?.join(', ') ?? ''} onChange={(e) => updateField('excludeStatesInput', e.target.value)} placeholder="AK, HI" /></div>
+          <div className="buybox-multiple-pair">
+            <div className="form-group"><label>Revenue Multiple</label><input value={formatWithCommas(form.revenueMultiple)} onChange={(e) => handleNumberChange('revenueMultiple', e.target.value)} placeholder="3.5" /></div>
+            <div className="form-group"><label>Profit Multiple</label><input value={formatWithCommas(form.profitMultiple)} onChange={(e) => handleNumberChange('profitMultiple', e.target.value)} placeholder="3.0" inputMode="decimal" /></div>
+          </div>
+          <div className="modal-grid two-col full-width">
+            <div className="form-group"><label>Target States</label><input value={form.targetStatesInput ?? form.targetStates?.join(', ') ?? ''} onChange={(e) => updateField('targetStatesInput', e.target.value)} placeholder="CA, TX, FL" /></div>
+            <div className="form-group"><label>Exclude States</label><input value={form.excludeStatesInput ?? form.excludeStates?.join(', ') ?? ''} onChange={(e) => updateField('excludeStatesInput', e.target.value)} placeholder="AK, HI" /></div>
+          </div>
           {SHOW_TARGET_INDUSTRIES_IN_BUYBOX && (
             <div className="form-group full-width">
               <label>Target Industries</label>

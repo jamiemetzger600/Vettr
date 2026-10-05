@@ -127,6 +127,7 @@ export function emptyBuyBoxCriteria() {
     minRevenue: null,
     maxRevenue: null,
     revenueMultiple: null,
+    profitMultiple: null,
     targetStates: [],
     excludeStates: [],
     targetIndustries: [],
@@ -160,6 +161,7 @@ export function isBuyBoxCriteriaEmpty(criteria) {
     !has(criteria.maxEbitda) &&
     !has(criteria.minRevenue) &&
     !has(criteria.revenueMultiple) &&
+    !has(criteria.profitMultiple) &&
     !has(criteria.targetStates) &&
     !has(criteria.excludeStates) &&
     !has(criteria.targetIndustries) &&

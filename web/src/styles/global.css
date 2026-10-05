@@ -3226,13 +3226,14 @@ button.aggregator-welcome__buybox {
   overflow: hidden;
   min-height: 0;
   overscroll-behavior: contain;
+  padding: 16px 18px;
 }
 
 .buybox-modal-header {
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .buybox-modal-header .column-close-btn {
@@ -3272,6 +3273,35 @@ button.aggregator-welcome__buybox {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.buybox-modal .modal-grid {
+  gap: 8px 14px;
+}
+
+.buybox-modal .form-group {
+  margin-bottom: 0;
+}
+
+.buybox-modal .form-group label,
+.buybox-modal .buybox-near-matches__label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.buybox-modal .form-group input,
+.buybox-modal .form-group select {
+  padding: 7px 10px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.buybox-multiple-pair {
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 
 .buybox-modal-actions {
@@ -3398,13 +3428,13 @@ button.aggregator-welcome__buybox {
 
 /* Full-width row: CoC, payback, salary — equal columns inside Buy Box modal */
 .buybox-modal .buybox-analyzer-defaults-row {
-  gap: 16px;
+  gap: 8px 14px;
   align-items: start;
 }
 
 .buybox-near-matches {
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
 }
 
@@ -3415,10 +3445,10 @@ button.aggregator-welcome__buybox {
 }
 
 .buybox-near-matches__desc {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 12px;
-  line-height: 1.45;
+  margin-bottom: 8px;
+  line-height: 1.4;
 }
 
 .buybox-near-matches__field {
@@ -10316,6 +10346,7 @@ button.aggregator-welcome__buybox {
   border-radius: 12px;
   background: var(--bg-secondary);
 }
+
 
 .dd-group__add-item {
   font-size: 12px;

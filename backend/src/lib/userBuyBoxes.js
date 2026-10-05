@@ -71,6 +71,7 @@ export function emptyBuyBoxCriteria() {
     minRevenue: null,
     maxRevenue: null,
     revenueMultiple: null,
+    profitMultiple: null,
     targetStates: [],
     excludeStates: [],
     targetIndustries: [],
@@ -122,6 +123,7 @@ export function slotHasMatchCriteria(slot) {
     hasCriteriaValue(c.minRevenue) ||
     hasCriteriaValue(c.maxRevenue) ||
     hasCriteriaValue(c.revenueMultiple) ||
+    hasCriteriaValue(c.profitMultiple) ||
     hasCriteriaValue(c.targetStates) ||
     hasCriteriaValue(c.excludeStates) ||
     hasCriteriaValue(c.targetIndustries)

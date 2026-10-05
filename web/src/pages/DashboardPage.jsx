@@ -36,6 +36,7 @@ function isBuyBoxEmpty(buyBox) {
     !has(buyBox.maxEbitda) &&
     !has(buyBox.minRevenue) &&
     !has(buyBox.revenueMultiple) &&
+    !has(buyBox.profitMultiple) &&
     !has(buyBox.targetStates) &&
     !has(buyBox.targetIndustries) &&
     !has(buyBox.targetCOC) &&

@@ -5,6 +5,13 @@
 
 import { buildAuthHeaders } from './api.js';
 
+function applyMaxRatio(val, flex) {
+  if (val == null || val === '') return undefined;
+  const n = Number(val);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Number((n * (1 + flex)).toFixed(4));
+}
+
 function computeMultiple(price, base) {
   if (!price || !base) return null;
   return Number((price / base).toFixed(2));
@@ -180,6 +187,9 @@ export function buildMarketDealsParams({
     const maxRevenue = applyMax(buyBox.maxRevenue);
     if (minRevenue != null) params.set('min_revenue', String(minRevenue));
     if (maxRevenue != null) params.set('max_revenue', String(maxRevenue));
+
+    const maxProfitMultiple = applyMaxRatio(buyBox.profitMultiple, flex);
+    if (maxProfitMultiple != null) params.set('max_profit_multiple', String(maxProfitMultiple));
 
     if (buyBox.targetStates && buyBox.targetStates.length > 0) {
       params.set('state', buyBox.targetStates.join(','));

@@ -2431,7 +2431,8 @@ export default function DealAggregator({
       buyBox.maxEbitda,
       buyBox.minRevenue,
       buyBox.maxRevenue,
-      buyBox.revenueMultiple
+      buyBox.revenueMultiple,
+      buyBox.profitMultiple
     ].some((v) => v != null && v !== '') || hasTargetStates;
   const showBuyBoxConfigureHint = Boolean(settings) && !hasAnyCriteria;
   const effectiveMax = (limit) => (limit != null && flexPct > 0 ? limit * (1 + flexPct / 100) : limit);
@@ -2679,6 +2680,12 @@ export default function DealAggregator({
                     <>
                       <dt>Rev multiple</dt>
                       <dd>≤ {fmtMult(effectiveMax(buyBox.revenueMultiple))}</dd>
+                    </>
+                  )}
+                  {buyBox.profitMultiple != null && (
+                    <>
+                      <dt>Profit multiple</dt>
+                      <dd>≤ {fmtMult(effectiveMax(buyBox.profitMultiple))}</dd>
                     </>
                   )}
                   {hasTargetStates && (
