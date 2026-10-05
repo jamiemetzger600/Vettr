@@ -19,9 +19,55 @@ log() {
 
 kick() {
   local label="$1"
+  local plist="${HOME}/Library/LaunchAgents/${label}.plist"
   log "RESTART $label"
-  launchctl kickstart -k "${DOMAIN}/${label}" 2>>"$LOG" || \
-    launchctl bootstrap "$DOMAIN" "${HOME}/Library/LaunchAgents/${label}.plist" 2>>"$LOG" || true
+  # kickstart -k can block indefinitely while launchd throttles a crashed job.
+  launchctl kickstart -k "${DOMAIN}/${label}" 2>>"$LOG" &
+  local kpid=$!
+  for _ in $(seq 1 15); do
+    kill -0 "$kpid" 2>/dev/null || { wait "$kpid" && return 0; break; }
+    sleep 1
+  done
+  kill "$kpid" 2>/dev/null || true
+  log "kickstart stuck/failed for $label — reloading agent"
+  launchctl bootout "${DOMAIN}/${label}" 2>>"$LOG" || true
+  sleep 2
+  launchctl bootstrap "$DOMAIN" "$plist" 2>>"$LOG" || true
+}
+
+# Wait up to N seconds for a check to pass (services are still starting after a reboot).
+wait_for() {
+  local fn="$1" secs="$2"
+  for _ in $(seq 1 $((secs / 5))); do
+    "$fn" && return 0
+    sleep 5
+  done
+  "$fn"
+}
+
+PG_LABEL="homebrew.mxcl.postgresql@15"
+PG_DATA="/opt/homebrew/var/postgresql@15"
+
+pg_ok() {
+  /opt/homebrew/opt/postgresql@15/bin/pg_isready -q -h 127.0.0.1 -p 5432 >/dev/null 2>&1
+}
+
+# After an unclean shutdown postmaster.pid can point at a PID now owned by an
+# unrelated process, and Postgres refuses to start until it is removed.
+clear_stale_pg_pid() {
+  local pidfile="${PG_DATA}/postmaster.pid"
+  [[ -f "$pidfile" ]] || return 1
+  local pid
+  pid="$(head -1 "$pidfile" | tr -d '[:space:]')"
+  if [[ -n "$pid" ]] && ps -p "$pid" -o comm= 2>/dev/null | grep -q postgres; then
+    return 1
+  fi
+  log "REMOVE stale postmaster.pid (pid ${pid:-?} is not postgres)"
+  rm -f "$pidfile"
+}
+
+named_tunnel_ok() {
+  pgrep -f "cloudflared tunnel --no-autoupdate --config ${HOME}/.cloudflared/vettr-vpc.yml run" >/dev/null 2>&1
 }
 
 ensure_loaded() {
@@ -70,12 +116,22 @@ tunnel_rate_limited() {
 
 log "healthcheck start"
 
-for label in com.vettr.api com.vettr.web com.vettr.tunnel com.vettr.caffeinate; do
+for label in com.vettr.api com.vettr.web com.vettr.tunnel com.vettr.named-tunnel com.vettr.caffeinate; do
   ensure_loaded "$label"
 done
 
+# --- Postgres (API depends on it) ---
+if wait_for pg_ok 60; then
+  log "OK postgres :5432"
+else
+  log "DOWN postgres :5432"
+  clear_stale_pg_pid
+  kick "$PG_LABEL"
+  if wait_for pg_ok 30; then log "OK postgres after restart"; else log "FAIL postgres still down — see /opt/homebrew/var/log/postgresql@15.log"; fi
+fi
+
 # --- API ---
-if api_ok; then
+if wait_for api_ok 180; then
   log "OK api :3001"
 else
   log "DOWN api :3001"
@@ -85,7 +141,7 @@ else
 fi
 
 # --- Web ---
-if web_ok; then
+if wait_for web_ok 60; then
   log "OK web :5173"
 else
   log "DOWN web :5173"
@@ -94,8 +150,18 @@ else
   if web_ok; then log "OK web after restart"; else log "FAIL web still down"; fi
 fi
 
+# --- Named tunnel (primary path for the Worker via Workers VPC) ---
+if wait_for named_tunnel_ok 30; then
+  log "OK named tunnel"
+else
+  log "DOWN named tunnel"
+  kick com.vettr.named-tunnel
+  sleep 10
+  if named_tunnel_ok; then log "OK named tunnel after restart"; else log "FAIL named tunnel still down — see ~/Library/Logs/vettr/named-tunnel.err"; fi
+fi
+
 # --- Tunnel (needs healthy API first) ---
-if tunnel_ok; then
+if wait_for tunnel_ok 90; then
   log "OK tunnel"
 elif tunnel_rate_limited; then
   log "SKIP tunnel restart (Cloudflare quick-tunnel rate limited — wait for cooldown)"

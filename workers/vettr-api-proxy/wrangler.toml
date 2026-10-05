@@ -4,5 +4,10 @@ compatibility_date = "2026-01-01"
 workers_dev = true
 account_id = "b5fb063c1e439dd0d0ce3ffb317ec52c"
 
+# Stable path: Worker → Workers VPC → named tunnel "vettr-api" → 127.0.0.1:3001
+[[vpc_services]]
+binding = "VETTR_API"
+service_id = "01a10893-caf3-7570-83be-00787d6539d3"
+
 [vars]
-TUNNEL_ORIGIN = "https://wto-regulatory-former-medal.trycloudflare.com"
+TUNNEL_ORIGIN = "https://bridges-poetry-therefore-webshots.trycloudflare.com"

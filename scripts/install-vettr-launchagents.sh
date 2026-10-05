@@ -15,6 +15,7 @@ AGENTS=(
   com.vettr.api
   com.vettr.web
   com.vettr.tunnel
+  com.vettr.named-tunnel
   com.vettr.caffeinate
   com.vettr.healthcheck
 )
@@ -47,7 +48,7 @@ for label in "${AGENTS[@]}"; do
 done
 
 # Kick long-running services so they pick up any script changes
-for label in com.vettr.api com.vettr.web com.vettr.tunnel; do
+for label in com.vettr.api com.vettr.web com.vettr.tunnel com.vettr.named-tunnel; do
   launchctl kickstart -k "${DOMAIN}/${label}" 2>/dev/null || true
 done
 
