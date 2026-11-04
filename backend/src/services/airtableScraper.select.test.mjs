@@ -1,201 +1,120 @@
-process.env.SCRAPE_CLI_ONCE = '1';
-
-const {
-  selectDealsToUpsert,
-  sortDealsForSync,
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  planSnapshotSync,
+  isSameBusiness,
+  contentChanged,
   assessSnapshot,
   readSnapshotRowCount,
   isRecentAirtableListing,
-} = await import('./airtableScraper.js');
-const { default: pool } = await import('../db/pool.js');
+} from './airtableSnapshotSync.js';
 
-import assert from 'node:assert/strict';
-import test from 'node:test';
+const money = { asking_price: 400000, annual_profit: 100000, annual_revenue: 500000 };
 
-test.after(async () => {
-  await pool.end();
+function deal(url, extra = {}) {
+  return { listing_url: `https://example.com/${url}`, airtable_record_id: `rec${url}`, state: 'TX', ...extra };
+}
+function row(id, url, extra = {}) {
+  return { id, source_id: `old${id}`, listing_url: `https://example.com/${url}`, state: 'TX', is_active: true, ...extra };
+}
+
+test('a new record id on a known URL keeps the same row', () => {
+  const plan = planSnapshotSync([deal('a', { airtable_record_id: 'recRotated' })], [row(1, 'a')]);
+  assert.equal(plan.businesses[0].row.id, 1);
+  assert.deepEqual(plan.absentRowIds, []);
 });
 
-test('selects listings missing from the database even when their dates are older', () => {
-  const existing = [
-    {
-      source_id: 'recNEWER',
-      listing_url: 'https://example.com/newer',
-      source_added_at: '2026-09-21T07:00:00.000Z',
-      source_updated_at: '2026-09-21T07:00:00.000Z',
-      is_active: true,
-    },
-  ];
-  const deals = [
-    {
-      airtable_record_id: 'recOLDER',
-      airtable_id: 101,
-      listing_url: 'https://example.com/older',
-      airtable_added_at: '2026-06-02T00:00:00.000Z',
-      airtable_updated_at: '2026-06-02T00:00:00.000Z',
-    },
-    {
-      airtable_record_id: 'recNEWER',
-      listing_url: 'https://example.com/newer',
-      airtable_added_at: '2026-09-21T07:00:00.000Z',
-      airtable_updated_at: '2026-09-21T07:00:00.000Z',
-    },
-  ];
-
-  const { selected, skipped } = selectDealsToUpsert(deals, existing);
-  assert.equal(skipped, 1);
-  assert.deepEqual(selected.map((d) => d.airtable_record_id), ['recOLDER']);
-});
-
-test('matches an existing numeric source id or listing URL and reactivates inactive rows', () => {
-  const existing = [
-    {
-      source_id: '3559174',
-      listing_url: 'https://example.com/kept#section',
-      source_added_at: '2026-06-08T00:00:00.000Z',
-      source_updated_at: '2026-06-08T00:00:00.000Z',
-      is_active: true,
-    },
-    {
-      source_id: 'recGONE',
-      listing_url: 'https://example.com/inactive',
-      source_added_at: '2026-06-08T00:00:00.000Z',
-      source_updated_at: '2026-06-08T00:00:00.000Z',
-      is_active: false,
-    },
-  ];
-  const deals = [
-    {
-      airtable_record_id: 'recURL',
-      airtable_id: 999,
-      listing_url: 'https://example.com/kept',
-      airtable_added_at: '2026-06-08T00:00:00.000Z',
-      airtable_updated_at: '2026-06-08T00:00:00.000Z',
-    },
-    {
-      airtable_record_id: 'recGONE',
-      listing_url: 'https://example.com/inactive',
-      airtable_added_at: '2026-06-08T00:00:00.000Z',
-      airtable_updated_at: '2026-06-08T00:00:00.000Z',
-    },
-  ];
-
-  const { selected, skipped } = selectDealsToUpsert(deals, existing);
-  assert.equal(skipped, 1);
-  assert.deepEqual(selected.map((d) => d.airtable_record_id), ['recGONE']);
-});
-
-test('sync order puts missing listings ahead of updates, newest first', () => {
-  const existing = [
-    {
-      source_id: 'recOLD',
-      listing_url: 'https://example.com/old',
-      source_added_at: '2026-01-01T00:00:00.000Z',
-      source_updated_at: '2026-01-01T00:00:00.000Z',
-      is_active: true,
-    },
-  ];
-  const deals = [
-    {
-      airtable_record_id: 'recMISSING_OLD',
-      listing_url: 'https://example.com/missing-old',
-      airtable_added_at: '2026-06-02T00:00:00.000Z',
-    },
-    {
-      airtable_record_id: 'recOLD',
-      listing_url: 'https://example.com/old',
-      airtable_added_at: '2026-09-21T00:00:00.000Z',
-      airtable_updated_at: '2026-09-21T00:00:00.000Z',
-    },
-    {
-      airtable_record_id: 'recMISSING_NEW',
-      listing_url: 'https://example.com/missing-new',
-      airtable_added_at: '2026-09-20T00:00:00.000Z',
-    },
-  ];
-
-  const ordered = sortDealsForSync(deals, existing);
-  assert.deepEqual(ordered.map((d) => d.airtable_record_id), [
-    'recMISSING_NEW',
-    'recMISSING_OLD',
-    'recOLD',
-  ]);
-});
-
-test('a relisted listing with the same financials is already in the database', () => {
-  const existing = [
-    {
-      source_id: 'recOLD',
-      listing_url: 'https://www.bizbuysell.com/business-opportunity/old-slug/2527791/',
-      name: 'Nassau County Bakery With Property',
-      asking_price: 2400000,
-      annual_profit: 350000,
-      annual_revenue: 1850000,
-      city: 'Melville',
-      state: 'NY',
-      source_added_at: '2026-09-23T00:00:00.000Z',
-      source_updated_at: '2026-09-23T00:00:00.000Z',
-      is_active: true,
-    },
-  ];
-  const deals = [
-    {
-      airtable_record_id: 'recRELIST',
-      listing_url: 'https://www.bizbuysell.com/business-opportunity/new-slug/2559878/',
-      name: 'Nassau County Bakery With Property — updated title',
-      asking_price: 2400000,
-      annual_profit: 350000,
-      annual_revenue: 1850000,
-      state: 'NY',
-      airtable_added_at: '2026-10-02',
-      airtable_updated_at: '2026-10-02',
-    },
-    {
-      airtable_record_id: 'recTRULY_NEW',
-      listing_url: 'https://www.bizbuysell.com/business-opportunity/other/999/',
-      name: 'Maui Fishing Charters',
-      asking_price: 2100000,
-      annual_profit: 400000,
-      annual_revenue: 900000,
-      state: 'HI',
-      airtable_added_at: '2026-06-01',
-    },
-  ];
-
-  const ordered = sortDealsForSync(deals, existing);
-  assert.equal(ordered[0].airtable_record_id, 'recTRULY_NEW');
-  assert.equal(ordered[1].airtable_record_id, 'recRELIST');
-});
-
-test('the same listing title and state is already in the database', () => {
-  const existing = [
-    {
-      source_id: 'recOLD',
-      listing_url: 'https://example.com/old',
-      name: 'Recurring Revenue Commercial Service Business For Sale',
-      state: 'TX',
-      source_added_at: '2026-03-06T00:00:00.000Z',
-      source_updated_at: '2026-03-06T00:00:00.000Z',
-      is_active: true,
-    },
-  ];
-  const deals = [
-    {
-      airtable_record_id: 'recCOPY',
-      listing_url: 'https://us.businessesforsale.com/us/recurring-revenue',
-      name: 'Recurring Revenue Commercial Service Business For Sale',
-      state: 'TX',
-      airtable_added_at: '2026-10-02',
-      airtable_updated_at: '2026-10-02',
-    },
-  ];
-  const ordered = sortDealsForSync(deals, existing);
-  assert.equal(ordered[0].airtable_record_id, 'recCOPY');
-  const { skipped } = selectDealsToUpsert(
-    [{ ...deals[0], airtable_added_at: '2026-03-06T00:00:00.000Z', airtable_updated_at: '2026-03-06T00:00:00.000Z' }],
-    existing
+test('the same business on two sites becomes one row with both URLs linked', () => {
+  const plan = planSnapshotSync(
+    [deal('copy', { ...money, city: 'Austin' }), deal('kept', { ...money, city: 'Austin' })],
+    [row(1, 'kept', money)]
   );
-  assert.equal(skipped, 1);
+  assert.equal(plan.businesses.length, 1);
+  assert.equal(plan.businesses[0].canonical.listing_url, 'https://example.com/kept');
+  assert.equal(plan.businesses[0].members.length, 2);
+});
+
+test('the kept copy stays canonical across runs, so rows do not flip between sites', () => {
+  const deals = [deal('z', money), deal('a', money)];
+  const first = planSnapshotSync(deals, [row(1, 'z', money)]);
+  const second = planSnapshotSync([...deals].reverse(), [row(1, 'z', money)]);
+  assert.equal(first.businesses[0].canonical.listing_url, 'https://example.com/z');
+  assert.equal(second.businesses[0].canonical.listing_url, 'https://example.com/z');
+});
+
+test('groups do not change when a previous run activated different rows', () => {
+  const deals = [
+    deal('a', { name: 'General Practice' }),
+    deal('b', { name: 'General Practice', city: 'Erie' }),
+    deal('c', { name: 'General Practice', city: 'York' }),
+  ];
+  const urls = (plan) => plan.businesses.map((b) => b.members.map((m) => m.key).sort().join()).sort();
+  const first = planSnapshotSync(deals, [row(1, 'a', { name: 'General Practice' }), row(2, 'c', { name: 'General Practice', city: 'York', is_active: false })]);
+  const second = planSnapshotSync(deals, [row(1, 'a', { name: 'General Practice', is_active: false }), row(2, 'c', { name: 'General Practice', city: 'York' })]);
+  assert.deepEqual(urls(first), urls(second));
+});
+
+test('a blank city merges with a known city, two known cities stay separate', () => {
+  const blank = deal('a', money);
+  const austin = deal('b', { ...money, city: 'Austin' });
+  const dallas = deal('c', { ...money, city: 'Dallas' });
+  assert.equal(isSameBusiness(blank, austin), true);
+  assert.equal(isSameBusiness(austin, dallas), false);
+  const plan = planSnapshotSync([blank, austin, dallas], []);
+  assert.equal(plan.businesses.length, 2);
+  assert.equal(plan.businesses.reduce((n, b) => n + b.members.length, 0), 3);
+});
+
+test('a shared title with a differing number is two businesses', () => {
+  const a = deal('a', { name: 'Electrical Contractor', ...money });
+  const b = deal('b', { name: 'Electrical Contractor', ...money, annual_profit: 875000 });
+  assert.equal(planSnapshotSync([a, b], []).businesses.length, 2);
+});
+
+test('a shared title with no differing number is one business', () => {
+  const a = deal('a', { name: 'Recurring Revenue Business' });
+  const b = deal('b', { name: 'recurring revenue business' });
+  assert.equal(planSnapshotSync([a, b], []).businesses.length, 1);
+});
+
+test('a relisted business keeps its row and saved deals under the new URL', () => {
+  const plan = planSnapshotSync(
+    [deal('new-slug', { ...money, name: 'New title' })],
+    [row(7, 'old-slug', { ...money, name: 'Old title' })]
+  );
+  assert.equal(plan.businesses[0].row.id, 7);
+  assert.equal(plan.businesses[0].reused, true);
+  assert.deepEqual(plan.absentRowIds, []);
+});
+
+test('a listing that left Airtable is deactivated when nothing replaces it', () => {
+  const plan = planSnapshotSync([deal('a')], [row(1, 'a'), row(2, 'gone', { name: 'Gone' })]);
+  assert.deepEqual(plan.absentRowIds, [2]);
+});
+
+test('two rows now seen as one business merge into the saved one', () => {
+  const plan = planSnapshotSync(
+    [deal('a', money), deal('b', { ...money, city: 'Austin' })],
+    [row(1, 'a', money), row(2, 'b', { ...money, city: 'Austin' })],
+    new Set([2])
+  );
+  assert.equal(plan.businesses[0].row.id, 2);
+  assert.deepEqual(plan.surplus, [{ dupId: 1, keepId: 2, wasActive: true }]);
+});
+
+test('a repeated URL counts once and is reported', () => {
+  const plan = planSnapshotSync([deal('a'), deal('a'), { state: 'TX' }], []);
+  assert.equal(plan.businesses.length, 1);
+  assert.equal(plan.duplicateRows, 1);
+  assert.equal(plan.unidentifiedRows, 1);
+});
+
+test('only real value changes count, not dates or stored rounding', () => {
+  const base = deal('a', { asking_price: 100, profit_multiple: 2.3333333, industries: ['HVAC'], airtable_updated_at: '2026-11-04' });
+  const stored = row(1, 'a', { asking_price: '100.00', profit_multiple: '2.33', industries: ['HVAC'], source_updated_at: '2026-11-03' });
+  assert.equal(contentChanged(base, stored), false);
+  assert.equal(contentChanged({ ...base, asking_price: 90 }, stored), true);
+  assert.equal(contentChanged({ ...base, broker_email: 'a@b.co' }, stored), true);
 });
 
 test('new listing dates are today or yesterday only', () => {
