@@ -1414,6 +1414,38 @@ const migrations = [
 
       CREATE INDEX IF NOT EXISTS idx_mcp_tool_calls_user ON mcp_tool_calls(user_id, created_at DESC);
     `
+  },
+  {
+    name: 'market_deal_source_rows_and_changes',
+    up: `
+      CREATE TABLE IF NOT EXISTS market_deal_source_rows (
+        source VARCHAR(50) NOT NULL,
+        url_key TEXT NOT NULL,
+        listing_url TEXT,
+        market_deal_id INTEGER NOT NULL REFERENCES market_deals(id) ON DELETE CASCADE,
+        is_canonical BOOLEAN NOT NULL DEFAULT FALSE,
+        source_record_id TEXT,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (source, url_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_market_deal_source_rows_deal ON market_deal_source_rows(market_deal_id);
+
+      CREATE TABLE IF NOT EXISTS market_deal_changes (
+        id BIGSERIAL PRIMARY KEY,
+        market_deal_id INTEGER NOT NULL,
+        source VARCHAR(50) NOT NULL,
+        source_id TEXT NOT NULL,
+        field VARCHAR(64) NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE market_deal_changes DROP CONSTRAINT IF EXISTS market_deal_changes_market_deal_id_fkey;
+      ALTER TABLE market_deal_changes ADD CONSTRAINT market_deal_changes_market_deal_id_fkey
+        FOREIGN KEY (market_deal_id) REFERENCES market_deals(id) ON DELETE CASCADE;
+      CREATE INDEX IF NOT EXISTS idx_market_deal_changes_deal ON market_deal_changes(market_deal_id, changed_at DESC);
+    `
   }
 ];
 
