@@ -93,26 +93,59 @@ async function fetchSharedViewPage(url) {
 // ---------------------------------------------------------------------------
 // Step 2: Extract API parameters embedded in the page JS
 // ---------------------------------------------------------------------------
-function extractApiParams(html) {
-  // urlWithParams — try multiple patterns
+/** Decode JSON-style unicode escapes embedded in Airtable HTML (\u002F → /). */
+function decodeUnicodeEscapes(value) {
+  return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+}
+
+/**
+ * Pull readSharedViewData path + app/page-load ids from shared-view HTML.
+ * Airtable has shipped two shapes:
+ *   - object literal:  urlWithParams: "/v0.3/view/.../readSharedViewData?..."
+ *   - var assignment:  var urlWithParams = "\u002Fv0.3\u002F..."; then
+ *                      urlWithParams: urlWithParams
+ */
+export function extractApiParams(html) {
+  // Named patterns so failures say which shape(s) were tried.
   const urlPatterns = [
-    /urlWithParams\s*:\s*["']([^"']*readSharedViewData[^"']*)["']/,
-    /"urlWithParams"\s*:\s*"([^"]*readSharedViewData[^"]*)"/,
-    /urlWithParams["'\s]*:["'\s]*["']([^"']+)["']/,
+    {
+      name: 'objectPropertyString',
+      re: /urlWithParams\s*:\s*["']([^"']*readSharedViewData[^"']*)["']/,
+    },
+    {
+      name: 'quotedObjectPropertyString',
+      re: /"urlWithParams"\s*:\s*"([^"]*readSharedViewData[^"]*)"/,
+    },
+    {
+      name: 'looseObjectPropertyString',
+      re: /urlWithParams["'\s]*:["'\s]*["']([^"']*readSharedViewData[^"']*)["']/,
+    },
+    // Nov 2026+: path assigned to a var, then referenced as urlWithParams: urlWithParams
+    {
+      name: 'varAssignment',
+      re: /(?:var|let|const)\s+urlWithParams\s*=\s*["']([^"']*readSharedViewData[^"']*)["']/,
+    },
   ];
 
   let urlWithParams = null;
-  for (const pat of urlPatterns) {
-    const m = html.match(pat);
+  let matchedPattern = null;
+  const tried = [];
+  for (const { name, re } of urlPatterns) {
+    tried.push(name);
+    const m = html.match(re);
     if (m) {
-      // Decode unicode escapes like \u002F → /
-      urlWithParams = m[1].replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-        String.fromCharCode(parseInt(hex, 16))
-      );
+      urlWithParams = decodeUnicodeEscapes(m[1]);
+      matchedPattern = name;
       break;
     }
   }
-  if (!urlWithParams) throw new Error('Could not find urlWithParams in HTML');
+  if (!urlWithParams) {
+    throw new Error(
+      `Could not find urlWithParams in HTML (tried: ${tried.join(', ')})`
+    );
+  }
 
   // Application ID
   const appMatch = html.match(
@@ -126,7 +159,7 @@ function extractApiParams(html) {
   );
   const pageLoadId = pglMatch ? pglMatch[1] : null;
 
-  return { urlWithParams, appId, pageLoadId };
+  return { urlWithParams, appId, pageLoadId, matchedPattern };
 }
 
 // ---------------------------------------------------------------------------
