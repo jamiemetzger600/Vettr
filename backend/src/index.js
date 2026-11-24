@@ -73,7 +73,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '5.0.154' });
+  res.json({ status: 'ok', version: '5.0.155' });
 });
 
 // Routes

@@ -162,11 +162,41 @@ export function extractApiParams(html) {
   return { urlWithParams, appId, pageLoadId, matchedPattern };
 }
 
+/**
+ * Airtable may embed allowMsgpackOfResult=true in stringifiedObjectParams.
+ * That yields application/msgpack; this scraper expects JSON. Force false when set.
+ * URLs without the flag are returned unchanged.
+ */
+export function preferJsonSharedViewUrl(urlWithParams) {
+  const qIndex = urlWithParams.indexOf('?');
+  if (qIndex < 0) return urlWithParams;
+
+  const path = urlWithParams.slice(0, qIndex);
+  const params = new URLSearchParams(urlWithParams.slice(qIndex + 1));
+  const raw = params.get('stringifiedObjectParams');
+  if (raw == null) return urlWithParams;
+
+  let obj;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return urlWithParams;
+  }
+  if (obj == null || typeof obj !== 'object' || obj.allowMsgpackOfResult !== true) {
+    return urlWithParams;
+  }
+
+  obj.allowMsgpackOfResult = false;
+  params.set('stringifiedObjectParams', JSON.stringify(obj));
+  return `${path}?${params.toString()}`;
+}
+
 // ---------------------------------------------------------------------------
 // Step 3: Call the readSharedViewData internal API
 // ---------------------------------------------------------------------------
 async function fetchSharedViewData({ urlWithParams, appId, pageLoadId, cookies }) {
-  const fullUrl = `https://airtable.com${urlWithParams}`;
+  const jsonUrl = preferJsonSharedViewUrl(urlWithParams);
+  const fullUrl = `https://airtable.com${jsonUrl}`;
 
   const headers = {
     Cookie: cookies,
@@ -184,6 +214,13 @@ async function fetchSharedViewData({ urlWithParams, appId, pageLoadId, cookies }
 
   const res = await fetch(fullUrl, { headers });
   if (!res.ok) throw new Error(`API call failed: ${res.status}`);
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      `Unexpected content-type from Airtable shared view: ${contentType || '(missing)'} (expected application/json)`
+    );
+  }
 
   return res.json();
 }
