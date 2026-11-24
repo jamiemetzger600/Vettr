@@ -9,6 +9,7 @@ import { listingFingerprintSql } from '../lib/listingFingerprint.js';
 function fingerprintKeepOrderSql(alias = 'md') {
   const p = alias ? `${alias}.` : '';
   return `
+    CASE WHEN ${p}is_active THEN 0 ELSE 1 END,
     CASE WHEN saved.market_deal_id IS NOT NULL THEN 0 ELSE 1 END,
     CASE WHEN ${p}listing_url ILIKE '%bizbuysell.com%' THEN 0 ELSE 1 END,
     ${p}source_added_at DESC NULLS LAST,
@@ -59,7 +60,7 @@ export async function repointSavedDealsForUrlDuplicates(client, source = null) {
   return result.rowCount ?? 0;
 }
 
-async function remountHiddenDealIds(client, remapSql, params = []) {
+export async function remountHiddenDealIds(client, remapSql, params = []) {
   const result = await client.query(
     `WITH remap AS (
        ${remapSql}
